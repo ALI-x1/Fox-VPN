@@ -13,7 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 
 private val LightColors = lightColorScheme(
@@ -128,6 +130,7 @@ fun FoxyVpnTheme(
 
     CompositionLocalProvider(
         LocalFoxyStatusColors provides if (darkTheme) DarkStatusColors else LightStatusColors,
+        LocalLayoutDirection provides LayoutDirection.Ltr,
     ) {
         MaterialExpressiveTheme(
             colorScheme = colorScheme,

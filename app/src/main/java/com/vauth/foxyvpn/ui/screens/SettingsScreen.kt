@@ -71,6 +71,8 @@ fun SettingsScreen(
     var customDnsServer by remember { mutableStateOf(settingsStore.customDnsServer) }
     var socksBindAddress by remember { mutableStateOf(settingsStore.socksBindAddress) }
     var socksPort by remember { mutableStateOf(settingsStore.socksPort) }
+    var httpProxyEnabled by remember { mutableStateOf(settingsStore.httpProxyEnabled) }
+    var httpProxyPort by remember { mutableStateOf(settingsStore.httpProxyPort) }
     var proxyOnlyMode by remember { mutableStateOf(settingsStore.proxyOnlyMode) }
     var customEdgeAddress by remember { mutableStateOf(settingsStore.customEdgeAddress) }
     var upstreamProxyEnabled by remember { mutableStateOf(settingsStore.upstreamProxyEnabled) }
@@ -84,6 +86,7 @@ fun SettingsScreen(
     var showCustomDnsDialog by remember { mutableStateOf(false) }
     var showSocksBindDialog by remember { mutableStateOf(false) }
     var showSocksPortDialog by remember { mutableStateOf(false) }
+    var showHttpPortDialog by remember { mutableStateOf(false) }
     var showEdgeAddressDialog by remember { mutableStateOf(false) }
     var showUpstreamProxyTypeDialog by remember { mutableStateOf(false) }
     var showUpstreamProxyAddressDialog by remember { mutableStateOf(false) }
@@ -131,6 +134,17 @@ fun SettingsScreen(
                 socksPort = it
                 settingsStore.socksPort = it
                 showSocksPortDialog = false
+            },
+        )
+    }
+    if (showHttpPortDialog) {
+        HttpPortPickerDialog(
+            current = httpProxyPort,
+            onDismiss = { showHttpPortDialog = false },
+            onConfirm = {
+                httpProxyPort = it
+                settingsStore.httpProxyPort = it
+                showHttpPortDialog = false
             },
         )
     }
@@ -268,7 +282,7 @@ fun SettingsScreen(
             SectionLabel("Local proxy")
             ListItem(
                 headlineContent = { Text("Proxy-only mode") },
-                supportingContent = { Text("Run only the local SOCKS5 proxy, without a VPN interface") },
+                supportingContent = { Text("Run local proxy servers (SOCKS5 & HTTP), without a VPN interface") },
                 trailingContent = {
                     Switch(
                         checked = proxyOnlyMode,
@@ -286,11 +300,32 @@ fun SettingsScreen(
                 modifier = Modifier.clickable { showSocksBindDialog = true },
             )
             ListItem(
-                headlineContent = { Text("Local port") },
+                headlineContent = { Text("SOCKS5 port") },
                 supportingContent = { Text(socksPort.toString()) },
                 trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                 modifier = Modifier.clickable { showSocksPortDialog = true },
             )
+            ListItem(
+                headlineContent = { Text("Enable HTTP proxy") },
+                supportingContent = { Text("Run local HTTP proxy alongside SOCKS5") },
+                trailingContent = {
+                    Switch(
+                        checked = httpProxyEnabled,
+                        onCheckedChange = {
+                            httpProxyEnabled = it
+                            settingsStore.httpProxyEnabled = it
+                        },
+                    )
+                },
+            )
+            if (httpProxyEnabled) {
+                ListItem(
+                    headlineContent = { Text("HTTP port") },
+                    supportingContent = { Text(httpProxyPort.toString()) },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { showHttpPortDialog = true },
+                )
+            }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionLabel("Split tunneling")
@@ -589,6 +624,38 @@ private fun SocksPortPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Local port") },
+        text = {
+            OutlinedTextField(
+                value = portText,
+                onValueChange = { portText = it.filter(Char::isDigit).take(5) },
+                label = { Text("Port (1\u201365535)") },
+                singleLine = true,
+                isError = portText.isNotBlank() && !isValid,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { parsedPort?.let { onConfirm(it) } }, enabled = isValid) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun HttpPortPickerDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var portText by remember { mutableStateOf(current.toString()) }
+    val parsedPort = portText.toIntOrNull()
+    val isValid = parsedPort != null && parsedPort in 1..65_535
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("HTTP port") },
         text = {
             OutlinedTextField(
                 value = portText,

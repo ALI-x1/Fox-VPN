@@ -34,6 +34,7 @@ import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.RuntimeAuth
+import com.vauth.foxyvpn.vpn.socks.LocalHttpProxyServer
 import com.vauth.foxyvpn.vpn.socks.LocalSocks5Server
 import com.vauth.foxyvpn.vpn.tun.HevSocks5Tunnel
 import com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig
@@ -41,6 +42,7 @@ import com.vauth.foxyvpn.vpn.upstream.EdgeAddressResolver
 import com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession
 import com.vauth.foxyvpn.vpn.upstream.UpstreamProxyConfig
 import com.vauth.foxyvpn.vpn.upstream.UpstreamSession
+import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +127,7 @@ class FoxyVpnService : VpnService() {
 
     private var tunFd: ParcelFileDescriptor? = null
     private var socksServer: LocalSocks5Server? = null
+    private var httpProxyServer: LocalHttpProxyServer? = null
     private var upstreamSession: UpstreamSession? = null
     private var connectJob: Job? = null
     private var watchdogJob: Job? = null
@@ -152,9 +155,10 @@ class FoxyVpnService : VpnService() {
     private class SessionResources(
         val tunFd: ParcelFileDescriptor?,
         val socksServer: LocalSocks5Server?,
+        val httpProxyServer: LocalHttpProxyServer?,
         val upstreamSession: UpstreamSession?,
     ) {
-        val isEmpty: Boolean get() = tunFd == null && socksServer == null && upstreamSession == null
+        val isEmpty: Boolean get() = tunFd == null && socksServer == null && httpProxyServer == null && upstreamSession == null
     }
 
     @Volatile
@@ -253,6 +257,12 @@ class FoxyVpnService : VpnService() {
             getSystemService(ConnectivityManager::class.java)
                 ?.registerNetworkCallback(underlyingNetworks, networkCallback)
         }.onFailure { AppLogger.w(TAG, "could not register a network callback; handovers will be slower to detect", it) }
+
+        scope.launch {
+            _state.collect { state ->
+                QuickConnectWidgetProvider.updateAll(this@FoxyVpnService, state)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -273,6 +283,7 @@ class FoxyVpnService : VpnService() {
         reportedUnderlying = null
         scope.cancel()
         _state.value = ConnectionState.DISCONNECTED
+        QuickConnectWidgetProvider.updateAll(this, ConnectionState.DISCONNECTED)
         super.onDestroy()
     }
 
@@ -546,14 +557,19 @@ class FoxyVpnService : VpnService() {
 
             val socksPort = settingsStore.socksPort
             val socksBindAddress = settingsStore.socksBindAddress
+            val httpProxyPort = settingsStore.httpProxyPort
+            val httpProxyEnabled = settingsStore.httpProxyEnabled
             val proxyOnlyMode = settingsStore.proxyOnlyMode
             val excludedApps = settingsStore.excludedApps
 
             val customDnsServer = settingsStore.effectiveCustomDnsServer
 
             fun connectedLabel(): String = if (proxyOnlyMode) {
-
-                "Proxy active \u2022 $socksBindAddress:$socksPort"
+                if (httpProxyEnabled) {
+                    "Proxy active \u2022 SOCKS $socksPort, HTTP $httpProxyPort"
+                } else {
+                    "Proxy active \u2022 $socksBindAddress:$socksPort"
+                }
             } else {
                 val target = activeCandidate()
                 "Connected \u2022 ${target.countryName.ifBlank { target.countryCode }}"
@@ -576,6 +592,18 @@ class FoxyVpnService : VpnService() {
             }
             socks.start()
             socksServer = socks
+
+            if (httpProxyEnabled) {
+                val http = LocalHttpProxyServer(
+                    socksBindAddress,
+                    httpProxyPort,
+                    { upstreamSession },
+                ) {
+                    onUpstreamSessionUnhealthy()
+                }
+                http.start()
+                httpProxyServer = http
+            }
             ensureGenerationCurrent(myGeneration)
 
             if (proxyOnlyMode) {
@@ -958,7 +986,17 @@ class FoxyVpnService : VpnService() {
         is QuotaExceededError -> "Your VPN quota is exhausted. Try again later."
         is TokenInvalidError -> "Your session was rejected. Please sign in again."
         is TimeoutCancellationException -> "the connection timed out"
-        else -> error.message ?: (error::class.simpleName ?: "Connection failed")
+        else -> {
+            val untrusted = generateSequence(error) { it.cause }.take(8).any {
+                it is java.security.cert.CertPathValidatorException || it is java.security.cert.CertificateException
+            }
+            val base = error.message ?: (error::class.simpleName ?: "Connection failed")
+            if (untrusted) {
+                "$base (this device does not trust the VPN server's certificate; updating Android or the device's date/time may help)"
+            } else {
+                base
+            }
+        }
     }
 
     private fun establishTun(excludedApps: Set<String>, customDnsServer: String?): ParcelFileDescriptor? {
@@ -1033,10 +1071,11 @@ class FoxyVpnService : VpnService() {
 
         tokenRenewalJob?.cancel()
         tokenRenewalJob = null
-        val detached = SessionResources(tunFd, socksServer, upstreamSession)
+        val detached = SessionResources(tunFd, socksServer, httpProxyServer, upstreamSession)
         tunFd = null
         tunnelInterfaceActive = false
         socksServer = null
+        httpProxyServer = null
         upstreamSession = null
         return detached
     }
@@ -1047,6 +1086,7 @@ class FoxyVpnService : VpnService() {
             runCatching { HevSocks5Tunnel.stop() }.onFailure { AppLogger.w(TAG, "error stopping tun2socks tunnel", it) }
         }
         runCatching { resources.socksServer?.stop() }.onFailure { AppLogger.w(TAG, "error stopping local SOCKS5 server", it) }
+        runCatching { resources.httpProxyServer?.stop() }.onFailure { AppLogger.w(TAG, "error stopping local HTTP proxy server", it) }
         runCatching { resources.upstreamSession?.close() }.onFailure { AppLogger.w(TAG, "error closing upstream session", it) }
         runCatching { resources.tunFd?.close() }.onFailure { AppLogger.w(TAG, "error closing TUN interface", it) }
     }

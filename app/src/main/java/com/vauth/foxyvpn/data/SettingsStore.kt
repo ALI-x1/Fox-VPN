@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.vauth.foxyvpn.ui.theme.ThemeMode
+import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
 
 class SettingsStore(context: Context) {
     private val appContext = context.applicationContext
@@ -26,7 +28,10 @@ class SettingsStore(context: Context) {
         get() = ThemeMode.entries.firstOrNull {
             it.name == prefs.getString(KEY_THEME_MODE, null)
         } ?: ThemeMode.SYSTEM
-        set(value) { prefs.edit().putString(KEY_THEME_MODE, value.name).apply() }
+        set(value) {
+            prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
+            QuickConnectWidgetProvider.updateAll(appContext, FoxyVpnService.state.value)
+        }
 
     var exitCheckEnabled: Boolean
         get() = prefs.getBoolean(KEY_EXIT_CHECK, true)
@@ -41,6 +46,14 @@ class SettingsStore(context: Context) {
     var socksPort: Int
         get() = prefs.getInt(KEY_SOCKS_PORT, DEFAULT_SOCKS_PORT)
         set(value) { prefs.edit().putInt(KEY_SOCKS_PORT, value.coerceIn(1, 65_535)).apply() }
+
+    var httpProxyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HTTP_PROXY_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_HTTP_PROXY_ENABLED, value).apply() }
+
+    var httpProxyPort: Int
+        get() = prefs.getInt(KEY_HTTP_PROXY_PORT, DEFAULT_HTTP_PROXY_PORT)
+        set(value) { prefs.edit().putInt(KEY_HTTP_PROXY_PORT, value.coerceIn(1, 65_535)).apply() }
 
     var dohProvider: DohProvider
         get() = DohProvider.entries.firstOrNull {
@@ -137,6 +150,8 @@ class SettingsStore(context: Context) {
         private const val KEY_EXIT_CHECK = "exit_check_enabled"
         private const val KEY_SOCKS_BIND_ADDRESS = "socks_bind_address"
         private const val KEY_SOCKS_PORT = "socks_port"
+        private const val KEY_HTTP_PROXY_ENABLED = "http_proxy_enabled"
+        private const val KEY_HTTP_PROXY_PORT = "http_proxy_port"
         private const val KEY_DOH_PROVIDER = "doh_provider"
         private const val KEY_CUSTOM_DNS_ENABLED = "custom_dns_enabled"
         private const val KEY_CUSTOM_DNS_SERVER = "custom_dns_server"
@@ -151,6 +166,7 @@ class SettingsStore(context: Context) {
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
         const val DEFAULT_SOCKS_BIND_ADDRESS = "127.0.0.1"
         const val DEFAULT_SOCKS_PORT = 1080
+        const val DEFAULT_HTTP_PROXY_PORT = 8080
         const val DEFAULT_UPSTREAM_PROXY_PORT = 1080
         const val DEFAULT_CUSTOM_DNS_SERVER = "1.1.1.1"
 

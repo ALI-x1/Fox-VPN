@@ -111,6 +111,7 @@ class LocalSocks5Server(
         runCatching { server.reuseAddress = true }
         server.bind(InetSocketAddress(InetAddress.getByName(bindAddress), port), ACCEPT_BACKLOG)
         serverSocket = server
+        AppLogger.i(TAG, "started local SOCKS5 proxy on $bindAddress:$port")
         scope.launch {
             while (!server.isClosed) {
                 val accepted = runCatching { server.accept() }
@@ -146,6 +147,7 @@ class LocalSocks5Server(
 
     fun stop() {
         runCatching { serverSocket?.close() }
+        AppLogger.i(TAG, "stopped local SOCKS5 proxy on $bindAddress:$port")
 
         DohDnsClient.shutdown()
         scope.cancel()
