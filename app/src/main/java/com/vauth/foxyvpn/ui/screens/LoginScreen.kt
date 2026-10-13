@@ -5,7 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.data.FxaAuthRepository
@@ -35,9 +44,41 @@ fun LoginScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+
+    fun doSubmitLogin() {
+        val cleanEmail = FxaAuthRepository.normalizeEmail(email)
+        if (cleanEmail.isBlank() || password.isBlank() || isLoading) return
+        errorMessage = null
+        isLoading = true
+        scope.launch {
+            val result = authRepository.startLogin(cleanEmail, password)
+            isLoading = false
+            result.onSuccess { needsVerification ->
+                if (needsVerification) awaitingTwoFactor = true else onSignedIn()
+            }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
+        }
+    }
+
+    fun doSubmitTwoFactor() {
+        val cleanCode = FxaAuthRepository.sanitizeCode(code)
+        if (cleanCode.isBlank() || isLoading) return
+        errorMessage = null
+        isLoading = true
+        scope.launch {
+            val result = authRepository.submitTwoFactorCode(cleanCode)
+            isLoading = false
+            result.onSuccess { onSignedIn() }
+                .onFailure { errorMessage = it.message ?: "Verification failed" }
+        }
+    }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text("Sign in with Firefox", style = MaterialTheme.typography.headlineMedium)
@@ -52,30 +93,47 @@ fun LoginScreen(
         if (!awaitingTwoFactor) {
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
+                onValueChange = {
+                    email = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "").lowercase()
+                },
                 label = { Text("Firefox account email") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
+                    autoCorrectEnabled = false,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.padding(top = 12.dp))
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = {
+                    password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
+                },
                 label = { Text("Password") },
+                singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus()
+                        doSubmitLogin()
+                    }
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.padding(top = 20.dp))
             Button(
                 onClick = {
-                    errorMessage = null
-                    isLoading = true
-                    scope.launch {
-                        val result = authRepository.startLogin(email, password)
-                        isLoading = false
-                        result.onSuccess { needsVerification ->
-                            if (needsVerification) awaitingTwoFactor = true else onSignedIn()
-                        }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
-                    }
+                    focusManager.clearFocus()
+                    doSubmitLogin()
                 },
                 enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
@@ -87,21 +145,28 @@ fun LoginScreen(
             Spacer(Modifier.padding(top = 12.dp))
             OutlinedTextField(
                 value = code,
-                onValueChange = { code = it },
+                onValueChange = {
+                    code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
+                },
                 label = { Text("Confirmation code") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus()
+                        doSubmitTwoFactor()
+                    }
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.padding(top = 20.dp))
             Button(
                 onClick = {
-                    errorMessage = null
-                    isLoading = true
-                    scope.launch {
-                        val result = authRepository.submitTwoFactorCode(code)
-                        isLoading = false
-                        result.onSuccess { onSignedIn() }
-                            .onFailure { errorMessage = it.message ?: "Verification failed" }
-                    }
+                    focusManager.clearFocus()
+                    doSubmitTwoFactor()
                 },
                 enabled = !isLoading && code.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),

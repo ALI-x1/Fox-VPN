@@ -56,8 +56,17 @@ class FxaAuthRepository(
 ) {
     private var pendingSessionToken: String? = null
 
+    companion object {
+        fun normalizeEmail(email: String): String =
+            email.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "").trim().lowercase()
+
+        fun sanitizeCode(code: String): String =
+            code.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "").trim()
+    }
+
     suspend fun startLogin(email: String, password: String): Result<Boolean> = runCatching {
-        val data = loginAttempt(email, password)
+        val cleanEmail = normalizeEmail(email)
+        val data = loginAttempt(cleanEmail, password)
         val sessionToken = data.getString("sessionToken")
         pendingSessionToken = sessionToken
         val verified = data.optBoolean("verified", false)
@@ -70,8 +79,9 @@ class FxaAuthRepository(
     }
 
     suspend fun submitTwoFactorCode(code: String): Result<Boolean> = runCatching {
+        val cleanCode = sanitizeCode(code)
         val sessionToken = pendingSessionToken ?: error("No pending FxA session. Start sign-in again.")
-        fxaDo("POST", "/session/verify_code", sessionToken = sessionToken, jsonBody = JSONObject().put("code", code))
+        fxaDo("POST", "/session/verify_code", sessionToken = sessionToken, jsonBody = JSONObject().put("code", cleanCode))
         completeLogin(sessionToken)
         false
     }

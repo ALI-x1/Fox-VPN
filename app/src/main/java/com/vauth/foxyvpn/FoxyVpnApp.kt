@@ -3,6 +3,7 @@ package com.vauth.foxyvpn
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import com.vauth.foxyvpn.data.CrashReporter
@@ -12,7 +13,10 @@ import com.vauth.foxyvpn.data.ProxyStateStore
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.TokenStore
+import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.upstream.NettyLoggingBridge
+import com.vauth.foxyvpn.vpn.upstream.UpstreamTrust
+import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
 import org.conscrypt.Conscrypt
 import java.security.Security
 
@@ -33,6 +37,7 @@ class FoxyVpnApp : Application() {
 
         NettyLoggingBridge.install()
         installConscrypt()
+        UpstreamTrust.init(this)
         tokenStore = TokenStore(this)
         proxyStateStore = ProxyStateStore(this)
         settingsStore = SettingsStore(this)
@@ -58,6 +63,11 @@ class FoxyVpnApp : Application() {
             NotificationManager.IMPORTANCE_LOW,
         )
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        QuickConnectWidgetProvider.updateAll(this, FoxyVpnService.state.value)
     }
 
     companion object {

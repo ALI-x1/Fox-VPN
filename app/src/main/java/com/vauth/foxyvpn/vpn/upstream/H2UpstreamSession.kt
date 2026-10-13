@@ -38,6 +38,7 @@ import io.netty.handler.proxy.ProxyHandler
 import io.netty.handler.proxy.Socks5ProxyHandler
 import io.netty.handler.ssl.ApplicationProtocolConfig
 import io.netty.handler.ssl.ApplicationProtocolNames
+import io.netty.resolver.NoopAddressResolverGroup
 import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandshakeCompletionEvent
@@ -238,6 +239,8 @@ class H2UpstreamSession(
                     "(protocols=${TLS_PROTOCOLS.joinToString()})",
             )
         }
+
+        UpstreamTrust.trustManagerFactory()?.let { sslContextBuilder.trustManager(it) }
         val sslContext: SslContext = sslContextBuilder.build()
 
         if (connectHost != upstreamHost) {
@@ -252,6 +255,9 @@ class H2UpstreamSession(
         val bootstrap = Bootstrap()
             .group(group)
             .channel(FoxyNioSocketChannel::class.java)
+            .apply {
+                if (upstreamProxy != null) resolver(NoopAddressResolverGroup.INSTANCE)
+            }
 
             .option(ChannelOption.TCP_NODELAY, true)
 
@@ -405,7 +411,11 @@ class H2UpstreamSession(
                 }
             })
 
-        parentChannel = bootstrap.connect(connectHost, upstreamPort).awaitChannel()
+        parentChannel = if (upstreamProxy != null) {
+            bootstrap.connect(InetSocketAddress.createUnresolved(connectHost, upstreamPort)).awaitChannel()
+        } else {
+            bootstrap.connect(connectHost, upstreamPort).awaitChannel()
+        }
         handshakeDone.await()
         lastActivityAt = System.currentTimeMillis()
         lastStreamDataAt = System.currentTimeMillis()

@@ -18,16 +18,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,13 +48,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.data.model.ConnectionState
-import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
 import com.vauth.foxyvpn.ui.theme.ThemeController
 import com.vauth.foxyvpn.ui.theme.ThemeMode
 import com.vauth.foxyvpn.vpn.FoxyVpnService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -122,12 +123,23 @@ fun HomeScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
             )
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -209,13 +221,6 @@ fun HomeScreen(
                     }
                 }
             }
-
-            Spacer(Modifier.padding(top = 12.dp))
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.clickable(onClick = onOpenSettings).padding(8.dp),
-            )
         }
     }
 }
