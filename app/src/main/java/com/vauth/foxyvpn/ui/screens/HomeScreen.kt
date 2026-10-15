@@ -42,7 +42,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,9 +77,7 @@ import com.vauth.foxyvpn.vpn.ExitCheck
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.Locale
 
 // ───────────────────────── تایمر اتصال ─────────────────────────
@@ -97,14 +94,6 @@ private fun flagEmoji(code: String): String? {
     val base = 0x1F1E6
     return String(Character.toChars(base + (cc[0] - 'A'))) +
         String(Character.toChars(base + (cc[1] - 'A')))
-}
-
-/** اسم کامل کشور به انگلیسی (DE → Germany)؛ اگه شناخته نشد null. */
-private fun countryDisplayName(code: String): String? {
-    val cc = code.trim().uppercase()
-    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
-    val name = Locale("", cc).getDisplayCountry(Locale.ENGLISH)
-    return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
 }
 
 private fun formatElapsed(totalSeconds: Long): String {
@@ -152,31 +141,29 @@ fun HomeScreen(
     val trafficState by TrafficMonitor.trafficState.collectAsState()
     var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
-    val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(state) {
+    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
         if (state == ConnectionState.CONNECTED) {
             TrafficMonitor.start()
         } else {
             TrafficMonitor.stop()
         }
 
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
-                val result = ExitCheck().verifyExitCountry(socksPort = proxyPort)
-                result.onSuccess { info ->
-                    ipAddress = info.ip
-                    countryCode = info.countryCode
-                }.onFailure {
-                    // فقط عدد نشون می‌دیم؛ اگه آی‌پی نیومد، به‌جای متن خطا خط تیره
-                    ipAddress = "-"
-                    countryCode = ""
-                }
-            } catch (e: Exception) {
+        try {
+            val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
+            val result = ExitCheck().verifyExitCountry(socksPort = proxyPort)
+            result.onSuccess { info ->
+                ipAddress = info.ip
+                countryCode = info.countryCode
+            }.onFailure {
                 ipAddress = "-"
                 countryCode = ""
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ipAddress = "-"
+            countryCode = ""
         }
     }
 
@@ -251,8 +238,6 @@ fun HomeScreen(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "connect-scale",
     )
-
-    val isIran = countryCode.uppercase() == "IR"
 
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(
@@ -353,8 +338,24 @@ fun HomeScreen(
                             )
                         }
 
-                        // پینگ
-                        PingPill(pingMs = ping, color = pingColor)
+                        // پینگ و آی‌پی در دو کارت هم‌عرض
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PingPill(
+                                pingMs = ping,
+                                color = pingColor,
+                                modifier = Modifier.width(124.dp)
+                            )
+                            IpCountryFlagPill(
+                                state = state,
+                                ipCountryCode = countryCode,
+                                fallbackCountryCode = selectedProxy?.countryCode.orEmpty(),
+                                color = pingColor,
+                                modifier = Modifier.width(124.dp)
+                            )
+                        }
                     }
 
                     // تایمر بزرگ
@@ -397,53 +398,56 @@ fun HomeScreen(
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isIran) {
-                            // پرچم رسمی شیر و خورشید (res/drawable-nodpi/ic_flag_lion_sun.webp)، با نسبت اصلی پرچم
-                            Image(
-                                painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                                contentDescription = "Iran Flag",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .size(width = 56.dp, height = 32.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                            )
+                        val activeCountryCode = if (state == ConnectionState.CONNECTED) {
+                            countryCode.ifBlank { selectedProxy?.countryCode.orEmpty() }
                         } else {
-                            val flag = flagEmoji(countryCode)
-                            Box(
-                                modifier = Modifier.size(width = 56.dp, height = 32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            ""
+                        }
+                        when {
+                            state == ConnectionState.DISCONNECTED ||
+                                (state == ConnectionState.CONNECTED && activeCountryCode.equals("IR", ignoreCase = true)) -> {
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_flag_lion_sun),
+                                    contentDescription = "Iran flag",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.size(width = 56.dp, height = 32.dp)
+                                )
+                            }
+                            state == ConnectionState.CONNECTED -> {
+                                val flag = flagEmoji(activeCountryCode)
                                 if (flag != null) {
                                     Text(text = flag, fontSize = 30.sp)
                                 } else {
                                     Icon(
                                         imageVector = Icons.Filled.Public,
-                                        contentDescription = null,
+                                        contentDescription = "Server location",
                                         tint = c.accent,
                                         modifier = Modifier.size(30.dp)
                                     )
                                 }
                             }
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Filled.Public,
+                                    contentDescription = "Server location",
+                                    tint = c.textSecondary,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (isIran) "Iran" else (countryDisplayName(countryCode) ?: countryCode.ifBlank { "Location" }),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = c.textPrimary
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.Filled.ArrowForwardIos,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(11.dp),
-                                    tint = c.textSecondary
-                                )
-                            }
                             Text(
-                                text = ipAddress,
+                                text = "SERVER LOCATION",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = c.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "IP  $ipAddress",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = c.textSecondary,
                                 maxLines = 1,
@@ -451,7 +455,10 @@ fun HomeScreen(
                             )
                         }
                         Spacer(Modifier.width(10.dp))
-                        SignalBars(color = statusColors.connected)
+                        SignalBars(
+                            color = pingColor,
+                            level = if (state == ConnectionState.CONNECTED) 3 else 0
+                        )
                         Spacer(Modifier.width(10.dp))
                         Icon(
                             imageVector = Icons.Filled.ArrowForwardIos,
@@ -658,7 +665,7 @@ private fun SignalBars(
 
 /** قرص پینگ کنار وضعیت اتصال (سبز = خوب، زرد = متوسط، قرمز = ضعیف). */
 @Composable
-private fun PingPill(pingMs: Int?, color: Color) {
+private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(24.dp)
     val level = when {
         pingMs == null -> 0
@@ -667,7 +674,8 @@ private fun PingPill(pingMs: Int?, color: Color) {
         else -> 1
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
+            .height(56.dp)
             .clip(shape)
             .background(color.copy(alpha = 0.12f))
             .border(1.5.dp, color.copy(alpha = 0.7f), shape)
@@ -694,6 +702,51 @@ private fun PingPill(pingMs: Int?, color: Color) {
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = color
+            )
+        }
+    }
+}
+
+/** کارت هم‌اندازه‌ی پینگ که فقط پرچم کشور IP را نشان می‌دهد. */
+@Composable
+private fun IpCountryFlagPill(
+    state: ConnectionState,
+    ipCountryCode: String,
+    fallbackCountryCode: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val country = if (state == ConnectionState.CONNECTED) {
+        ipCountryCode.ifBlank { fallbackCountryCode }
+    } else {
+        ""
+    }
+    val showIranFlag = state == ConnectionState.DISCONNECTED ||
+        (state == ConnectionState.CONNECTED && country.equals("IR", ignoreCase = true))
+    val flag = if (state == ConnectionState.CONNECTED && !showIranFlag) flagEmoji(country) else null
+    val shape = RoundedCornerShape(24.dp)
+
+    Box(
+        modifier = modifier
+            .height(56.dp)
+            .clip(shape)
+            .background(color.copy(alpha = 0.12f))
+            .border(1.5.dp, color.copy(alpha = 0.7f), shape),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            showIranFlag -> Image(
+                painter = painterResource(id = R.drawable.ic_flag_lion_sun),
+                contentDescription = "Iran flag",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(width = 56.dp, height = 32.dp)
+            )
+            flag != null -> Text(text = flag, fontSize = 32.sp)
+            else -> Icon(
+                imageVector = Icons.Filled.Public,
+                contentDescription = "Country flag unavailable",
+                tint = color,
+                modifier = Modifier.size(30.dp)
             )
         }
     }
