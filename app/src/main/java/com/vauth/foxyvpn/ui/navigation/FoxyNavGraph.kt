@@ -1,11 +1,14 @@
 package com.vauth.foxyvpn.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.data.model.ConnectionState
+import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.ui.screens.AccountScreen
 import com.vauth.foxyvpn.ui.screens.HomeScreen
 import com.vauth.foxyvpn.ui.screens.LoginScreen
@@ -14,6 +17,10 @@ import com.vauth.foxyvpn.ui.screens.ServerListScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
 import com.vauth.foxyvpn.ui.theme.ThemeController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 object FoxyRoutes {
     const val SPLASH = "splash"
@@ -33,6 +40,9 @@ fun FoxyNavGraph(
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
+    // scope سطح NavGraph؛ بعد از برگشت از صفحه‌ی سرورها هم زنده می‌مونه (scope خود صفحه لغو می‌شد)
+    val scope = rememberCoroutineScope()
+
     NavHost(navController = navController, startDestination = FoxyRoutes.SPLASH) {
         composable(FoxyRoutes.SPLASH) {
             SplashScreen(
@@ -68,7 +78,20 @@ fun FoxyNavGraph(
             ServerListScreen(
                 serverListClient = app.serverListClient,
                 proxyStateStore = app.proxyStateStore,
-                onServerSelected = { navController.popBackStack() },
+                onServerSelected = {
+                    navController.popBackStack()
+                    // با انتخاب سرور، خودکار وصل شو (اگه از قبل وصل بود، اول قطع و بعد به سرور جدید)
+                    scope.launch {
+                        if (FoxyVpnService.state.value != ConnectionState.DISCONNECTED) {
+                            onDisconnect()
+                            withTimeoutOrNull(5_000) {
+                                FoxyVpnService.state.first { it == ConnectionState.DISCONNECTED }
+                            }
+                            delay(400)
+                        }
+                        onRequestConnect()
+                    }
+                },
                 onBack = { navController.popBackStack() },
             )
         }
