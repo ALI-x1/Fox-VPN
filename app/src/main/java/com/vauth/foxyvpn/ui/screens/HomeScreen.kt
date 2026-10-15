@@ -17,27 +17,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrightnessAuto
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Power
+import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +55,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.TrafficMonitor
@@ -83,7 +84,7 @@ fun HomeScreen(
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
 
     val trafficState by TrafficMonitor.trafficState.collectAsState()
-    var ipAddress by remember { mutableStateOf("در حال بررسی...") }
+    var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
 
@@ -130,123 +131,232 @@ fun HomeScreen(
     val haptics = LocalHapticFeedback.current
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("FoxyVPN") },
-                actions = {
-                    val mode = themeController.mode
-                    val showingDark = themeController.resolveDark(systemInDarkTheme)
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .combinedClickable(
-                                role = Role.Button,
-                                onClick = { themeController.toggle(systemInDarkTheme) },
-                                onLongClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    themeController.set(ThemeMode.SYSTEM)
-                                },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = when (mode) {
-                                ThemeMode.SYSTEM -> Icons.Filled.BrightnessAuto
-                                ThemeMode.LIGHT -> Icons.Filled.LightMode
-                                ThemeMode.DARK -> Icons.Filled.DarkMode
-                            },
-                            contentDescription = "Theme Toggle",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
-        },
+        containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(180.dp)
-                    .clip(CircleShape)
-                    .background(ringColor.copy(alpha = 0.15f))
-                    .clickable {
-                        if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
-                    },
-                contentAlignment = Alignment.Center,
+            // هدر بالای صفحه (لوگو، نام و دکمه تنظیمات)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // لوگوی روباه در بالای صفحه
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Public, // یا آیکون لوگو
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.padding(start = 10.dp))
+                    Column {
+                        Text(
+                            text = "FOX-VPN",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "Secure & Private",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onOpenSettings,
                     modifier = Modifier
-                        .size((140 * scale).dp)
+                        .size(44.dp)
                         .clip(CircleShape)
-                        .background(ringColor.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center,
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Power,
-                        contentDescription = if (state == ConnectionState.DISCONNECTED) "Connect" else "Disconnect",
-                        tint = ringColor,
-                        modifier = Modifier.size(56.dp),
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(Modifier.padding(top = 24.dp))
-            Text(
-                text = when (state) {
-                    ConnectionState.CONNECTED -> "Connected"
-                    ConnectionState.CONNECTING -> "Connecting…"
-                    ConnectionState.DISCONNECTED -> "Disconnected"
-                },
-                style = MaterialTheme.typography.headlineSmall,
-            )
+            Spacer(Modifier.height(16.dp))
 
-            if (state == ConnectionState.CONNECTING) {
-                Spacer(Modifier.padding(top = 4.dp))
-                Text(
-                    "Tap to cancel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            val error = lastError
-            if (error != null && state != ConnectionState.CONNECTING) {
-                Spacer(Modifier.padding(top = 8.dp))
-                Text(
-                    error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            Spacer(Modifier.padding(top = 24.dp))
-
+            // کارت اصلی بالای صفحه (وضعیت، تایمر، سرعت و اطلاعات سرور متصل)
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    // ردیف وضعیت و دکمه انتخاب سرور Auto
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(ringColor)
+                            )
+                            Spacer(Modifier.padding(start = 6.dp))
+                            Text(
+                                text = when (state) {
+                                    ConnectionState.CONNECTED -> "CONNECTED"
+                                    ConnectionState.CONNECTING -> "CONNECTING…"
+                                    ConnectionState.DISCONNECTED -> "READY TO CONNECT"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // دکمه Auto با قابلیت کلیک برای انتخاب سرور
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .clickable(onClick = onOpenServers)
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Public,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.padding(start = 6.dp))
+                            Text(
+                                text = selectedProxy?.countryCode?.ifBlank { "Auto" } ?: "Auto",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.padding(start = 4.dp))
+                            Icon(
+                                imageVector = Icons.Filled.ArrowForwardIos,
+                                contentDescription = null,
+                                modifier = Modifier.size(10.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // تایمر بزرگ وسط کارت
+                    Text(
+                        text = "00:00:00",
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+
+                    // کارت‌های سرعت آپلود و دانلود در کنار هم
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // آپلود
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("⬆️", fontSize = 14.sp)
+                                }
+                                Spacer(Modifier.padding(start = 8.dp))
+                                Column {
+                                    Text(
+                                        text = "UPLOAD",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = formatBytesPerSecond(trafficState.uploadSpeed.toLong()),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        // دانلود
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("⬇️", fontSize = 14.sp)
+                                }
+                                Spacer(Modifier.padding(start = 8.dp))
+                                Column {
+                                    Text(
+                                        text = "DOWNLOAD",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = formatBytesPerSecond(trafficState.downloadSpeed.toLong()),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ردیف اطلاعات پرچم و لوکیشن متصل شده
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable(onClick = onOpenServers)
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -254,79 +364,166 @@ fun HomeScreen(
                             if (countryCode.uppercase() == "IR") {
                                 Image(
                                     painter = painterResource(id = R.drawable.ic_lion_sun_flag),
-                                    contentDescription = "Iran Lion & Sun Flag",
-                                    modifier = Modifier.size(30.dp)
+                                    contentDescription = "Iran Flag",
+                                    modifier = Modifier.size(28.dp)
                                 )
                             } else {
                                 Icon(
                                     imageVector = Icons.Filled.Public,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
                                 )
                             }
                             Spacer(Modifier.padding(start = 10.dp))
                             Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = if (countryCode.uppercase() == "IR") "Iran (IR)" else countryCode.ifBlank { "Location" },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.padding(start = 4.dp))
+                                    Icon(
+                                        imageVector = Icons.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Text(
-                                    text = "IP: $ipAddress",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (countryCode.uppercase() == "IR") "ایران (Iran)" else countryCode.ifBlank { "Location" },
+                                    text = ipAddress,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-                        Text(
-                            text = countryCode.uppercase().ifBlank { "---" },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
 
-                    if (state == ConnectionState.CONNECTED) {
-                        Divider()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "⬆️ ${formatBytesPerSecond(trafficState.uploadSpeed.toLong())}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "⬇️ ${formatBytesPerSecond(trafficState.downloadSpeed.toLong())}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.SignalCellularAlt,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.padding(top = 12.dp))
+            Spacer(Modifier.height(28.dp))
 
+            // دکمه بزرگ دایره‌ای اتصال در مرکز صفحه
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(CircleShape)
+                    .background(ringColor.copy(alpha = 0.12f))
+                    .clickable {
+                        if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size((155 * scale).dp)
+                        .clip(CircleShape)
+                        .background(ringColor.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PowerSettingsNew,
+                            contentDescription = "Connect",
+                            tint = ringColor,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = if (state == ConnectionState.DISCONNECTED) "CONNECT" else "DISCONNECT",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ringColor
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // کارت پایین صفحه (مشخصات Your IP و Location)
             Card(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenServers),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(
-                        "Server Location",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.padding(top = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // بخش Your IP
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Filled.Public, contentDescription = null)
-                        Spacer(Modifier.padding(start = 8.dp))
-                        Text(
-                            selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
-                            style = MaterialTheme.typography.bodyLarge,
+                        Icon(
+                            imageVector = Icons.Filled.Public,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
                         )
+                        Spacer(Modifier.padding(start = 10.dp))
+                        Column {
+                            Text(
+                                text = "Your IP",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = ipAddress,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // بخش Location
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenServers)
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.padding(start = 6.dp))
+                        Column {
+                            Text(
+                                text = "Location",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (countryCode.uppercase() == "IR") "Iran" else countryCode.ifBlank { "Iran" },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.padding(start = 4.dp))
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowForwardIos,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(10.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
