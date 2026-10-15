@@ -73,13 +73,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.FxaAuthRepository
+import com.vauth.foxyvpn.ui.theme.FoxExtras
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
 
-// ───────────────────────── پالت رنگی (هماهنگ با HomeScreen) ─────────────────────────
-
-private val LoginOrange = Color(0xFFF7941D)
-private val LoginOrangeDeep = Color(0xFFC2570C)
-private val LoginOrangeLight = Color(0xFFFFC857)
+// ───────────────────────── رنگ‌ها (از تم برنامه) ─────────────────────────
 
 private data class LoginColors(
     val bgTop: Color,
@@ -89,40 +87,33 @@ private data class LoginColors(
     val field: Color,
     val textPrimary: Color,
     val textSecondary: Color,
+    val accent: Color,
+    val accentLight: Color,
     val accentText: Color,
+    val onAccent: Color,   // رنگ متن/آیکون روی دکمه‌ی اکسنت (تیره روی اکسنت روشن، سفید روی تیره)
 )
 
-private fun loginColors(dark: Boolean) = if (dark) {
-    LoginColors(
-        bgTop = Color(0xFF16120E),
-        bgBottom = Color(0xFF241B12),
-        card = Color(0xFF2A221A),
-        cardBorder = Color(0x33FFB066),
-        field = Color(0xFF33291F),
-        textPrimary = Color(0xFFF5EEE6),
-        textSecondary = Color(0xFFB8AB9C),
-        accentText = LoginOrangeLight,
-    )
-} else {
-    LoginColors(
-        bgTop = Color(0xFFFFFAF4),
-        bgBottom = Color(0xFFFDEBD6),
-        card = Color(0xB3FFFFFF),
-        cardBorder = Color(0x33F7941D),
-        field = Color(0xFFFFF4E8),
-        textPrimary = Color(0xFF14172B),
-        textSecondary = Color(0xFF5B6275),
-        accentText = LoginOrangeDeep,
-    )
-}
+private fun FoxExtras.toLoginColors() = LoginColors(
+    bgTop = bgTop,
+    bgBottom = bgBottom,
+    card = card,
+    cardBorder = cardBorder,
+    field = innerCard,
+    textPrimary = textPrimary,
+    textSecondary = textSecondary,
+    accent = accent,
+    accentLight = accentLight,
+    accentText = accentText,
+    onAccent = if (accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White,
+)
 
 private fun Modifier.loginCard(c: LoginColors, radius: Dp): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
         .shadow(
             6.dp, shape,
-            ambientColor = LoginOrange.copy(alpha = 0.15f),
-            spotColor = LoginOrange.copy(alpha = 0.15f),
+            ambientColor = c.accent.copy(alpha = 0.15f),
+            spotColor = c.accent.copy(alpha = 0.15f),
         )
         .clip(shape)
         .background(c.card)
@@ -146,8 +137,7 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val c = loginColors(isDark)
+    val c = LocalFoxExtras.current.toLoginColors()
 
     fun doSubmitLogin() {
         val cleanEmail = FxaAuthRepository.normalizeEmail(email)
@@ -200,7 +190,7 @@ fun LoginScreen(
                 Text(
                     text = buildAnnotatedString {
                         withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
-                        withStyle(SpanStyle(color = LoginOrange)) { append("VPN") }
+                        withStyle(SpanStyle(color = c.accent)) { append("VPN") }
                     },
                     fontSize = 34.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -439,6 +429,7 @@ fun LoginScreen(
 
 @Composable
 private fun LoginLogo() {
+    val accent = LocalFoxExtras.current.accent
     Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -446,17 +437,17 @@ private fun LoginLogo() {
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
-                        listOf(LoginOrange.copy(alpha = 0.18f), LoginOrange.copy(alpha = 0.03f))
+                        listOf(accent.copy(alpha = 0.18f), accent.copy(alpha = 0.03f))
                     )
                 )
-                .border(1.dp, LoginOrange.copy(alpha = 0.14f), CircleShape)
+                .border(1.dp, accent.copy(alpha = 0.14f), CircleShape)
         )
         Box(
             modifier = Modifier
                 .size(116.dp)
                 .clip(CircleShape)
-                .background(LoginOrange.copy(alpha = 0.08f))
-                .border(1.dp, LoginOrange.copy(alpha = 0.2f), CircleShape)
+                .background(accent.copy(alpha = 0.08f))
+                .border(1.dp, accent.copy(alpha = 0.2f), CircleShape)
         )
         Image(
             painter = painterResource(id = R.drawable.ic_fox_logo),
@@ -496,13 +487,13 @@ private fun LoginField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = colors.field,
             unfocusedContainerColor = colors.field.copy(alpha = 0.6f),
-            focusedBorderColor = LoginOrange,
+            focusedBorderColor = colors.accent,
             unfocusedBorderColor = colors.cardBorder,
             focusedLabelColor = colors.accentText,
             unfocusedLabelColor = colors.textSecondary,
-            focusedLeadingIconColor = LoginOrange,
+            focusedLeadingIconColor = colors.accent,
             unfocusedLeadingIconColor = colors.textSecondary,
-            cursorColor = LoginOrange,
+            cursorColor = colors.accent,
             errorBorderColor = MaterialTheme.colorScheme.error,
         ),
         modifier = Modifier.fillMaxWidth(),
@@ -522,11 +513,11 @@ private fun LoginPrimaryButton(
         Modifier
             .shadow(
                 10.dp, shape,
-                ambientColor = LoginOrange.copy(alpha = 0.35f),
-                spotColor = LoginOrange.copy(alpha = 0.35f),
+                ambientColor = colors.accent.copy(alpha = 0.35f),
+                spotColor = colors.accent.copy(alpha = 0.35f),
             )
             .clip(shape)
-            .background(Brush.horizontalGradient(listOf(LoginOrangeLight, LoginOrange)))
+            .background(Brush.horizontalGradient(listOf(colors.accentLight, colors.accent)))
     } else {
         Modifier
             .clip(shape)
@@ -546,7 +537,7 @@ private fun LoginPrimaryButton(
             CircularProgressIndicator(
                 modifier = Modifier.size(24.dp),
                 strokeWidth = 2.5.dp,
-                color = Color(0xFF3A1F00),
+                color = colors.onAccent,
             )
         } else {
             Text(
@@ -554,7 +545,7 @@ private fun LoginPrimaryButton(
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
-                color = if (enabled) Color(0xFF3A1F00) else colors.textSecondary,
+                color = if (enabled) colors.onAccent else colors.textSecondary,
             )
         }
     }
