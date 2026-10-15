@@ -27,8 +27,12 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
     var mode: ThemeMode by mutableStateOf(settingsStore.themeMode)
         private set
 
-    var palette: ThemePalette by mutableStateOf(ThemePalette.fromName(palettePrefs.getString(PALETTE_KEY, null)))
-        private set
+    // state داخلی؛ اسمش فرق داره تا ستر خودکارش با تابع setPalette(next) تداخل JVM نداشته باشه
+    private var paletteState: ThemePalette by mutableStateOf(
+        ThemePalette.fromName(palettePrefs.getString(PALETTE_KEY, null))
+    )
+
+    val palette: ThemePalette get() = paletteState
 
     fun resolveDark(systemInDarkTheme: Boolean): Boolean = palette.fixedDark ?: when (mode) {
         ThemeMode.SYSTEM -> systemInDarkTheme
@@ -37,8 +41,8 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
     }
 
     fun setPalette(next: ThemePalette) {
-        if (next == palette) return
-        palette = next
+        if (next == paletteState) return
+        paletteState = next
         palettePrefs.edit().putString(PALETTE_KEY, next.name).apply()
     }
 
