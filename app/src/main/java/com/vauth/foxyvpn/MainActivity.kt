@@ -74,7 +74,10 @@ class MainActivity : ComponentActivity() {
         setContent {
 
             val themeController = rememberThemeController(app.settingsStore)
-            FoxyVpnTheme(themeMode = themeController.mode) {
+            FoxyVpnTheme(
+                themeMode = themeController.mode,
+                palette = themeController.palette,
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
                     FoxyNavGraph(
