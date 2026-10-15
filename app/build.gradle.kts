@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
-#
+
 val hevSocks5TunnelVersion = "2.17.1"
 val hevSocks5TunnelDir = file("src/main/jni")
 
