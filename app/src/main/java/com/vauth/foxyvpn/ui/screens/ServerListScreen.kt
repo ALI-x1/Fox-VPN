@@ -60,7 +60,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -73,6 +72,8 @@ import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.model.VpnCity
 import com.vauth.foxyvpn.data.model.VpnCountry
+import com.vauth.foxyvpn.ui.theme.FoxExtras
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -98,46 +99,12 @@ private const val LIVE_INTERVAL_MS = 4_000L
 /** حداکثر پینگ هم‌زمان؛ که هم سریع باشه هم شبکه خفه نشه. */
 private const val PING_PARALLELISM = 8
 
-// ───────────────────────── پالت رنگی (هماهنگ با هوم‌اسکرین) ─────────────────────────
+// ───────────────────────── رنگ‌ها ─────────────────────────
+// رنگ‌های کارت/متن/اکسنت از تم برنامه (LocalFoxExtras) می‌آن؛ فقط رنگ‌های «کیفیت پینگ» ثابتن.
 
-private val ListOrange = Color(0xFFF7941D)
-private val ListOrangeDeep = Color(0xFFC2570C)
-private val ListOrangeLight = Color(0xFFFFC857)
 private val PingGood = Color(0xFF22B573)
 private val PingMedium = Color(0xFFF2A81D)
 private val PingBad = Color(0xFFEF5350)
-
-private data class ListColors(
-    val bgTop: Color,
-    val bgBottom: Color,
-    val card: Color,
-    val cardBorder: Color,
-    val innerCard: Color,
-    val textPrimary: Color,
-    val textSecondary: Color,
-)
-
-private fun listColors(dark: Boolean) = if (dark) {
-    ListColors(
-        bgTop = Color(0xFF16120E),
-        bgBottom = Color(0xFF241B12),
-        card = Color(0xFF2A221A),
-        cardBorder = Color(0x33FFB066),
-        innerCard = Color(0xFF33291F),
-        textPrimary = Color(0xFFF5EEE6),
-        textSecondary = Color(0xFFB8AB9C),
-    )
-} else {
-    ListColors(
-        bgTop = Color(0xFFFFFAF4),
-        bgBottom = Color(0xFFFDEBD6),
-        card = Color(0xB3FFFFFF),
-        cardBorder = Color(0x33F7941D),
-        innerCard = Color(0xFFFFF4E8),
-        textPrimary = Color(0xFF14172B),
-        textSecondary = Color(0xFF5B6275),
-    )
-}
 
 // ───────────────────────── کمکی‌ها ─────────────────────────
 
@@ -295,8 +262,7 @@ fun ServerListScreen(
         }
     }
 
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val c = listColors(isDark)
+    val c = LocalFoxExtras.current
 
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(
@@ -351,7 +317,7 @@ fun ServerListScreen(
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "Refresh ping",
-                            tint = ListOrange,
+                            tint = c.accent,
                             modifier = Modifier.rotate(refreshRotation),
                         )
                     }
@@ -361,7 +327,7 @@ fun ServerListScreen(
                     when {
                         isLoading -> CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center),
-                            color = ListOrange,
+                            color = c.accent,
                         )
                         errorMessage != null && countries.isEmpty() -> Text(
                             errorMessage.orEmpty(),
@@ -436,7 +402,7 @@ fun ServerListScreen(
 
 @Composable
 private fun CircleIconButton(
-    c: ListColors,
+    c: FoxExtras,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -454,7 +420,7 @@ private fun CircleIconButton(
 @Composable
 private fun LocationCardShell(
     modifier: Modifier = Modifier,
-    c: ListColors,
+    c: FoxExtras,
     isSelected: Boolean,
     highlight: Boolean = false,
     onClick: () -> Unit,
@@ -467,15 +433,15 @@ private fun LocationCardShell(
             .shadow(
                 6.dp,
                 shape,
-                ambientColor = ListOrange.copy(alpha = 0.15f),
-                spotColor = ListOrange.copy(alpha = 0.15f),
+                ambientColor = c.accent.copy(alpha = 0.15f),
+                spotColor = c.accent.copy(alpha = 0.15f),
             )
             .clip(shape)
             .background(c.card)
-            .then(if (highlight) Modifier.background(ListOrange.copy(alpha = 0.08f)) else Modifier)
+            .then(if (highlight) Modifier.background(c.accent.copy(alpha = 0.08f)) else Modifier)
             .border(
                 width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) ListOrange else c.cardBorder,
+                color = if (isSelected) c.accent else c.cardBorder,
                 shape = shape,
             )
             .clickable(onClick = onClick)
@@ -488,7 +454,7 @@ private fun LocationCardShell(
 @Composable
 private fun RecommendedCard(
     modifier: Modifier = Modifier,
-    c: ListColors,
+    c: FoxExtras,
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -497,7 +463,7 @@ private fun RecommendedCard(
             modifier = Modifier
                 .size(width = 52.dp, height = 44.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Brush.linearGradient(listOf(ListOrangeLight, ListOrange))),
+                .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -526,7 +492,7 @@ private fun RecommendedCard(
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = "Selected",
-                tint = ListOrange,
+                tint = c.accent,
                 modifier = Modifier.size(28.dp),
             )
         }
@@ -536,7 +502,7 @@ private fun RecommendedCard(
 @Composable
 private fun CityCard(
     modifier: Modifier = Modifier,
-    c: ListColors,
+    c: FoxExtras,
     countryCode: String,
     countryName: String,
     cityLabel: String,
@@ -576,7 +542,7 @@ private fun CityCard(
                 Icon(
                     imageVector = Icons.Filled.Public,
                     contentDescription = null,
-                    tint = ListOrange,
+                    tint = c.accent,
                     modifier = Modifier.size(26.dp),
                 )
             }
@@ -619,7 +585,7 @@ private fun CityCard(
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = "Selected",
-                tint = ListOrange,
+                tint = c.accent,
                 modifier = Modifier.size(26.dp),
             )
         }
@@ -628,7 +594,7 @@ private fun CityCard(
 
 /** نشان «LIVE» با نقطه‌ی چشمک‌زن؛ با لمس، به‌روزرسانی زنده رو متوقف/شروع می‌کنه. */
 @Composable
-private fun LiveChip(c: ListColors, live: Boolean, onClick: () -> Unit) {
+private fun LiveChip(c: FoxExtras, live: Boolean, onClick: () -> Unit) {
     val transition = rememberInfiniteTransition(label = "live-pulse")
     val pulse by transition.animateFloat(
         initialValue = 0.3f,
@@ -693,7 +659,7 @@ private fun FastestChip() {
 
 /** پینگ بزرگ با رنگ بر اساس کیفیت (سبز / زرد / قرمز) و میله‌های سیگنال. */
 @Composable
-private fun PingBadge(pingMs: Int?, pingState: PingState, c: ListColors) {
+private fun PingBadge(pingMs: Int?, pingState: PingState, c: FoxExtras) {
     val color = when {
         pingMs != null -> pingColor(pingMs)
         pingState == PingState.FAILED -> PingBad
@@ -739,7 +705,7 @@ private fun PingBadge(pingMs: Int?, pingState: PingState, c: ListColors) {
             else -> CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 strokeWidth = 2.5.dp,
-                color = ListOrangeDeep.copy(alpha = 0.8f).takeIf { c.bgTop.luminance() > 0.5f } ?: ListOrange,
+                color = c.accent,
             )
         }
     }
