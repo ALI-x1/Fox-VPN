@@ -42,7 +42,7 @@ class FoxyVpnApp : Application() {
         proxyStateStore = ProxyStateStore(this)
         settingsStore = SettingsStore(this)
         guardianClient = GuardianClient()
-        serverListClient = ServerListClient()
+        serverListClient = ServerListClient(this)
         authRepository = FxaAuthRepository(tokenStore)
         createNotificationChannel()
     }

@@ -49,12 +49,6 @@ class TokenStore(context: Context) {
 
     fun hasRefreshToken(): Boolean = loadAuth()?.refreshToken != null
 
-    @Deprecated(
-        "Checks only access-token freshness; prefer hasValidAccessToken() or FxaAuthRepository.restoreSession().",
-        ReplaceWith("hasValidAccessToken()"),
-    )
-    fun hasValidSession(): Boolean = hasValidAccessToken()
-
     fun clear() {
         prefs.edit().clear().apply()
     }

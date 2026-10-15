@@ -66,9 +66,10 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
-    var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
-    var customDnsEnabled by remember { mutableStateOf(settingsStore.customDnsEnabled) }
-    var customDnsServer by remember { mutableStateOf(settingsStore.customDnsServer) }
+    var dnsProvider by remember { mutableStateOf(settingsStore.dnsProvider) }
+    var customDohUrl by remember { mutableStateOf(settingsStore.customDohUrl) }
+    var bootstrapDnsProvider by remember { mutableStateOf(settingsStore.bootstrapDnsProvider) }
+    var customBootstrapIp by remember { mutableStateOf(settingsStore.customBootstrapIp) }
     var socksBindAddress by remember { mutableStateOf(settingsStore.socksBindAddress) }
     var socksPort by remember { mutableStateOf(settingsStore.socksPort) }
     var httpProxyEnabled by remember { mutableStateOf(settingsStore.httpProxyEnabled) }
@@ -82,8 +83,8 @@ fun SettingsScreen(
     var upstreamProxyUsername by remember { mutableStateOf(settingsStore.upstreamProxyUsername) }
     var upstreamProxyPassword by remember { mutableStateOf(settingsStore.upstreamProxyPassword) }
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
-    var showDohProviderDialog by remember { mutableStateOf(false) }
-    var showCustomDnsDialog by remember { mutableStateOf(false) }
+    var showDnsProviderDialog by remember { mutableStateOf(false) }
+    var showBootstrapDnsDialog by remember { mutableStateOf(false) }
     var showSocksBindDialog by remember { mutableStateOf(false) }
     var showSocksPortDialog by remember { mutableStateOf(false) }
     var showHttpPortDialog by remember { mutableStateOf(false) }
@@ -93,25 +94,31 @@ fun SettingsScreen(
     var showUpstreamProxyCredentialsDialog by remember { mutableStateOf(false) }
     var showSplitTunnelDialog by remember { mutableStateOf(false) }
 
-    if (showDohProviderDialog) {
-        DohProviderPickerDialog(
-            current = dohProvider,
-            onDismiss = { showDohProviderDialog = false },
-            onConfirm = {
-                dohProvider = it
-                settingsStore.dohProvider = it
-                showDohProviderDialog = false
+    if (showDnsProviderDialog) {
+        DnsProviderPickerDialog(
+            currentProvider = dnsProvider,
+            currentCustomUrl = customDohUrl,
+            onDismiss = { showDnsProviderDialog = false },
+            onConfirm = { provider, url ->
+                dnsProvider = provider
+                settingsStore.dnsProvider = provider
+                customDohUrl = url
+                settingsStore.customDohUrl = url
+                showDnsProviderDialog = false
             },
         )
     }
-    if (showCustomDnsDialog) {
-        CustomDnsPickerDialog(
-            current = customDnsServer,
-            onDismiss = { showCustomDnsDialog = false },
-            onConfirm = {
-                customDnsServer = it
-                settingsStore.customDnsServer = it
-                showCustomDnsDialog = false
+    if (showBootstrapDnsDialog) {
+        BootstrapDnsPickerDialog(
+            currentProvider = bootstrapDnsProvider,
+            currentCustomIp = customBootstrapIp,
+            onDismiss = { showBootstrapDnsDialog = false },
+            onConfirm = { provider, ip ->
+                bootstrapDnsProvider = provider
+                settingsStore.bootstrapDnsProvider = provider
+                customBootstrapIp = ip
+                settingsStore.customBootstrapIp = ip
+                showBootstrapDnsDialog = false
             },
         )
     }
@@ -246,37 +253,31 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionLabel("DNS")
             ListItem(
-                headlineContent = { Text("Encrypted DNS") },
-                supportingContent = { Text(dohProvider.label) },
+                headlineContent = { Text("Tunnel DNS") },
+                supportingContent = {
+                    val subtitle = when (dnsProvider) {
+                        SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Default"
+                        SettingsStore.DnsProvider.CUSTOM -> customDohUrl.ifBlank { "Custom DoH (Not configured)" }
+                        else -> dnsProvider.label
+                    }
+                    Text(subtitle)
+                },
                 trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showDohProviderDialog = true },
+                modifier = Modifier.clickable { showDnsProviderDialog = true },
             )
             ListItem(
-                headlineContent = { Text("Use a custom DNS server") },
-                supportingContent = { Text("Send your apps' DNS queries to a server you choose") },
-                trailingContent = {
-                    Switch(
-                        checked = customDnsEnabled,
-                        onCheckedChange = {
-                            customDnsEnabled = it
-                            settingsStore.customDnsEnabled = it
-                        },
-                    )
+                headlineContent = { Text("Resolver DNS") },
+                supportingContent = {
+                    val subtitle = when (bootstrapDnsProvider) {
+                        SettingsStore.BootstrapDnsProvider.CUSTOM -> customBootstrapIp.ifBlank { "Custom IP (Not configured)" }
+                        SettingsStore.BootstrapDnsProvider.SYSTEM -> "System DNS"
+                        else -> bootstrapDnsProvider.label
+                    }
+                    Text(subtitle)
                 },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showBootstrapDnsDialog = true },
             )
-            if (customDnsEnabled) {
-                ListItem(
-                    headlineContent = { Text("DNS server") },
-                    supportingContent = {
-                        val presetLabel = SettingsStore.CUSTOM_DNS_PRESETS
-                            .firstOrNull { it.first == customDnsServer }
-                            ?.second
-                        Text(presetLabel ?: customDnsServer)
-                    },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showCustomDnsDialog = true },
-                )
-            }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionLabel("Local proxy")
@@ -444,46 +445,83 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun DohProviderPickerDialog(
-    current: SettingsStore.DohProvider,
+private fun DnsProviderPickerDialog(
+    currentProvider: SettingsStore.DnsProvider,
+    currentCustomUrl: String,
     onDismiss: () -> Unit,
-    onConfirm: (SettingsStore.DohProvider) -> Unit,
+    onConfirm: (SettingsStore.DnsProvider, String) -> Unit,
 ) {
-    var selected by remember { mutableStateOf(current) }
+    var selectedProvider by remember { mutableStateOf(currentProvider) }
+    var urlText by remember { mutableStateOf(currentCustomUrl) }
+    val isCustom = selectedProvider == SettingsStore.DnsProvider.CUSTOM
+    val isValidCustomUrl = SettingsStore.isValidDohUrl(urlText)
+    val canSave = !isCustom || isValidCustomUrl
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Encrypted DNS") },
+        title = { Text("Tunnel DNS") },
         text = {
-            Column {
-                SettingsStore.DohProvider.entries.forEach { provider ->
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "DNS used inside the VPN tunnel for all app and browsing traffic.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                SettingsStore.DnsProvider.entries.forEach { provider ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .selectable(selected = selected == provider, onClick = { selected = provider })
+                            .selectable(
+                                selected = selectedProvider == provider,
+                                onClick = { selectedProvider = provider },
+                            )
                             .padding(vertical = 4.dp),
                     ) {
-                        RadioButton(selected = selected == provider, onClick = { selected = provider })
+                        RadioButton(
+                            selected = selectedProvider == provider,
+                            onClick = { selectedProvider = provider },
+                        )
                         Column(Modifier.padding(start = 8.dp)) {
                             Text(provider.label)
                             val detail = when (provider) {
-                                SettingsStore.DohProvider.AUTOMATIC -> "Use whichever answers first"
-                                SettingsStore.DohProvider.OFF -> "Use the network's own DNS"
-                                else -> provider.addresses.joinToString(", ")
+                                SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Resolved at the VPN edge"
+                                SettingsStore.DnsProvider.CUSTOM -> "Specify an HTTPS DoH endpoint URL"
+                                else -> provider.dohUrl ?: ""
                             }
-                            Text(
-                                detail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            if (detail.isNotEmpty()) {
+                                Text(
+                                    detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
+                }
+                if (isCustom) {
+                    OutlinedTextField(
+                        value = urlText,
+                        onValueChange = { urlText = it.trim() },
+                        label = { Text("DoH URL (https://...)") },
+                        placeholder = { Text("https://example.com/dns-query") },
+                        singleLine = true,
+                        isError = urlText.isNotBlank() && !isValidCustomUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
+            TextButton(
+                onClick = { onConfirm(selectedProvider, urlText) },
+                enabled = canSave,
+            ) {
+                Text("Save")
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -492,43 +530,77 @@ private fun DohProviderPickerDialog(
 }
 
 @Composable
-private fun CustomDnsPickerDialog(
-    current: String,
+private fun BootstrapDnsPickerDialog(
+    currentProvider: SettingsStore.BootstrapDnsProvider,
+    currentCustomIp: String,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (SettingsStore.BootstrapDnsProvider, String) -> Unit,
 ) {
-    var value by remember { mutableStateOf(current) }
-    val isValid = SettingsStore.isValidDnsServer(value)
+    var selectedProvider by remember { mutableStateOf(currentProvider) }
+    var ipText by remember { mutableStateOf(currentCustomIp) }
+    val isCustom = selectedProvider == SettingsStore.BootstrapDnsProvider.CUSTOM
+    val isValidCustomIp = SettingsStore.isValidIpAddress(ipText.trim())
+    val canSave = !isCustom || isValidCustomIp
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("DNS server") },
+        title = { Text("Resolver DNS") },
         text = {
-            Column {
-                SettingsStore.CUSTOM_DNS_PRESETS.forEach { (address, label) ->
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "DNS used to resolve the VPN server address before the tunnel connects.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                SettingsStore.BootstrapDnsProvider.entries.forEach { provider ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .selectable(selected = value == address, onClick = { value = address })
+                            .selectable(
+                                selected = selectedProvider == provider,
+                                onClick = { selectedProvider = provider },
+                            )
                             .padding(vertical = 4.dp),
                     ) {
-                        RadioButton(selected = value == address, onClick = { value = address })
-                        Text(label, modifier = Modifier.padding(start = 8.dp))
+                        RadioButton(
+                            selected = selectedProvider == provider,
+                            onClick = { selectedProvider = provider },
+                        )
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Text(provider.label)
+                            Text(
+                                provider.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it.trim() },
-                    label = { Text("IPv4 address") },
-                    singleLine = true,
-                    isError = value.isNotBlank() && !isValid,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+                if (isCustom) {
+                    OutlinedTextField(
+                        value = ipText,
+                        onValueChange = { ipText = it.trim() },
+                        label = { Text("Resolver IP address") },
+                        placeholder = { Text("e.g. 76.76.2.2") },
+                        singleLine = true,
+                        isError = ipText.isNotBlank() && !isValidCustomIp,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(value) }, enabled = isValid) { Text("Save") }
+            TextButton(
+                onClick = { onConfirm(selectedProvider, ipText.trim()) },
+                enabled = canSave,
+            ) {
+                Text("Save")
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

@@ -112,13 +112,14 @@ class QuickConnectWidgetProvider : AppWidgetProvider() {
             }
 
             val bgRes = when (state) {
-                ConnectionState.CONNECTED -> if (isDark) R.drawable.widget_bg_connected_dark else R.drawable.widget_bg_connected_light
-                ConnectionState.CONNECTING -> if (isDark) R.drawable.widget_bg_connecting_dark else R.drawable.widget_bg_connecting_light
-                ConnectionState.DISCONNECTED -> if (isDark) R.drawable.widget_bg_disconnected_dark else R.drawable.widget_bg_disconnected_light
+                ConnectionState.CONNECTED, ConnectionState.DISCONNECTED ->
+                    if (isDark) R.drawable.widget_bg_disconnected_dark else R.drawable.widget_bg_disconnected_light
+                ConnectionState.CONNECTING ->
+                    if (isDark) R.drawable.widget_bg_connecting_dark else R.drawable.widget_bg_connecting_light
             }
 
             val iconColor = when (state) {
-                ConnectionState.CONNECTED -> 0xFFFFFFFF.toInt()
+                ConnectionState.CONNECTED -> if (isDark) 0xFF7BDF92.toInt() else 0xFF1B6E2F.toInt()
                 ConnectionState.CONNECTING -> if (isDark) 0xFFFFC46B.toInt() else 0xFF8A5A00.toInt()
                 ConnectionState.DISCONNECTED -> if (isDark) 0xFFE9E0E4.toInt() else 0xFF1E1A1D.toInt()
             }

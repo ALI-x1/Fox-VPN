@@ -142,7 +142,7 @@ internal object EdgeAddressResolver {
                 emptyList()
             } else {
                 val (endpoint, addresses) = result
-                AppLogger.i(
+                AppLogger.d(
                     TAG,
                     "resolved $host over DNS-over-HTTPS via $endpoint (${addresses.size} address(es))",
                 )

@@ -54,9 +54,9 @@ object HevSocks5TunnelConfig {
         return (packed and MAPDNS_NETMASK_BITS) == MAPDNS_NETWORK_BITS
     }
 
-    fun write(context: Context, socksPort: Int, customDnsServer: String? = null): String {
+    fun write(context: Context, socksPort: Int, useMapDns: Boolean = true): String {
 
-        val mapdnsBlock = if (customDnsServer == null) {
+        val mapdnsBlock = if (useMapDns) {
             """
             mapdns:
               address: '$MAPDNS_ADDRESS'

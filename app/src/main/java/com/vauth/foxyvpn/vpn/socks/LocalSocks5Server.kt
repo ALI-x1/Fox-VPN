@@ -60,6 +60,7 @@ class LocalSocks5Server(
     private val bindAddress: String,
     private val port: Int,
     private val rejectFakeDnsAddresses: Boolean,
+    private val dohUrl: String? = null,
     private val sessionProvider: () -> UpstreamSession?,
     private val onSessionUnhealthy: () -> Unit = {},
 ) {
@@ -471,6 +472,7 @@ class LocalSocks5Server(
 
                 socket.inetAddress,
                 InetSocketAddress(socket.localAddress, port),
+                dohUrl,
                 sessionProvider,
             ) {
 
