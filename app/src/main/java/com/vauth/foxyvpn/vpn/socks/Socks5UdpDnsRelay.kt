@@ -6,13 +6,9 @@ import com.vauth.foxyvpn.vpn.upstream.UpstreamSession
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.withTimeoutOrNull
-import java.io.DataInputStream
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -31,13 +27,11 @@ private const val SOCKS5_UDP_HEADER_MIN_BYTES = 10
 
 private const val MAX_INFLIGHT_QUERIES = 32
 
-private const val QUERY_TIMEOUT_MS = 10_000L
-
 internal class Socks5UdpDnsRelay(
     private val bindAddress: InetAddress,
-
     private val clientAddress: InetAddress,
     private val socksProxy: InetSocketAddress?,
+    private val dohUrl: String? = null,
     private val sessionProvider: () -> UpstreamSession?,
     private val onUnsupportedFlow: () -> Unit = {},
 ) {
@@ -47,8 +41,6 @@ internal class Socks5UdpDnsRelay(
     private val inflight = Semaphore(MAX_INFLIGHT_QUERIES)
 
     private val queriesOverHttps = AtomicInteger(0)
-    private val queriesOverTcp = AtomicInteger(0)
-    private val httpsFallbacks = AtomicInteger(0)
     private val nonDnsDropped = AtomicInteger(0)
     private val foreignSourceDropped = AtomicInteger(0)
     private val otherDropped = AtomicInteger(0)
@@ -65,6 +57,7 @@ internal class Socks5UdpDnsRelay(
     val boundPort: Int get() = socket.localPort
 
     fun start() {
+        AppLogger.d(TAG, "started UDP DNS relay on $bindAddress:${socket.localPort}; upstream DoH=${dohUrl ?: "<per-resolver>"}")
         scope.launch {
             val buffer = ByteArray(MAX_DNS_MESSAGE_BYTES + SOCKS5_UDP_HEADER_MIN_BYTES + 256)
             while (!socket.isClosed) {
@@ -109,17 +102,14 @@ internal class Socks5UdpDnsRelay(
         runCatching { socket.close() }
         scope.cancel()
         val https = queriesOverHttps.get()
-        val tcp = queriesOverTcp.get()
-        val fallbacks = httpsFallbacks.get()
         val nonDns = nonDnsDropped.get()
         val foreign = foreignSourceDropped.get()
         val other = otherDropped.get()
 
-        if (https > 0 || tcp > 0 || nonDns > 0 || foreign > 0 || other > 0) {
+        if (https > 0 || nonDns > 0 || foreign > 0 || other > 0) {
             AppLogger.d(
                 TAG,
-                "UDP association closed: $https DNS queries over HTTPS, $tcp over plaintext TCP " +
-                    "($fallbacks of them after HTTPS failed), $nonDns non-DNS datagrams dropped, " +
+                "UDP association closed: $https DNS queries over HTTPS, $nonDns non-DNS datagrams dropped, " +
                     "$foreign from unassociated sources, $other other drops",
             )
         }
@@ -159,7 +149,7 @@ internal class Socks5UdpDnsRelay(
             return
         }
 
-        val answer = resolve(session, request.host, query)
+        val answer = resolve(request.host, query)
         if (answer == null) {
             otherDropped.incrementAndGet()
             return
@@ -170,61 +160,18 @@ internal class Socks5UdpDnsRelay(
             .onFailure { otherDropped.incrementAndGet() }
     }
 
-    private suspend fun resolve(
-        session: UpstreamSession,
+    private fun resolve(
         resolverHost: String,
         query: ByteArray,
     ): ByteArray? {
-        if (socksProxy != null) {
-            val endpoint = DohDnsClient.endpointFor(resolverHost)
-            if (endpoint != null) {
-                val answer = DohDnsClient.query(socksProxy, endpoint, query)
-                if (answer != null) {
-                    queriesOverHttps.incrementAndGet()
-                    return answer
-                }
-                httpsFallbacks.incrementAndGet()
-            }
+        if (socksProxy == null) return null
+        val endpoint = dohUrl ?: DohDnsClient.endpointFor(resolverHost) ?: return null
+        val answer = DohDnsClient.query(socksProxy, endpoint, query)
+        if (answer != null) {
+            queriesOverHttps.incrementAndGet()
+            return answer
         }
-        val answer = queryOverTcp(session, resolverHost, query) ?: return null
-        queriesOverTcp.incrementAndGet()
-        return answer
-    }
-
-    private suspend fun queryOverTcp(
-        session: UpstreamSession,
-        resolverHost: String,
-        query: ByteArray,
-    ): ByteArray? = coroutineScope {
-        val tunneled = runCatching { session.openStream(resolverHost, DNS_PORT) }.getOrNull()
-            ?: return@coroutineScope null
-        try {
-            val reader = async {
-                runCatching {
-                    tunneled.output.write(byteArrayOf((query.size ushr 8).toByte(), query.size.toByte()))
-                    tunneled.output.write(query)
-                    tunneled.output.flush()
-
-                    val input = DataInputStream(tunneled.input)
-                    val length = input.readUnsignedShort()
-                    if (length == 0 || length > MAX_DNS_MESSAGE_BYTES) {
-                        throw IOException("implausible DNS-over-TCP response length $length")
-                    }
-                    val answer = ByteArray(length)
-                    input.readFully(answer)
-                    answer
-                }.getOrNull()
-            }
-            val answer = withTimeoutOrNull(QUERY_TIMEOUT_MS) { reader.await() }
-            if (answer == null) {
-
-                runCatching { tunneled.close() }
-                reader.join()
-            }
-            answer
-        } finally {
-            runCatching { tunneled.close() }
-        }
+        return null
     }
 
     private class Request(val payloadOffset: Int, val host: String, val port: Int)

@@ -43,8 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.vauth.foxyvpn.data.model.emojiFlag
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.data.model.ConnectionState
@@ -193,9 +195,13 @@ fun HomeScreen(
             if (error != null && state != ConnectionState.CONNECTING) {
                 Spacer(Modifier.padding(top = 8.dp))
                 Text(
-                    error,
+                    text = error,
+                    textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
                 )
             }
 
@@ -212,7 +218,12 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.padding(top = 4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Filled.Public, contentDescription = null)
+                        val flag = selectedProxy?.emojiFlag
+                        if (!flag.isNullOrBlank()) {
+                            Text(flag, style = MaterialTheme.typography.titleMedium)
+                        } else {
+                            Icon(imageVector = Icons.Filled.Public, contentDescription = null)
+                        }
                         Spacer(Modifier.padding(start = 8.dp))
                         Text(
                             selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",

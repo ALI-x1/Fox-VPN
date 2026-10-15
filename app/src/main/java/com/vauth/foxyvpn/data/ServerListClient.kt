@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.data
 
+import android.content.Context
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.VpnCity
 import com.vauth.foxyvpn.data.model.VpnCountry
@@ -11,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 
 private const val TAG = "ServerListClient"
@@ -22,7 +24,13 @@ const val RECOMMENDED_COUNTRY_CODE = "REC"
 
 private val EXCLUDED_COUNTRY_NAMES = setOf("CatchAll Anycast")
 
-class ServerListClient(private val client: OkHttpClient = ControlPlaneHttp.client) {
+class ServerListClient(
+    private val context: Context? = null,
+    private val client: OkHttpClient = ControlPlaneHttp.client,
+) {
+
+    private val cacheFile: File?
+        get() = context?.let { File(it.filesDir, "vpn_serverlist_cache.json") }
 
     suspend fun fetchCountries(): List<VpnCountry> = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(REMOTE_SETTINGS_URL).applyMozillaVpnHeaders().build()
@@ -30,21 +38,62 @@ class ServerListClient(private val client: OkHttpClient = ControlPlaneHttp.clien
             if (!response.isSuccessful) {
                 throw IOException("Remote Settings fetch failed: HTTP ${response.code}")
             }
-            val body = JSONObject(response.body?.string().orEmpty())
-            val records = body.optJSONArray("data") ?: JSONArray()
-            val countries = mutableListOf<VpnCountry>()
-            for (i in 0 until records.length()) {
-                val record = records.getJSONObject(i)
-                val countryJson = record.optJSONObject("country") ?: record
-                val country = parseCountry(countryJson)
-                val isExcluded = EXCLUDED_COUNTRY_NAMES.any { it.equals(country.name, ignoreCase = true) }
-                if (country.code.isNotBlank() && country.cities.isNotEmpty() && !isExcluded) {
-                    countries.add(country)
-                }
+            val raw = response.body?.string().orEmpty()
+            val countries = parseRecords(raw)
+            if (countries.isNotEmpty()) {
+                saveCache(raw)
             }
             AppLogger.i(TAG, "fetched ${countries.size} countries from Remote Settings")
             countries
         }
+    }
+
+    fun loadCachedCountries(): List<VpnCountry> {
+        val file = cacheFile ?: return emptyList()
+        if (!file.exists() || !file.isFile) return emptyList()
+        return runCatching {
+            val raw = file.readText()
+            val parsed = parseRecords(raw)
+            if (parsed.isNotEmpty()) {
+                AppLogger.d(TAG, "loaded ${parsed.size} countries from local cache")
+            }
+            parsed
+        }.getOrElse {
+            AppLogger.w(TAG, "failed to read server list cache", it)
+            emptyList()
+        }
+    }
+
+    private fun saveCache(rawJson: String) {
+        val file = cacheFile ?: return
+        runCatching {
+            val tempFile = File.createTempFile("serverlist", ".tmp", file.parentFile)
+            tempFile.writeText(rawJson)
+            if (!tempFile.renameTo(file)) {
+                tempFile.copyTo(file, overwrite = true)
+                tempFile.delete()
+            }
+            AppLogger.d(TAG, "updated local server list cache")
+        }.onFailure {
+            AppLogger.w(TAG, "failed to save server list cache", it)
+        }
+    }
+
+    private fun parseRecords(rawJson: String): List<VpnCountry> {
+        if (rawJson.isBlank()) return emptyList()
+        val body = JSONObject(rawJson)
+        val records = body.optJSONArray("data") ?: JSONArray()
+        val countries = mutableListOf<VpnCountry>()
+        for (i in 0 until records.length()) {
+            val record = records.getJSONObject(i)
+            val countryJson = record.optJSONObject("country") ?: record
+            val country = parseCountry(countryJson)
+            val isExcluded = EXCLUDED_COUNTRY_NAMES.any { it.equals(country.name, ignoreCase = true) }
+            if (country.code.isNotBlank() && country.cities.isNotEmpty() && !isExcluded) {
+                countries.add(country)
+            }
+        }
+        return countries
     }
 
     private fun parseCountry(json: JSONObject): VpnCountry = VpnCountry(

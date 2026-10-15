@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
@@ -125,8 +126,20 @@ fun AccountScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-                errorMessage != null -> Column {
-                    Text(errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
+                errorMessage != null -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                    )
                     Spacer(Modifier.padding(top = 8.dp))
                     TextButton(onClick = { refresh() }) { Text("Retry") }
                 }

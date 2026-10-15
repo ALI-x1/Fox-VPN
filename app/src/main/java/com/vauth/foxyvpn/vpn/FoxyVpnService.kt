@@ -548,11 +548,16 @@ class FoxyVpnService : VpnService() {
                 ""
             }
 
-            val dohEndpointAddresses = settingsStore.dohProvider.addresses
+            val dohEndpointAddresses = settingsStore.effectiveBootstrapAddresses
+            val bootstrapDesc = if (dohEndpointAddresses.isEmpty()) {
+                "system DNS"
+            } else {
+                "${settingsStore.bootstrapDnsProvider.label} (${dohEndpointAddresses.joinToString(", ")})"
+            }
 
             AppLogger.i(
                 TAG,
-                "connect: target=${primaryCandidate.authority} country=${primaryCandidate.countryCode}$chainSuffix$edgeSuffix",
+                "connect: target=${primaryCandidate.authority} country=${primaryCandidate.countryCode} bootstrap=$bootstrapDesc$chainSuffix$edgeSuffix",
             )
 
             val socksPort = settingsStore.socksPort
@@ -562,7 +567,7 @@ class FoxyVpnService : VpnService() {
             val proxyOnlyMode = settingsStore.proxyOnlyMode
             val excludedApps = settingsStore.excludedApps
 
-            val customDnsServer = settingsStore.effectiveCustomDnsServer
+            val dohUrl = settingsStore.effectiveDohUrl
 
             fun connectedLabel(): String = if (proxyOnlyMode) {
                 if (httpProxyEnabled) {
@@ -581,11 +586,12 @@ class FoxyVpnService : VpnService() {
                 ControlPlaneHttp.socketProtector = { socket -> protect(socket) }
             }
 
-            val mapdnsActive = !proxyOnlyMode && customDnsServer == null
+            val mapdnsActive = !proxyOnlyMode && dohUrl == null
             val socks = LocalSocks5Server(
                 socksBindAddress,
                 socksPort,
                 mapdnsActive,
+                dohUrl,
                 { upstreamSession },
             ) {
                 onUpstreamSessionUnhealthy()
@@ -615,7 +621,7 @@ class FoxyVpnService : VpnService() {
                         "local proxy at $socksBindAddress:$socksPort",
                 )
             } else {
-                val fd = establishTun(excludedApps, customDnsServer) ?: error("Failed to establish TUN interface")
+                val fd = establishTun(excludedApps, dohUrl) ?: error("Failed to establish TUN interface")
                 tunFd = fd
                 tunnelInterfaceActive = true
 
@@ -628,7 +634,7 @@ class FoxyVpnService : VpnService() {
                 val tunnelConfigPath = HevSocks5TunnelConfig.write(
                     applicationContext,
                     socksPort,
-                    customDnsServer,
+                    useMapDns = mapdnsActive,
                 )
                 val tunnelStarted = HevSocks5Tunnel.start(tunnelConfigPath, fd.fd)
                 if (!tunnelStarted) error("Failed to start the tun2socks tunnel (hev-socks5-tunnel)")
@@ -640,7 +646,7 @@ class FoxyVpnService : VpnService() {
             suspend fun mintProxyPass(): ProxyPass {
                 var auth = tokenStore.loadAuth() ?: throw TokenInvalidError("Not signed in")
 
-                if (!tokenStore.hasValidSession()) {
+                if (!tokenStore.hasValidAccessToken()) {
                     val renewed = renewAccessToken(tokenStore)
                     if (renewed != null) {
                         auth = renewed
@@ -933,7 +939,12 @@ class FoxyVpnService : VpnService() {
     private suspend fun resolveConnectCandidate(proxyStateStore: ProxyStateStore): ProxyCandidate {
         proxyStateStore.load()?.let { return it }
         AppLogger.i(TAG, "connect: no server previously selected; auto-selecting recommended location")
-        val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
+        val client = (applicationContext as? FoxyVpnApp)?.serverListClient ?: ServerListClient(applicationContext)
+        val countries = runCatching {
+            withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { client.fetchCountries() }
+        }.getOrElse {
+            client.loadCachedCountries()
+        }
         val recommended = ServerListClient.candidatesForCountry(countries, RECOMMENDED_COUNTRY_CODE).randomOrNull()
         val chosen = recommended ?: countries.firstOrNull { it.code.isNotBlank() }?.let { country ->
             ServerListClient.candidatesForCountry(countries, country.code).randomOrNull()
@@ -945,7 +956,12 @@ class FoxyVpnService : VpnService() {
 
     private suspend fun discoverAlternateCandidates(primary: ProxyCandidate): List<ProxyCandidate> {
         val attempt = runCatching {
-            val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
+            val client = (applicationContext as? FoxyVpnApp)?.serverListClient ?: ServerListClient(applicationContext)
+            val countries = runCatching {
+                withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { client.fetchCountries() }
+            }.getOrElse {
+                client.loadCachedCountries()
+            }
             val sameCity = ServerListClient.candidatesForCity(countries, primary.countryCode, primary.cityCode)
             val sameCountry = ServerListClient.candidatesForCountry(countries, primary.countryCode)
             (sameCity + sameCountry)
@@ -967,7 +983,10 @@ class FoxyVpnService : VpnService() {
         dohEndpointAddresses: List<String>,
     ): String? {
         if (upstreamProxy != null) return null
-        if (dohEndpointAddresses.isEmpty()) return null
+        if (dohEndpointAddresses.isEmpty()) {
+            AppLogger.d(TAG, "resolving $host via system DNS resolver (direct network)")
+            return null
+        }
         return EdgeAddressResolver.resolve(host, dohEndpointAddresses)
     }
 
@@ -999,12 +1018,12 @@ class FoxyVpnService : VpnService() {
         }
     }
 
-    private fun establishTun(excludedApps: Set<String>, customDnsServer: String?): ParcelFileDescriptor? {
-        val dnsServer = customDnsServer ?: HevSocks5TunnelConfig.MAPDNS_ADDRESS
-        if (customDnsServer != null) {
-            AppLogger.i(TAG, "establishTun: dns=$customDnsServer (user-selected, resolved over the tunnel)")
+    private fun establishTun(excludedApps: Set<String>, dohUrl: String?): ParcelFileDescriptor? {
+        val dnsServer = HevSocks5TunnelConfig.MAPDNS_ADDRESS
+        if (dohUrl != null) {
+            AppLogger.i(TAG, "establishTun: dns=DoH ($dohUrl)")
         } else {
-            AppLogger.i(TAG, "establishTun: dns=mapdns (${HevSocks5TunnelConfig.MAPDNS_ADDRESS}), resolved on-device")
+            AppLogger.i(TAG, "establishTun: dns=mapdns ($dnsServer)")
         }
         return Builder()
             .setSession("FoxyVPN")

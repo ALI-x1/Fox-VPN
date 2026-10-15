@@ -2,8 +2,6 @@ package com.vauth.foxyvpn.data.model
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
-enum class LoginStepState { CREDENTIALS, TWO_FACTOR }
-
 data class VpnProtocol(
     val name: String,
     val host: String = "",
@@ -54,3 +52,20 @@ data class RuntimeAuth(
     val refreshToken: String?,
     val expiresAtEpochSeconds: Long,
 )
+
+fun countryCodeToEmojiFlag(countryCode: String): String {
+    if (countryCode.equals("REC", ignoreCase = true) || countryCode.length != 2) return ""
+    val upper = countryCode.uppercase()
+    val first = upper[0]
+    val second = upper[1]
+    if (first !in 'A'..'Z' || second !in 'A'..'Z') return ""
+
+    val firstCodePoint = 0x1F1E6 + (first - 'A')
+    val secondCodePoint = 0x1F1E6 + (second - 'A')
+
+    return String(Character.toChars(firstCodePoint)) + String(Character.toChars(secondCodePoint))
+}
+
+val VpnCountry.emojiFlag: String get() = countryCodeToEmojiFlag(code)
+val ProxyCandidate.emojiFlag: String get() = countryCodeToEmojiFlag(countryCode)
+

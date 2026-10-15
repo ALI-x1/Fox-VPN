@@ -3,16 +3,19 @@ package com.vauth.foxyvpn.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -27,12 +30,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.data.ProxyStateStore
 import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.VpnCountry
+import com.vauth.foxyvpn.data.model.emojiFlag
 import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,9 +67,21 @@ fun ServerListScreen(
     val pingStates = remember { mutableStateMapOf<String, PingState>() }
 
     LaunchedEffect(Unit) {
+        val cached = withContext(Dispatchers.IO) { serverListClient.loadCachedCountries() }
+        if (cached.isNotEmpty()) {
+            countries = cached
+            isLoading = false
+        }
         runCatching { serverListClient.fetchCountries() }
-            .onSuccess { countries = it }
-            .onFailure { errorMessage = it.message ?: "Failed to load server list" }
+            .onSuccess { fresh ->
+                countries = fresh
+                errorMessage = null
+            }
+            .onFailure {
+                if (countries.isEmpty()) {
+                    errorMessage = it.message ?: "Failed to load server list"
+                }
+            }
         isLoading = false
     }
 
@@ -101,8 +118,13 @@ fun ServerListScreen(
             when {
                 isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 errorMessage != null && countries.isEmpty() -> Text(
-                    errorMessage.orEmpty(),
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    text = errorMessage.orEmpty(),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(24.dp),
                 )
                 else -> LazyColumn {
                     items(
@@ -120,6 +142,9 @@ fun ServerListScreen(
                         val selected = selectedState
                         when (row) {
                             is LocationRow.RecommendedRow -> ListItem(
+                                leadingContent = {
+                                    Icon(Icons.Filled.Public, contentDescription = null)
+                                },
                                 headlineContent = { Text("Recommended", fontWeight = FontWeight.SemiBold) },
                                 supportingContent = { Text("Automatically chosen for the best performance") },
                                 trailingContent = {
@@ -141,6 +166,12 @@ fun ServerListScreen(
                                     },
                             )
                             is LocationRow.CountryHeader -> ListItem(
+                                leadingContent = {
+                                    Text(
+                                        text = row.country.emojiFlag,
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                },
                                 headlineContent = { Text(row.country.name, fontWeight = FontWeight.SemiBold) },
                                 modifier = Modifier.padding(horizontal = 8.dp),
                             )
