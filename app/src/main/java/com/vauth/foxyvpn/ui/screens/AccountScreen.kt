@@ -62,57 +62,24 @@ import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
 import com.vauth.foxyvpn.data.formatBytes
 import com.vauth.foxyvpn.data.model.Entitlement
+import com.vauth.foxyvpn.ui.theme.FoxExtras
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
+import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
 import kotlinx.coroutines.launch
 
-// ───────────────────────── پالت رنگی (هماهنگ با HomeScreen) ─────────────────────────
+// ───────────────────────── رنگ‌ها از تم فعال (LocalFoxExtras) ─────────────────────────
 
-private val AccOrange = Color(0xFFF7941D)
-private val AccOrangeDeep = Color(0xFFC2570C)
-private val AccOrangeLight = Color(0xFFFFC857)
-private val AccGreen = Color(0xFF22B573)
+/** رنگ متن/آیکون روی دکمه‌ها و آواتار: تیره روی accent روشن، سفید روی accent تیره. */
+private fun onAccentColor(c: FoxExtras): Color =
+    if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
-private data class AccColors(
-    val bgTop: Color,
-    val bgBottom: Color,
-    val card: Color,
-    val cardBorder: Color,
-    val innerCard: Color,
-    val textPrimary: Color,
-    val textSecondary: Color,
-    val accentText: Color,
-)
-
-private fun accColors(dark: Boolean) = if (dark) {
-    AccColors(
-        bgTop = Color(0xFF16120E),
-        bgBottom = Color(0xFF241B12),
-        card = Color(0xFF2A221A),
-        cardBorder = Color(0x33FFB066),
-        innerCard = Color(0xFF33291F),
-        textPrimary = Color(0xFFF5EEE6),
-        textSecondary = Color(0xFFB8AB9C),
-        accentText = AccOrangeLight,
-    )
-} else {
-    AccColors(
-        bgTop = Color(0xFFFFFAF4),
-        bgBottom = Color(0xFFFDEBD6),
-        card = Color(0xB3FFFFFF),
-        cardBorder = Color(0x33F7941D),
-        innerCard = Color(0xFFFFF4E8),
-        textPrimary = Color(0xFF14172B),
-        textSecondary = Color(0xFF5B6275),
-        accentText = AccOrangeDeep,
-    )
-}
-
-private fun Modifier.accCard(c: AccColors, radius: Dp, color: Color = c.card): Modifier {
+private fun Modifier.accCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
         .shadow(
             6.dp, shape,
-            ambientColor = AccOrange.copy(alpha = 0.15f),
-            spotColor = AccOrange.copy(alpha = 0.15f),
+            ambientColor = c.accent.copy(alpha = 0.15f),
+            spotColor = c.accent.copy(alpha = 0.15f),
         )
         .clip(shape)
         .background(color)
@@ -132,8 +99,9 @@ fun AccountScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val c = accColors(isDark)
+    val c = LocalFoxExtras.current
+    val statusColors = LocalFoxyStatusColors.current
+    val onAccent = onAccentColor(c)
 
     fun refresh() {
         isLoading = true
@@ -212,13 +180,13 @@ fun AccountScreen(
                         modifier = Modifier
                             .size(62.dp)
                             .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(AccOrangeLight, AccOrange))),
+                            .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.AccountCircle,
                             contentDescription = null,
-                            tint = Color(0xFF3A1F00),
+                            tint = onAccent,
                             modifier = Modifier.size(40.dp),
                         )
                     }
@@ -248,7 +216,7 @@ fun AccountScreen(
                             .padding(top = 40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(color = AccOrange, strokeWidth = 3.dp)
+                        CircularProgressIndicator(color = c.accent, strokeWidth = 3.dp)
                     }
 
                     errorMessage != null -> Column(
@@ -272,7 +240,7 @@ fun AccountScreen(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
-                        AccPrimaryButton("Retry", onClick = { refresh() })
+                        AccPrimaryButton("Retry", c, onClick = { refresh() })
                     }
 
                     entitlement != null -> {
@@ -290,7 +258,7 @@ fun AccountScreen(
                                 icon = Icons.Filled.Star,
                                 label = "Subscription",
                                 value = if (info.subscribed) "Active" else "Inactive",
-                                valueColor = if (info.subscribed) AccGreen else c.textSecondary,
+                                valueColor = if (info.subscribed) statusColors.connected else c.textSecondary,
                             )
                             AccountInfoRow(
                                 c = c,
@@ -315,6 +283,7 @@ fun AccountScreen(
 
                         AccPrimaryButton(
                             text = "Manage subscription",
+                            c = c,
                             onClick = {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW, Uri.parse(GUARDIAN_ENDPOINT_DEFAULT))
@@ -333,7 +302,7 @@ fun AccountScreen(
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
 
 @Composable
-private fun AccRoundButton(c: AccColors, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun AccRoundButton(c: FoxExtras, onClick: () -> Unit, content: @Composable () -> Unit) {
     IconButton(
         onClick = onClick,
         modifier = Modifier
@@ -346,7 +315,7 @@ private fun AccRoundButton(c: AccColors, onClick: () -> Unit, content: @Composab
 
 @Composable
 private fun AccountInfoRow(
-    c: AccColors,
+    c: FoxExtras,
     icon: ImageVector,
     label: String,
     value: String,
@@ -363,11 +332,11 @@ private fun AccountInfoRow(
             modifier = Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(AccOrange.copy(alpha = 0.10f))
+                .background(c.accent.copy(alpha = 0.10f))
                 .border(1.dp, c.cardBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = AccOrange, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.width(12.dp))
         Text(
@@ -391,7 +360,7 @@ private fun AccountInfoRow(
 }
 
 @Composable
-private fun AccPrimaryButton(text: String, onClick: () -> Unit) {
+private fun AccPrimaryButton(text: String, c: FoxExtras, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Box(
         modifier = Modifier
@@ -399,11 +368,11 @@ private fun AccPrimaryButton(text: String, onClick: () -> Unit) {
             .height(54.dp)
             .shadow(
                 10.dp, shape,
-                ambientColor = AccOrange.copy(alpha = 0.35f),
-                spotColor = AccOrange.copy(alpha = 0.35f),
+                ambientColor = c.accent.copy(alpha = 0.35f),
+                spotColor = c.accent.copy(alpha = 0.35f),
             )
             .clip(shape)
-            .background(Brush.horizontalGradient(listOf(AccOrangeLight, AccOrange)))
+            .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -412,7 +381,7 @@ private fun AccPrimaryButton(text: String, onClick: () -> Unit) {
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
-            color = Color(0xFF3A1F00),
+            color = onAccentColor(c),
         )
     }
 }
