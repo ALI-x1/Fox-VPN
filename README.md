@@ -1,5 +1,5 @@
 <div align="center">
-
+#
 # FoxyVPN - Unofficial Firefox VPN client
 
 <p align="center">
