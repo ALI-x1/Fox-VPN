@@ -1,22 +1,64 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="900dp"
+    android:height="600dp"
+    android:viewportWidth="900"
+    android:viewportHeight="600">
     
-    <!-- نوارهای سه رنگ پرچم (سبز، سفید، سرخ) -->
+    <!-- نوارهای سه رنگ پرچم -->
+    <!-- نوار سبز بالایی -->
     <path
-        android:fillColor="#239F40"
-        android:pathData="M0,0h24v8h-24z"/>
+        android:fillColor="#009B48"
+        android:pathData="M0,0h900v200h-900z"/>
+    <!-- نوار سفید میانی -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M0,8h24v8h-24z"/>
+        android:pathData="M0,200h900v200h-900z"/>
+    <!-- نوار سرخ پایینی -->
     <path
-        android:fillColor="#DA0000"
-        android:pathData="M0,16h24v8h-24z"/>
-        
-    <!-- نشان شیر و خورشید در مرکز -->
+        android:fillColor="#DA291C"
+        android:pathData="M0,400h900v200h-900z"/>
+
+    <!-- خورشید در پشت شیر (قرص خورشید و پرتوها) -->
     <path
         android:fillColor="#FFD700"
-        android:pathData="M12,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3 -1.34,-3 -3,-3z"/>
+        android:pathData="M440,255c-25,0 -45,20 -45,45s20,45 45,45 45,-20 45,-45 -20,-45 -45,-45z"/>
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M440,190l6,32l-12,0z M395,205l18,27l-10,8z M485,205l-18,27l10,8z M368,245l27,18l-8,10z M505,245l-27,18l8,10z M360,292l32,6l0,12l-32,6z M508,292l32,6l0,12l-32,6z"/>
+
+    <!-- پایه سنتی زیر شیر -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M350,380h200v14h-200z"/>
+    <path
+        android:fillColor="#8B6508"
+        android:pathData="M350,394h200v4h-200z"/>
+
+    <!-- بدنه و پاهای شیر -->
+    <path
+        android:fillColor="#FFD700"
+        android:strokeColor="#B8860B"
+        android:strokeWidth="2"
+        android:pathData="M370,330c0,-25 15,-50 45,-50h50c25,0 45,20 50,45l10,35c5,20 -5,35 -20,35h-110c-15,0 -25,-15 -25,-30z"/>
+
+    <!-- سر و یال شیر -->
+    <path
+        android:fillColor="#FFD700"
+        android:strokeColor="#B8860B"
+        android:strokeWidth="2"
+        android:pathData="M460,245c-15,0 -30,10 -35,25c-5,-15 -20,-25 -35,-25c-15,0 -25,10 -25,25c0,15 10,25 25,25c-10,10 -10,25 0,35c10,10 25,10 35,0c10,10 25,10 35,0c10,-10 10,-25 0,-35c15,0 25,-10 25,-25c0,-15 -10,-25 -25,-25z"/>
+
+    <!-- شمشیر در دست شیر -->
+    <path
+        android:fillColor="#FFD700"
+        android:strokeColor="#B8860B"
+        android:strokeWidth="1.5"
+        android:pathData="M315,345l50,-18l4,12l-50,18z M310,310l12,50l-10,4l-12,-50z"/>
+
+    <!-- دم شیر (خم شده به بالا) -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:pathData="M520,350c35,0 55,-45 35,-75c-12,-18 -35,-22 -45,-12"/>
 </vector>
