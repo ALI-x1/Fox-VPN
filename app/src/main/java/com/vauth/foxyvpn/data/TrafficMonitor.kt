@@ -1,57 +1,57 @@
 package com.vauth.foxyvpn.data
 
 import android.net.TrafficStats
-import android.os.Process
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
-data class TrafficInfo(
-    val txBytes: Long = 0L,
-    val rxBytes: Long = 0L,
-    val uploadSpeed: Double = 0L,
-    val downloadSpeed: Double = 0L
+data class TrafficState(
+    val uploadSpeed: Double = 0.0,
+    val downloadSpeed: Double = 0.0
 )
 
 object TrafficMonitor {
-    private var job: Job? = null
-    private val _trafficState = MutableStateFlow(TrafficInfo())
-    val trafficState: StateFlow<TrafficInfo> = _trafficState
+    private val _trafficState = MutableStateFlow(TrafficState())
+    val trafficState: StateFlow<TrafficState> = _trafficState.asStateFlow()
 
-    private var baseTx = 0L
-    private var baseRx = 0L
-    private var prevTx = 0L
-    private var prevRx = 0L
+    private var job: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO)
 
     fun start() {
         if (job?.isActive == true) return
-        val uid = Process.myUid()
-        val rawTx = TrafficStats.getUidTxBytes(uid)
-        val rawRx = TrafficStats.getUidRxBytes(uid)
+        job = scope.launch {
+            var lastRx = TrafficStats.getTotalRxBytes()
+            var lastTx = TrafficStats.getTotalTxBytes()
+            var lastTime = System.currentTimeMillis()
 
-        baseTx = if (rawTx < 0) 0L else rawTx
-        baseRx = if (rawRx < 0) 0L else rawRx
-        prevTx = 0L
-        prevRx = 0L
-
-        job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
-            while (isActive) {
+            while (true) {
                 delay(1000L)
-                val currentTx = TrafficStats.getUidTxBytes(uid)
-                val currentRx = TrafficStats.getUidRxBytes(uid)
+                val currentRx = TrafficStats.getTotalRxBytes()
+                val currentTx = TrafficStats.getTotalTxBytes()
+                val currentTime = System.currentTimeMillis()
 
-                if (currentTx >= 0 && currentRx >= 0) {
-                    val totalTx = (currentTx - baseTx).coerceAtLeast(0L)
-                    val totalRx = (currentRx - baseRx).coerceAtLeast(0L)
+                val timeElapsed = (currentTime - lastTime) / 1000.0
+                if (timeElapsed > 0) {
+                    val rxBytes = currentRx - lastRx
+                    val txBytes = currentTx - lastTx
 
-                    val upSpeed = (totalTx - prevTx).coerceAtLeast(0L).toDouble()
-                    val downSpeed = (totalRx - prevRx).coerceAtLeast(0L).toDouble()
+                    val downloadSpeed = rxBytes / timeElapsed
+                    val uploadSpeed = txBytes / timeElapsed
 
-                    prevTx = totalTx
-                    prevRx = totalRx
-
-                    _trafficState.value = TrafficInfo(totalTx, totalRx, upSpeed, downSpeed)
+                    _trafficState.value = TrafficState(
+                        uploadSpeed = uploadSpeed,
+                        downloadSpeed = downloadSpeed
+                    )
                 }
+
+                lastRx = currentRx
+                lastTx = currentTx
+                lastTime = currentTime
             }
         }
     }
@@ -59,6 +59,6 @@ object TrafficMonitor {
     fun stop() {
         job?.cancel()
         job = null
-        _trafficState.value = TrafficInfo()
+        _trafficState.value = TrafficState(0.0, 0.0)
     }
 }
