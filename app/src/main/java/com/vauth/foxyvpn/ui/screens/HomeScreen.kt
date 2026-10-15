@@ -76,14 +76,11 @@ import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
 import com.vauth.foxyvpn.ui.theme.ThemeController
 import com.vauth.foxyvpn.vpn.ExitCheck
 import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.Socket
 import java.util.Locale
 
 // ───────────────────────── تایمر اتصال ─────────────────────────
@@ -123,37 +120,7 @@ private fun formatElapsed(totalSeconds: Long): String {
 private const val BYTES_PER_GB = 1_073_741_824.0
 
 // ───────────────────────── پینگ ─────────────────────────
-
-private val PING_HOSTS = listOf("1.1.1.1", "8.8.8.8", "9.9.9.9")
-
-/**
- * زمان اتصال TCP به یک سرور عمومی بر حسب میلی‌ثانیه.
- * وقتی VPN وصله از طریق SOCKS محلی (همون پورتی که ExitCheck استفاده می‌کنه) اندازه‌گیری می‌شه،
- * پس عدد، پینگ واقعی از داخل تونل هست. اگه همه‌ی هاست‌ها شکست بخورن null برمی‌گرده.
- */
-private suspend fun measurePingMs(socksPort: Int?): Int? = withContext(Dispatchers.IO) {
-    for (host in PING_HOSTS) {
-        val ms = runCatching {
-            val socket = if (socksPort != null) {
-                Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort)))
-            } else {
-                Socket()
-            }
-            socket.use { sock ->
-                val address = if (socksPort != null) {
-                    InetSocketAddress.createUnresolved(host, 443)
-                } else {
-                    InetSocketAddress(host, 443)
-                }
-                val start = System.nanoTime()
-                sock.connect(address, 2000)
-                ((System.nanoTime() - start) / 1_000_000L).toInt()
-            }
-        }.getOrNull()
-        if (ms != null) return@withContext ms
-    }
-    null
-}
+// همان سنجش TCP صفحه‌ی انتخاب سرور روی سرور انتخاب‌شده اجرا می‌شود.
 
 // ───────────────────────── کارت (رنگ‌ها از تم فعال) ─────────────────────────
 
@@ -179,6 +146,7 @@ fun HomeScreen(
     authRepository: FxaAuthRepository? = null,
 ) {
     val state by FoxyVpnService.state.collectAsState()
+    val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
     val lastError by FoxyVpnService.lastError.collectAsState()
 
     val trafficState by TrafficMonitor.trafficState.collectAsState()
@@ -250,12 +218,15 @@ fun HomeScreen(
     val dataRemainingGb = ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
 
     var pingMs by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(state) {
+    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
+        // هنگام قطع یا اتصال، پینگ اجرا نمی‌شود.
         pingMs = null
-        if (state == ConnectionState.CONNECTING) return@LaunchedEffect
+        if (state != ConnectionState.CONNECTED) return@LaunchedEffect
+
+        val proxy = selectedProxy ?: return@LaunchedEffect
         while (true) {
-            pingMs = measurePingMs(if (state == ConnectionState.CONNECTED) 1080 else null)
-            delay(5000)
+            pingMs = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port)
+            delay(5_000)
         }
     }
 
@@ -263,11 +234,11 @@ fun HomeScreen(
 
     val statusColors = LocalFoxyStatusColors.current
     val ping = pingMs
-    val pingColor = when {
-        ping == null -> c.textSecondary
-        ping <= 120 -> statusColors.connected
-        ping <= 300 -> statusColors.connecting
-        else -> MaterialTheme.colorScheme.error
+    // رنگ پینگ بر اساس وضعیت VPN است: خاکستری در حالت قطع/اتصال، سبز پس از اتصال.
+    val pingColor = if (state == ConnectionState.CONNECTED) {
+        statusColors.connected
+    } else {
+        c.textSecondary
     }
     val targetRingColor = when (state) {
         ConnectionState.CONNECTED -> statusColors.connected
@@ -719,7 +690,7 @@ private fun PingPill(pingMs: Int?, color: Color) {
                 color = color
             )
             Text(
-                text = if (pingMs == null) "-- ms" else "$pingMs ms",
+                text = pingMs?.let { "$it ms" } ?: "—",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = color
