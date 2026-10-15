@@ -1,7 +1,11 @@
 package com.vauth.foxyvpn.ui.screens
 
 import android.content.Context
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,8 +51,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
@@ -65,17 +71,32 @@ import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.data.ProxyStateStore
 import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
 import com.vauth.foxyvpn.data.ServerListClient
+import com.vauth.foxyvpn.data.model.VpnCity
 import com.vauth.foxyvpn.data.model.VpnCountry
 import com.vauth.foxyvpn.vpn.PingUtil
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlin.math.roundToInt
 
 // ───────────────────────── مدل ردیف‌ها ─────────────────────────
 
-private sealed class LocationRow {
-    data class RecommendedRow(val country: VpnCountry) : LocationRow()
-    data class CityRow(val country: VpnCountry, val cityIndex: Int) : LocationRow()
+private data class CityEntry(val country: VpnCountry, val city: VpnCity) {
+    val key: String get() = "${country.code}:${city.code}"
 }
 
+private data class PingTarget(val key: String, val host: String, val port: Int)
+
 private enum class PingState { PENDING, DONE, FAILED }
+
+/** هر چند ms بعد از پایان یک دور، دور بعدیِ پینگ شروع بشه. */
+private const val LIVE_INTERVAL_MS = 4_000L
+
+/** حداکثر پینگ هم‌زمان؛ که هم سریع باشه هم شبکه خفه نشه. */
+private const val PING_PARALLELISM = 8
 
 // ───────────────────────── پالت رنگی (هماهنگ با هوم‌اسکرین) ─────────────────────────
 
@@ -163,10 +184,16 @@ fun ServerListScreen(
 
     val selectedState by proxyStateStore.selectedProxyFlow.collectAsState()
 
+    // پینگِ هموارشده‌ی هر لوکیشن (کلید: "کشور:شهر") و وضعیتش
     val pingResults = remember { mutableStateMapOf<String, Int>() }
     val pingStates = remember { mutableStateMapOf<String, PingState>() }
+    // تعداد شکست‌های پشت‌سرهم؛ یه timeout تصادفی نباید سرور خوب رو بندازه ته لیست
+    val failCounts = remember { HashMap<String, Int>() }
 
-    // با هر بار زدن دکمه‌ی رفرش یکی زیاد می‌شه و پینگ‌ها دوباره گرفته می‌شن
+    // حالت زنده: وقتی روشنه، پینگ‌ها مدام دوباره گرفته می‌شن و لیست جابه‌جا می‌شه
+    var isLive by remember { mutableStateOf(true) }
+
+    // با هر بار زدن دکمه‌ی رفرش یکی زیاد می‌شه و یه دور پینگ فوری شروع می‌شه
     var refreshTick by remember { mutableIntStateOf(0) }
     val refreshRotation by animateFloatAsState(
         targetValue = refreshTick * 360f,
@@ -181,28 +208,90 @@ fun ServerListScreen(
         isLoading = false
     }
 
-    val ordered = remember(countries) {
-        countries.sortedWith(compareBy({ it.code != RECOMMENDED_COUNTRY_CODE }, { it.name }))
+    val recommended = remember(countries) { countries.firstOrNull { it.code == RECOMMENDED_COUNTRY_CODE } }
+
+    val cityEntries = remember(countries) {
+        countries
+            .filter { it.code != RECOMMENDED_COUNTRY_CODE }
+            .sortedBy { it.name }
+            .flatMap { country -> country.cities.map { CityEntry(country, it) } }
     }
 
-    val rows = remember(ordered) {
-        buildList {
-            for (country in ordered) {
-                if (country.code == RECOMMENDED_COUNTRY_CODE) {
-                    add(LocationRow.RecommendedRow(country))
-                    continue
-                }
-                country.cities.indices.forEach { index -> add(LocationRow.CityRow(country, index)) }
-            }
+    val targets = remember(cityEntries) {
+        cityEntries.mapNotNull { entry ->
+            val target = entry.city.servers.firstOrNull { !it.quarantined }
+                ?.let { ServerListClient.defaultConnectTarget(it) }
+            target?.let { PingTarget(entry.key, it.first, it.second) }
         }
     }
 
-    val locationCount = remember(rows) { rows.count { it is LocationRow.CityRow } }
+    // ───── حلقه‌ی زنده‌ی پینگ برای «همه‌ی» لوکیشن‌ها (نه فقط ردیف‌های دیده‌شده) ─────
+    LaunchedEffect(targets, refreshTick) {
+        val targetKeys = targets.mapTo(HashSet()) { it.key }
+        cityEntries.forEach { if (it.key !in targetKeys) pingStates[it.key] = PingState.FAILED }
 
-    // سریع‌ترین لوکیشن بین پینگ‌های گرفته‌شده (حداقل دو نتیجه که مقایسه معنی داشته باشه)
+        val semaphore = Semaphore(PING_PARALLELISM)
+        while (true) {
+            coroutineScope {
+                for (t in targets) {
+                    launch {
+                        semaphore.withPermit {
+                            val ms = PingUtil.measureTcpLatencyMs(t.host, t.port)
+                            if (ms != null) {
+                                failCounts[t.key] = 0
+                                val prev = pingResults[t.key]
+                                // میانگین نمایی: عدد نرم عوض می‌شه و ردیف‌ها بی‌دلیل لرزش نمی‌کنن
+                                pingResults[t.key] =
+                                    if (prev == null) ms else (prev * 0.4f + ms * 0.6f).roundToInt()
+                                pingStates[t.key] = PingState.DONE
+                            } else {
+                                val fails = (failCounts[t.key] ?: 0) + 1
+                                failCounts[t.key] = fails
+                                // تا دو شکستِ پشت‌سرهم عدد قبلی می‌مونه
+                                if (pingResults[t.key] == null || fails >= 2) {
+                                    pingResults.remove(t.key)
+                                    pingStates[t.key] = PingState.FAILED
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            delay(LIVE_INTERVAL_MS)
+            // اگه پاز شده باشه همین‌جا منتظر می‌مونه تا دوباره LIVE بشه
+            snapshotFlow { isLive }.first { it }
+        }
+    }
+
+    // لیست مرتب‌شده: اول کم‌ترین پینگ، بعد در حال سنجش، آخر timeout ها.
+    // با هر تغییر پینگ خودکار دوباره محاسبه می‌شه (و animateItem جابه‌جایی رو نرم نشون می‌ده)
+    val sortedCities by remember(cityEntries) {
+        derivedStateOf {
+            cityEntries.sortedWith(
+                compareBy<CityEntry>(
+                    {
+                        when {
+                            pingResults.containsKey(it.key) -> 0
+                            pingStates[it.key] == PingState.FAILED -> 2
+                            else -> 1
+                        }
+                    },
+                    { pingResults[it.key] ?: Int.MAX_VALUE },
+                    { it.country.name },
+                    { it.city.code },
+                ),
+            )
+        }
+    }
+
+    val locationCount = cityEntries.size
+
+    // سریع‌ترین = اولین ردیفِ لیست (وقتی حداقل دو نتیجه داریم که مقایسه معنی داشته باشه)
     val fastestKey by remember {
         derivedStateOf {
-            if (pingResults.size >= 2) pingResults.minByOrNull { it.value }?.key else null
+            if (pingResults.size >= 2) {
+                sortedCities.firstOrNull()?.takeIf { pingResults.containsKey(it.key) }?.key
+            } else null
         }
     }
 
@@ -243,21 +332,21 @@ fun ServerListScreen(
                             color = c.textPrimary,
                         )
                         if (locationCount > 0) {
-                            Text(
-                                text = "$locationCount locations",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = c.textSecondary,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "$locationCount locations",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = c.textSecondary,
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                LiveChip(c = c, live = isLive, onClick = { isLive = !isLive })
+                            }
                         }
                     }
                     Spacer(Modifier.width(12.dp))
                     CircleIconButton(
                         c = c,
-                        onClick = {
-                            pingResults.clear()
-                            pingStates.clear()
-                            refreshTick++
-                        },
+                        onClick = { refreshTick++ },
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
@@ -283,85 +372,56 @@ fun ServerListScreen(
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            items(
-                                rows,
-                                key = { row ->
-                                    when (row) {
-                                        is LocationRow.RecommendedRow -> "recommended:${row.country.code}"
-                                        is LocationRow.CityRow ->
-                                            "city:${row.country.code}:${row.country.cities[row.cityIndex].code}"
-                                    }
-                                },
-                            ) { row ->
-                                val selected = selectedState
-                                when (row) {
-                                    is LocationRow.RecommendedRow -> RecommendedCard(
+                            recommended?.let { rec ->
+                                item(key = "recommended:${rec.code}") {
+                                    RecommendedCard(
+                                        modifier = Modifier.animateItem(),
                                         c = c,
-                                        isSelected = row.country.code == selected?.countryCode,
+                                        isSelected = rec.code == selectedState?.countryCode,
                                         onClick = {
                                             val candidates =
-                                                ServerListClient.candidatesForCountry(countries, row.country.code)
+                                                ServerListClient.candidatesForCountry(countries, rec.code)
                                             val chosen = candidates.randomOrNull()
                                             if (chosen != null) {
                                                 proxyStateStore.save(chosen)
                                                 onServerSelected()
                                             } else {
-                                                errorMessage = "No available servers for ${row.country.name}"
+                                                errorMessage = "No available servers for ${rec.name}"
                                             }
                                         },
                                     )
-
-                                    is LocationRow.CityRow -> {
-                                        val country = row.country
-                                        val city = country.cities[row.cityIndex]
-
-                                        val pingKey = "${country.code}:${city.code}"
-                                        val pingMs = pingResults[pingKey]
-                                        val pingState = pingStates[pingKey] ?: PingState.PENDING
-
-                                        // refreshTick هم کلیده تا با رفرش، پینگ دوباره گرفته بشه
-                                        LaunchedEffect(pingKey, refreshTick) {
-                                            if (pingStates.containsKey(pingKey)) return@LaunchedEffect
-                                            val target = city.servers.firstOrNull { !it.quarantined }
-                                                ?.let { ServerListClient.defaultConnectTarget(it) }
-                                            if (target == null) {
-                                                pingStates[pingKey] = PingState.FAILED
-                                                return@LaunchedEffect
-                                            }
-                                            val result = PingUtil.measureTcpLatencyMs(target.first, target.second)
-                                            if (result != null) {
-                                                pingResults[pingKey] = result
-                                                pingStates[pingKey] = PingState.DONE
-                                            } else {
-                                                pingStates[pingKey] = PingState.FAILED
-                                            }
-                                        }
-
-                                        CityCard(
-                                            c = c,
-                                            countryCode = country.code,
-                                            countryName = country.name,
-                                            cityLabel = city.name.ifBlank { city.code },
-                                            pingMs = pingMs,
-                                            pingState = pingState,
-                                            isFastest = pingKey == fastestKey,
-                                            isSelected = country.code == selected?.countryCode &&
-                                                city.code == selected?.cityCode,
-                                            onClick = {
-                                                val candidates = ServerListClient.candidatesForCity(
-                                                    countries, country.code, city.code,
-                                                )
-                                                val chosen = candidates.randomOrNull()
-                                                if (chosen != null) {
-                                                    proxyStateStore.save(chosen)
-                                                    onServerSelected()
-                                                } else {
-                                                    errorMessage = "No available servers in ${city.code}"
-                                                }
-                                            },
-                                        )
-                                    }
                                 }
+                            }
+
+                            items(sortedCities, key = { "city:${it.key}" }) { entry ->
+                                val country = entry.country
+                                val city = entry.city
+                                val selected = selectedState
+
+                                CityCard(
+                                    modifier = Modifier.animateItem(),
+                                    c = c,
+                                    countryCode = country.code,
+                                    countryName = country.name,
+                                    cityLabel = city.name.ifBlank { city.code },
+                                    pingMs = pingResults[entry.key],
+                                    pingState = pingStates[entry.key] ?: PingState.PENDING,
+                                    isFastest = entry.key == fastestKey,
+                                    isSelected = country.code == selected?.countryCode &&
+                                        city.code == selected?.cityCode,
+                                    onClick = {
+                                        val candidates = ServerListClient.candidatesForCity(
+                                            countries, country.code, city.code,
+                                        )
+                                        val chosen = candidates.randomOrNull()
+                                        if (chosen != null) {
+                                            proxyStateStore.save(chosen)
+                                            onServerSelected()
+                                        } else {
+                                            errorMessage = "No available servers in ${city.code}"
+                                        }
+                                    },
+                                )
                             }
                             item { Spacer(Modifier.height(16.dp)) }
                         }
@@ -393,6 +453,7 @@ private fun CircleIconButton(
 /** قالب مشترک کارت‌ها؛ همون استایل کارت‌های هوم‌اسکرین (گوشه گرد + سایه نارنجی ملایم). */
 @Composable
 private fun LocationCardShell(
+    modifier: Modifier = Modifier,
     c: ListColors,
     isSelected: Boolean,
     highlight: Boolean = false,
@@ -401,7 +462,7 @@ private fun LocationCardShell(
 ) {
     val shape = RoundedCornerShape(22.dp)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .shadow(
                 6.dp,
@@ -426,11 +487,12 @@ private fun LocationCardShell(
 
 @Composable
 private fun RecommendedCard(
+    modifier: Modifier = Modifier,
     c: ListColors,
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    LocationCardShell(c = c, isSelected = isSelected, highlight = true, onClick = onClick) {
+    LocationCardShell(modifier = modifier, c = c, isSelected = isSelected, highlight = true, onClick = onClick) {
         Box(
             modifier = Modifier
                 .size(width = 52.dp, height = 44.dp)
@@ -473,6 +535,7 @@ private fun RecommendedCard(
 
 @Composable
 private fun CityCard(
+    modifier: Modifier = Modifier,
     c: ListColors,
     countryCode: String,
     countryName: String,
@@ -483,7 +546,7 @@ private fun CityCard(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    LocationCardShell(c = c, isSelected = isSelected, onClick = onClick) {
+    LocationCardShell(modifier = modifier, c = c, isSelected = isSelected, onClick = onClick) {
         // پرچم کشور
         val context = LocalContext.current
         val flagRes = remember(countryCode) { flagResId(context, countryCode) }
@@ -560,6 +623,45 @@ private fun CityCard(
                 modifier = Modifier.size(26.dp),
             )
         }
+    }
+}
+
+/** نشان «LIVE» با نقطه‌ی چشمک‌زن؛ با لمس، به‌روزرسانی زنده رو متوقف/شروع می‌کنه. */
+@Composable
+private fun LiveChip(c: ListColors, live: Boolean, onClick: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "live-pulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "live-pulse-alpha",
+    )
+    val color = if (live) PingGood else c.textSecondary
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(color.copy(alpha = 0.13f))
+            .border(1.dp, color.copy(alpha = 0.35f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .alpha(if (live) pulse else 1f)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (live) "LIVE" else "PAUSED",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            color = color,
+        )
     }
 }
 
