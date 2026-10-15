@@ -80,7 +80,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -93,67 +92,25 @@ import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.BuildConfig
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.SettingsStore
+import com.vauth.foxyvpn.ui.theme.FoxExtras
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
+import com.vauth.foxyvpn.ui.theme.ThemeController
+import com.vauth.foxyvpn.ui.theme.ThemePickerSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val TELEGRAM_URL = "https://t.me/Ali_jahangirr"
 private const val TELEGRAM_HANDLE = "@Ali_jahangirr"
 
-// ───────────────────────── پالت رنگی (هماهنگ با HomeScreen) ─────────────────────────
-
-private val SxOrange = Color(0xFFF7941D)
-private val SxOrangeDeep = Color(0xFFC2570C)
-private val SxOrangeLight = Color(0xFFFFC857)
+// رنگ «خطر» (Sign out) عمداً از تم مستقل است
 private val SxDanger = Color(0xFFE5484D)
 
-private data class SettingsColors(
-    val bgTop: Color,
-    val bgBottom: Color,
-    val card: Color,
-    val cardBorder: Color,
-    val innerCard: Color,
-    val dialog: Color,
-    val textPrimary: Color,
-    val textSecondary: Color,
-    val accentText: Color,
-)
+// ───────────────────────── رنگ‌ها از تم فعال (LocalFoxExtras) ─────────────────────────
 
-private fun settingsColors(dark: Boolean) = if (dark) {
-    SettingsColors(
-        bgTop = Color(0xFF16120E),
-        bgBottom = Color(0xFF241B12),
-        card = Color(0xFF2A221A),
-        cardBorder = Color(0x33FFB066),
-        innerCard = Color(0xFF33291F),
-        dialog = Color(0xFF2A221A),
-        textPrimary = Color(0xFFF5EEE6),
-        textSecondary = Color(0xFFB8AB9C),
-        accentText = SxOrangeLight,
-    )
-} else {
-    SettingsColors(
-        bgTop = Color(0xFFFFFAF4),
-        bgBottom = Color(0xFFFDEBD6),
-        card = Color(0xB3FFFFFF),
-        cardBorder = Color(0x33F7941D),
-        innerCard = Color(0xFFFFF4E8),
-        dialog = Color(0xFFFFF9F2),
-        textPrimary = Color(0xFF14172B),
-        textSecondary = Color(0xFF5B6275),
-        accentText = SxOrangeDeep,
-    )
-}
-
-@Composable
-private fun rememberSettingsColors(): SettingsColors {
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(dark) { settingsColors(dark) }
-}
-
-private fun Modifier.settingsCard(c: SettingsColors, radius: Dp, color: Color = c.card): Modifier {
+private fun Modifier.settingsCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
-        .shadow(6.dp, shape, ambientColor = SxOrange.copy(alpha = 0.15f), spotColor = SxOrange.copy(alpha = 0.15f))
+        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
         .clip(shape)
         .background(color)
         .border(1.dp, c.cardBorder, shape)
@@ -174,13 +131,14 @@ private fun openTelegram(context: Context) {
 @Composable
 fun SettingsScreen(
     settingsStore: SettingsStore,
+    themeController: ThemeController,
     onOpenLogs: () -> Unit,
     onOpenAccount: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
 
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
     var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
@@ -382,6 +340,16 @@ fun SettingsScreen(
                 }
 
                 Spacer(Modifier.height(24.dp))
+
+                // ───── Theme (اول صفحه) ─────
+                SettingsSection(c, "Theme") {
+                    Box(modifier = Modifier.padding(12.dp)) {
+                        ThemePickerSection(
+                            themeController = themeController,
+                            showTitle = false,
+                        )
+                    }
+                }
 
                 // ───── Connection ─────
                 SettingsSection(c, "Connection") {
@@ -610,7 +578,7 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsSection(
-    c: SettingsColors,
+    c: FoxExtras,
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -632,19 +600,19 @@ private fun SettingsSection(
 }
 
 @Composable
-private fun SettingsIconBubble(icon: ImageVector, c: SettingsColors) {
+private fun SettingsIconBubble(icon: ImageVector, c: FoxExtras) {
     Box(
         modifier = Modifier
             .size(42.dp)
             .clip(CircleShape)
-            .background(SxOrange.copy(alpha = 0.10f))
+            .background(c.accent.copy(alpha = 0.10f))
             .border(1.dp, c.cardBorder, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = SxOrange,
+            tint = c.accent,
             modifier = Modifier.size(22.dp)
         )
     }
@@ -652,7 +620,7 @@ private fun SettingsIconBubble(icon: ImageVector, c: SettingsColors) {
 
 @Composable
 private fun SettingRow(
-    c: SettingsColors,
+    c: FoxExtras,
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
@@ -713,7 +681,7 @@ private fun SettingRow(
 
 @Composable
 private fun SettingSwitchRow(
-    c: SettingsColors,
+    c: FoxExtras,
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -734,8 +702,8 @@ private fun SettingSwitchRow(
                 onCheckedChange = onCheckedChange,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = SxOrange,
-                    checkedBorderColor = SxOrange,
+                    checkedTrackColor = c.accent,
+                    checkedBorderColor = c.accent,
                     uncheckedThumbColor = c.textSecondary,
                     uncheckedTrackColor = c.innerCard,
                     uncheckedBorderColor = c.cardBorder,
@@ -747,7 +715,7 @@ private fun SettingSwitchRow(
 
 /** کارت تلگرام: جایگزین ردیف Source code. */
 @Composable
-private fun TelegramCard(c: SettingsColors, onClick: () -> Unit) {
+private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp)) {
         Row(
@@ -755,7 +723,7 @@ private fun TelegramCard(c: SettingsColors, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .clip(shape)
                 .background(c.innerCard.copy(alpha = 0.7f))
-                .border(1.dp, SxOrange.copy(alpha = 0.45f), shape)
+                .border(1.dp, c.accent.copy(alpha = 0.45f), shape)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -763,9 +731,9 @@ private fun TelegramCard(c: SettingsColors, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .shadow(8.dp, CircleShape, ambientColor = SxOrange, spotColor = SxOrange)
+                    .shadow(8.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(SxOrangeLight, SxOrange, SxOrangeDeep))),
+                    .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -802,24 +770,24 @@ private fun TelegramCard(c: SettingsColors, onClick: () -> Unit) {
 // ───────────────────────── دیالوگ‌ها ─────────────────────────
 
 @Composable
-private fun foxTextButtonColors(c: SettingsColors) = ButtonDefaults.textButtonColors(
+private fun foxTextButtonColors(c: FoxExtras) = ButtonDefaults.textButtonColors(
     contentColor = c.accentText,
     disabledContentColor = c.textSecondary.copy(alpha = 0.4f),
 )
 
 @Composable
-private fun foxRadioColors(c: SettingsColors) = RadioButtonDefaults.colors(
-    selectedColor = SxOrange,
+private fun foxRadioColors(c: FoxExtras) = RadioButtonDefaults.colors(
+    selectedColor = c.accent,
     unselectedColor = c.textSecondary,
 )
 
 @Composable
-private fun foxFieldColors(c: SettingsColors) = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = SxOrange,
+private fun foxFieldColors(c: FoxExtras) = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = c.accent,
     unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
     focusedLabelColor = c.accentText,
     unfocusedLabelColor = c.textSecondary,
-    cursorColor = SxOrange,
+    cursorColor = c.accent,
     focusedTextColor = c.textPrimary,
     unfocusedTextColor = c.textPrimary,
 )
@@ -833,10 +801,10 @@ private fun FoxDialog(
     confirmEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = c.dialog,
+        containerColor = c.innerCard,
         shape = RoundedCornerShape(28.dp),
         titleContentColor = c.textPrimary,
         textContentColor = c.textPrimary,
@@ -861,7 +829,7 @@ private fun DohProviderPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (SettingsStore.DohProvider) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
@@ -906,7 +874,7 @@ private fun CustomDnsPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var value by remember { mutableStateOf(current) }
     val isValid = SettingsStore.isValidDnsServer(value)
 
@@ -951,7 +919,7 @@ private fun CustomEdgeAddressDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var value by remember { mutableStateOf(current) }
     val trimmed = value.trim()
     val isValid = trimmed.isEmpty() || SettingsStore.isValidEdgeHost(trimmed)
@@ -986,7 +954,7 @@ private fun SocksBindAddressPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
@@ -1019,7 +987,7 @@ private fun SocksPortPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var portText by remember { mutableStateOf(current.toString()) }
     val parsedPort = portText.toIntOrNull()
     val isValid = parsedPort != null && parsedPort in 1..65_535
@@ -1049,7 +1017,7 @@ private fun HttpPortPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var portText by remember { mutableStateOf(current.toString()) }
     val parsedPort = portText.toIntOrNull()
     val isValid = parsedPort != null && parsedPort in 1..65_535
@@ -1079,7 +1047,7 @@ private fun UpstreamProxyTypePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (SettingsStore.UpstreamProxyType) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
@@ -1113,7 +1081,7 @@ private fun UpstreamProxyAddressDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Int) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var host by remember { mutableStateOf(currentHost) }
     var portText by remember { mutableStateOf(currentPort.toString()) }
     val parsedPort = portText.toIntOrNull()
@@ -1154,7 +1122,7 @@ private fun UpstreamProxyCredentialsDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     var username by remember { mutableStateOf(currentUsername) }
     var password by remember { mutableStateOf(currentPassword) }
 
@@ -1192,7 +1160,7 @@ private fun SplitTunnelDialog(
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
 ) {
-    val c = rememberSettingsColors()
+    val c = LocalFoxExtras.current
     val context = LocalContext.current
     var selected by remember { mutableStateOf(current) }
     var searchQuery by remember { mutableStateOf("") }
@@ -1234,7 +1202,7 @@ private fun SplitTunnelDialog(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Search apps") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SxOrange) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = c.accent) },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             colors = foxFieldColors(c),
@@ -1244,7 +1212,7 @@ private fun SplitTunnelDialog(
         )
         if (installedApps.isEmpty()) {
             CircularProgressIndicator(
-                color = SxOrange,
+                color = c.accent,
                 modifier = Modifier
                     .padding(24.dp)
                     .align(Alignment.CenterHorizontally),
@@ -1280,7 +1248,7 @@ private fun SplitTunnelDialog(
                                 selected = if (it) selected + app.packageName else selected - app.packageName
                             },
                             colors = CheckboxDefaults.colors(
-                                checkedColor = SxOrange,
+                                checkedColor = c.accent,
                                 uncheckedColor = c.textSecondary,
                                 checkmarkColor = Color.White,
                             ),
