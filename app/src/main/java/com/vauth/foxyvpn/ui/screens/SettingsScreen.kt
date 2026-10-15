@@ -1,60 +1,175 @@
 package com.vauth.foxyvpn.ui.screens
 
+import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.AltRoute
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.BuildConfig
+import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.SettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-private const val GITHUB_URL = "https://github.com/vauth/foxyvpn"
+private const val TELEGRAM_URL = "https://t.me/Ali_jahangirr"
+private const val TELEGRAM_HANDLE = "@Ali_jahangirr"
+
+// ───────────────────────── پالت رنگی (هماهنگ با HomeScreen) ─────────────────────────
+
+private val SxOrange = Color(0xFFF7941D)
+private val SxOrangeDeep = Color(0xFFC2570C)
+private val SxOrangeLight = Color(0xFFFFC857)
+private val SxDanger = Color(0xFFE5484D)
+
+private data class SettingsColors(
+    val bgTop: Color,
+    val bgBottom: Color,
+    val card: Color,
+    val cardBorder: Color,
+    val innerCard: Color,
+    val dialog: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val accentText: Color,
+)
+
+private fun settingsColors(dark: Boolean) = if (dark) {
+    SettingsColors(
+        bgTop = Color(0xFF16120E),
+        bgBottom = Color(0xFF241B12),
+        card = Color(0xFF2A221A),
+        cardBorder = Color(0x33FFB066),
+        innerCard = Color(0xFF33291F),
+        dialog = Color(0xFF2A221A),
+        textPrimary = Color(0xFFF5EEE6),
+        textSecondary = Color(0xFFB8AB9C),
+        accentText = SxOrangeLight,
+    )
+} else {
+    SettingsColors(
+        bgTop = Color(0xFFFFFAF4),
+        bgBottom = Color(0xFFFDEBD6),
+        card = Color(0xB3FFFFFF),
+        cardBorder = Color(0x33F7941D),
+        innerCard = Color(0xFFFFF4E8),
+        dialog = Color(0xFFFFF9F2),
+        textPrimary = Color(0xFF14172B),
+        textSecondary = Color(0xFF5B6275),
+        accentText = SxOrangeDeep,
+    )
+}
+
+@Composable
+private fun rememberSettingsColors(): SettingsColors {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return remember(dark) { settingsColors(dark) }
+}
+
+private fun Modifier.settingsCard(c: SettingsColors, radius: Dp, color: Color = c.card): Modifier {
+    val shape: Shape = RoundedCornerShape(radius)
+    return this
+        .shadow(6.dp, shape, ambientColor = SxOrange.copy(alpha = 0.15f), spotColor = SxOrange.copy(alpha = 0.15f))
+        .clip(shape)
+        .background(color)
+        .border(1.dp, c.cardBorder, shape)
+}
+
+private fun openTelegram(context: Context) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_URL))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        // اگر هیچ برنامه‌ای برای باز کردن لینک نبود، کاری نکن
+    }
+}
+
+// ───────────────────────── صفحه تنظیمات ─────────────────────────
 
 @Composable
 fun SettingsScreen(
@@ -65,6 +180,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val c = rememberSettingsColors()
+
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
     var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
     var customDnsEnabled by remember { mutableStateOf(settingsStore.customDnsEnabled) }
@@ -210,237 +327,532 @@ fun SettingsScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier
+    Scaffold(containerColor = Color.Transparent) { padding ->
+        Box(
+            modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState()),
+                .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
         ) {
-            SectionLabel("Connection")
-            ListItem(
-                headlineContent = { Text("Verify exit location") },
-                supportingContent = { Text("Check that the tunnel exits in the selected country") },
-                trailingContent = {
-                    Switch(
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            ) {
+                // ───── هدر: برگشت + عنوان + لوگو ─────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(c.card)
+                            .border(1.dp, c.cardBorder, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = c.textPrimary.copy(alpha = 0.75f)
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Settings",
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = c.textPrimary,
+                        )
+                        Text(
+                            text = "Tune your connection",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = c.textSecondary,
+                            letterSpacing = 1.sp,
+                        )
+                    }
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_fox_logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // ───── Connection ─────
+                SettingsSection(c, "Connection") {
+                    SettingSwitchRow(
+                        c = c,
+                        icon = Icons.Filled.VerifiedUser,
+                        title = "Verify exit location",
+                        subtitle = "Check that the tunnel exits in the selected country",
                         checked = exitCheckEnabled,
+                        divider = false,
                         onCheckedChange = {
                             exitCheckEnabled = it
                             settingsStore.exitCheckEnabled = it
                         },
                     )
-                },
-            )
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("DNS")
-            ListItem(
-                headlineContent = { Text("Encrypted DNS") },
-                supportingContent = { Text(dohProvider.label) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showDohProviderDialog = true },
-            )
-            ListItem(
-                headlineContent = { Text("Use a custom DNS server") },
-                supportingContent = { Text("Send your apps' DNS queries to a server you choose") },
-                trailingContent = {
-                    Switch(
+                // ───── DNS ─────
+                SettingsSection(c, "DNS") {
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Lock,
+                        title = "Encrypted DNS",
+                        subtitle = dohProvider.label,
+                        divider = false,
+                        onClick = { showDohProviderDialog = true },
+                    )
+                    SettingSwitchRow(
+                        c = c,
+                        icon = Icons.Filled.Dns,
+                        title = "Use a custom DNS server",
+                        subtitle = "Send your apps' DNS queries to a server you choose",
                         checked = customDnsEnabled,
                         onCheckedChange = {
                             customDnsEnabled = it
                             settingsStore.customDnsEnabled = it
                         },
                     )
-                },
-            )
-            if (customDnsEnabled) {
-                ListItem(
-                    headlineContent = { Text("DNS server") },
-                    supportingContent = {
+                    if (customDnsEnabled) {
                         val presetLabel = SettingsStore.CUSTOM_DNS_PRESETS
                             .firstOrNull { it.first == customDnsServer }
                             ?.second
-                        Text(presetLabel ?: customDnsServer)
-                    },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showCustomDnsDialog = true },
-                )
-            }
+                        SettingRow(
+                            c = c,
+                            icon = Icons.Filled.Tune,
+                            title = "DNS server",
+                            subtitle = presetLabel ?: customDnsServer,
+                            onClick = { showCustomDnsDialog = true },
+                        )
+                    }
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("Local proxy")
-            ListItem(
-                headlineContent = { Text("Proxy-only mode") },
-                supportingContent = { Text("Run local proxy servers (SOCKS5 & HTTP), without a VPN interface") },
-                trailingContent = {
-                    Switch(
+                // ───── Local proxy ─────
+                SettingsSection(c, "Local proxy") {
+                    SettingSwitchRow(
+                        c = c,
+                        icon = Icons.Filled.Router,
+                        title = "Proxy-only mode",
+                        subtitle = "Run local proxy servers (SOCKS5 & HTTP), without a VPN interface",
                         checked = proxyOnlyMode,
+                        divider = false,
                         onCheckedChange = {
                             proxyOnlyMode = it
                             settingsStore.proxyOnlyMode = it
                         },
                     )
-                },
-            )
-            ListItem(
-                headlineContent = { Text("Local address") },
-                supportingContent = { Text(socksBindAddress) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showSocksBindDialog = true },
-            )
-            ListItem(
-                headlineContent = { Text("SOCKS5 port") },
-                supportingContent = { Text(socksPort.toString()) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showSocksPortDialog = true },
-            )
-            ListItem(
-                headlineContent = { Text("Enable HTTP proxy") },
-                supportingContent = { Text("Run local HTTP proxy alongside SOCKS5") },
-                trailingContent = {
-                    Switch(
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Public,
+                        title = "Local address",
+                        subtitle = socksBindAddress,
+                        onClick = { showSocksBindDialog = true },
+                    )
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Hub,
+                        title = "SOCKS5 port",
+                        subtitle = socksPort.toString(),
+                        onClick = { showSocksPortDialog = true },
+                    )
+                    SettingSwitchRow(
+                        c = c,
+                        icon = Icons.Filled.Language,
+                        title = "Enable HTTP proxy",
+                        subtitle = "Run local HTTP proxy alongside SOCKS5",
                         checked = httpProxyEnabled,
                         onCheckedChange = {
                             httpProxyEnabled = it
                             settingsStore.httpProxyEnabled = it
                         },
                     )
-                },
-            )
-            if (httpProxyEnabled) {
-                ListItem(
-                    headlineContent = { Text("HTTP port") },
-                    supportingContent = { Text(httpProxyPort.toString()) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showHttpPortDialog = true },
-                )
-            }
+                    if (httpProxyEnabled) {
+                        SettingRow(
+                            c = c,
+                            icon = Icons.Filled.Tune,
+                            title = "HTTP port",
+                            subtitle = httpProxyPort.toString(),
+                            onClick = { showHttpPortDialog = true },
+                        )
+                    }
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("Split tunneling")
-            ListItem(
-                headlineContent = { Text("Excluded apps") },
-                supportingContent = {
-                    Text(
-                        if (excludedApps.isEmpty()) {
+                // ───── Split tunneling ─────
+                SettingsSection(c, "Split tunneling") {
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Apps,
+                        title = "Excluded apps",
+                        subtitle = if (excludedApps.isEmpty()) {
                             "None"
                         } else {
                             "${excludedApps.size} app(s) bypass the VPN"
                         },
+                        divider = false,
+                        onClick = { showSplitTunnelDialog = true },
                     )
-                },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showSplitTunnelDialog = true },
-            )
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("Advanced")
-            ListItem(
-                headlineContent = { Text("Custom edge address") },
-                supportingContent = { Text(customEdgeAddress.ifBlank { "Not set" }) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable { showEdgeAddressDialog = true },
-            )
-            ListItem(
-                headlineContent = { Text("Chain through upstream proxy") },
-                supportingContent = { Text("Connect to the VPN server through another proxy first") },
-                trailingContent = {
-                    Switch(
+                // ───── Advanced ─────
+                SettingsSection(c, "Advanced") {
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Link,
+                        title = "Custom edge address",
+                        subtitle = customEdgeAddress.ifBlank { "Not set" },
+                        divider = false,
+                        onClick = { showEdgeAddressDialog = true },
+                    )
+                    SettingSwitchRow(
+                        c = c,
+                        icon = Icons.Filled.AltRoute,
+                        title = "Chain through upstream proxy",
+                        subtitle = "Connect to the VPN server through another proxy first",
                         checked = upstreamProxyEnabled,
                         onCheckedChange = {
                             upstreamProxyEnabled = it
                             settingsStore.upstreamProxyEnabled = it
                         },
                     )
-                },
-            )
-            if (upstreamProxyEnabled) {
-                ListItem(
-                    headlineContent = { Text("Proxy type") },
-                    supportingContent = { Text(upstreamProxyType.name) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showUpstreamProxyTypeDialog = true },
-                )
-                ListItem(
-                    headlineContent = { Text("Proxy address") },
-                    supportingContent = {
-                        Text(
-                            if (upstreamProxyHost.isBlank()) {
+                    if (upstreamProxyEnabled) {
+                        SettingRow(
+                            c = c,
+                            icon = Icons.Filled.Hub,
+                            title = "Proxy type",
+                            subtitle = upstreamProxyType.name,
+                            onClick = { showUpstreamProxyTypeDialog = true },
+                        )
+                        SettingRow(
+                            c = c,
+                            icon = Icons.Filled.Router,
+                            title = "Proxy address",
+                            subtitle = if (upstreamProxyHost.isBlank()) {
                                 "Not set"
                             } else {
                                 "$upstreamProxyHost:$upstreamProxyPort"
                             },
+                            onClick = { showUpstreamProxyAddressDialog = true },
                         )
-                    },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showUpstreamProxyAddressDialog = true },
-                )
-                ListItem(
-                    headlineContent = { Text("Proxy credentials") },
-                    supportingContent = {
-                        Text(if (upstreamProxyUsername.isBlank()) "None" else upstreamProxyUsername)
-                    },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { showUpstreamProxyCredentialsDialog = true },
-                )
-            }
+                        SettingRow(
+                            c = c,
+                            icon = Icons.Filled.Person,
+                            title = "Proxy credentials",
+                            subtitle = if (upstreamProxyUsername.isBlank()) "None" else upstreamProxyUsername,
+                            onClick = { showUpstreamProxyCredentialsDialog = true },
+                        )
+                    }
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("About")
-            ListItem(
-                headlineContent = { Text("View logs") },
-                supportingContent = { Text("Recent connection activity") },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onOpenLogs),
-            )
-            ListItem(
-                headlineContent = { Text("Version") },
-                supportingContent = { Text(BuildConfig.VERSION_NAME) },
-            )
-            ListItem(
-                headlineContent = { Text("Source code") },
-                supportingContent = { Text(GITHUB_URL) },
-                leadingContent = { Icon(Icons.Filled.Code, contentDescription = null) },
-                modifier = Modifier.clickable {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)))
-                },
-            )
+                // ───── About ─────
+                SettingsSection(c, "About") {
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Description,
+                        title = "View logs",
+                        subtitle = "Recent connection activity",
+                        divider = false,
+                        onClick = onOpenLogs,
+                    )
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.Info,
+                        title = "Version",
+                        subtitle = BuildConfig.VERSION_NAME,
+                    )
+                    TelegramCard(c = c, onClick = { openTelegram(context) })
+                }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("Account")
-            ListItem(
-                headlineContent = { Text("Manage account") },
-                supportingContent = { Text("Subscription status and data usage") },
-                leadingContent = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onOpenAccount),
-            )
-            Button(
-                onClick = onSignOut,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                Text("  Sign out")
+                // ───── Account ─────
+                SettingsSection(c, "Account") {
+                    SettingRow(
+                        c = c,
+                        icon = Icons.Filled.AccountCircle,
+                        title = "Manage account",
+                        subtitle = "Subscription status and data usage",
+                        divider = false,
+                        onClick = onOpenAccount,
+                    )
+                }
+
+                val signOutShape = RoundedCornerShape(20.dp)
+                Button(
+                    onClick = onSignOut,
+                    shape = signOutShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SxDanger.copy(alpha = 0.12f),
+                        contentColor = SxDanger,
+                    ),
+                    elevation = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .border(1.dp, SxDanger.copy(alpha = 0.35f), signOutShape),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sign out", fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
+}
+
+// ───────────────────────── کامپوننت‌های ظاهر ─────────────────────────
+
+@Composable
+private fun SettingsSection(
+    c: SettingsColors,
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.5.sp,
+        color = c.accentText,
+        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingsCard(c, 24.dp),
+        content = content,
+    )
+    Spacer(Modifier.height(20.dp))
+}
+
+@Composable
+private fun SettingsIconBubble(icon: ImageVector, c: SettingsColors) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(SxOrange.copy(alpha = 0.10f))
+            .border(1.dp, c.cardBorder, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = SxOrange,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingRow(
+    c: SettingsColors,
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    divider: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Column {
+        if (divider) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 72.dp)
+                    .height(1.dp)
+                    .background(c.cardBorder)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsIconBubble(icon, c)
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.textPrimary,
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(10.dp))
+                trailing()
+            } else if (onClick != null) {
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = c.textSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(
+    c: SettingsColors,
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    divider: Boolean = true,
+) {
+    SettingRow(
+        c = c,
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        divider = divider,
+        onClick = { onCheckedChange(!checked) },
+        trailing = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = SxOrange,
+                    checkedBorderColor = SxOrange,
+                    uncheckedThumbColor = c.textSecondary,
+                    uncheckedTrackColor = c.innerCard,
+                    uncheckedBorderColor = c.cardBorder,
+                ),
+            )
+        },
+    )
+}
+
+/** کارت تلگرام: جایگزین ردیف Source code. */
+@Composable
+private fun TelegramCard(c: SettingsColors, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(c.innerCard.copy(alpha = 0.7f))
+                .border(1.dp, SxOrange.copy(alpha = 0.45f), shape)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = SxOrange, spotColor = SxOrange)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(SxOrangeLight, SxOrange, SxOrangeDeep))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Telegram",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = c.textSecondary,
+                )
+                Text(
+                    text = TELEGRAM_HANDLE,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = c.accentText,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = c.textSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+// ───────────────────────── دیالوگ‌ها ─────────────────────────
+
+@Composable
+private fun foxTextButtonColors(c: SettingsColors) = ButtonDefaults.textButtonColors(
+    contentColor = c.accentText,
+    disabledContentColor = c.textSecondary.copy(alpha = 0.4f),
+)
+
+@Composable
+private fun foxRadioColors(c: SettingsColors) = RadioButtonDefaults.colors(
+    selectedColor = SxOrange,
+    unselectedColor = c.textSecondary,
+)
+
+@Composable
+private fun foxFieldColors(c: SettingsColors) = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = SxOrange,
+    unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
+    focusedLabelColor = c.accentText,
+    unfocusedLabelColor = c.textSecondary,
+    cursorColor = SxOrange,
+    focusedTextColor = c.textPrimary,
+    unfocusedTextColor = c.textPrimary,
+)
+
+/** قالب مشترک همه‌ی دیالوگ‌ها با استایل Fox. */
+@Composable
+private fun FoxDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    confirmEnabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val c = rememberSettingsColors()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.dialog,
+        shape = RoundedCornerShape(28.dp),
+        titleContentColor = c.textPrimary,
+        textContentColor = c.textPrimary,
+        title = { Text(title, fontWeight = FontWeight.ExtraBold) },
+        text = { Column(content = content) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = confirmEnabled,
+                colors = foxTextButtonColors(c),
+            ) { Text("Save", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
@@ -449,46 +861,43 @@ private fun DohProviderPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (SettingsStore.DohProvider) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var selected by remember { mutableStateOf(current) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Encrypted DNS") },
-        text = {
-            Column {
-                SettingsStore.DohProvider.entries.forEach { provider ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(selected = selected == provider, onClick = { selected = provider })
-                            .padding(vertical = 4.dp),
-                    ) {
-                        RadioButton(selected = selected == provider, onClick = { selected = provider })
-                        Column(Modifier.padding(start = 8.dp)) {
-                            Text(provider.label)
-                            val detail = when (provider) {
-                                SettingsStore.DohProvider.AUTOMATIC -> "Use whichever answers first"
-                                SettingsStore.DohProvider.OFF -> "Use the network's own DNS"
-                                else -> provider.addresses.joinToString(", ")
-                            }
-                            Text(
-                                detail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+    FoxDialog(
+        title = "Encrypted DNS",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected) },
+    ) {
+        SettingsStore.DohProvider.entries.forEach { provider ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == provider, onClick = { selected = provider })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(
+                    selected = selected == provider,
+                    onClick = { selected = provider },
+                    colors = foxRadioColors(c),
+                )
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(provider.label)
+                    val detail = when (provider) {
+                        SettingsStore.DohProvider.AUTOMATIC -> "Use whichever answers first"
+                        SettingsStore.DohProvider.OFF -> "Use the network's own DNS"
+                        else -> provider.addresses.joinToString(", ")
                     }
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                    )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -497,43 +906,43 @@ private fun CustomDnsPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var value by remember { mutableStateOf(current) }
     val isValid = SettingsStore.isValidDnsServer(value)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("DNS server") },
-        text = {
-            Column {
-                SettingsStore.CUSTOM_DNS_PRESETS.forEach { (address, label) ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(selected = value == address, onClick = { value = address })
-                            .padding(vertical = 4.dp),
-                    ) {
-                        RadioButton(selected = value == address, onClick = { value = address })
-                        Text(label, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it.trim() },
-                    label = { Text("IPv4 address") },
-                    singleLine = true,
-                    isError = value.isNotBlank() && !isValid,
-                    modifier = Modifier.padding(top = 8.dp),
+    FoxDialog(
+        title = "DNS server",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(value) },
+        confirmEnabled = isValid,
+    ) {
+        SettingsStore.CUSTOM_DNS_PRESETS.forEach { (address, label) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = value == address, onClick = { value = address })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(
+                    selected = value == address,
+                    onClick = { value = address },
+                    colors = foxRadioColors(c),
                 )
+                Text(label, modifier = Modifier.padding(start = 8.dp))
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(value) }, enabled = isValid) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+        }
+        OutlinedTextField(
+            value = value,
+            onValueChange = { value = it.trim() },
+            label = { Text("IPv4 address") },
+            singleLine = true,
+            isError = value.isNotBlank() && !isValid,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
 
 @Composable
@@ -542,37 +951,33 @@ private fun CustomEdgeAddressDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var value by remember { mutableStateOf(current) }
     val trimmed = value.trim()
     val isValid = trimmed.isEmpty() || SettingsStore.isValidEdgeHost(trimmed)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Custom edge address") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    label = { Text("Host or IP") },
-                    singleLine = true,
-                    isError = !isValid,
-                )
-                Text(
-                    "Leave empty to resolve the server hostname normally.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(trimmed) }, enabled = isValid) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+    FoxDialog(
+        title = "Custom edge address",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(trimmed) },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { value = it },
+            label = { Text("Host or IP") },
+            singleLine = true,
+            isError = !isValid,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        Text(
+            "Leave empty to resolve the server hostname normally.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
 
 @Composable
@@ -581,34 +986,31 @@ private fun SocksBindAddressPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var selected by remember { mutableStateOf(current) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Local address") },
-        text = {
-            Column {
-                SettingsStore.SOCKS_BIND_ADDRESS_PRESETS.forEach { (address, label) ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(selected = selected == address, onClick = { selected = address })
-                            .padding(vertical = 4.dp),
-                    ) {
-                        RadioButton(selected = selected == address, onClick = { selected = address })
-                        Text(label, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
+    FoxDialog(
+        title = "Local address",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected) },
+    ) {
+        SettingsStore.SOCKS_BIND_ADDRESS_PRESETS.forEach { (address, label) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == address, onClick = { selected = address })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(
+                    selected = selected == address,
+                    onClick = { selected = address },
+                    colors = foxRadioColors(c),
+                )
+                Text(label, modifier = Modifier.padding(start = 8.dp))
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -617,30 +1019,28 @@ private fun SocksPortPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var portText by remember { mutableStateOf(current.toString()) }
     val parsedPort = portText.toIntOrNull()
     val isValid = parsedPort != null && parsedPort in 1..65_535
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Local port") },
-        text = {
-            OutlinedTextField(
-                value = portText,
-                onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-                label = { Text("Port (1\u201365535)") },
-                singleLine = true,
-                isError = portText.isNotBlank() && !isValid,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { parsedPort?.let { onConfirm(it) } }, enabled = isValid) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+    FoxDialog(
+        title = "Local port",
+        onDismiss = onDismiss,
+        onConfirm = { parsedPort?.let { onConfirm(it) } },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = portText,
+            onValueChange = { portText = it.filter(Char::isDigit).take(5) },
+            label = { Text("Port (1\u201365535)") },
+            singleLine = true,
+            isError = portText.isNotBlank() && !isValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+    }
 }
 
 @Composable
@@ -649,30 +1049,28 @@ private fun HttpPortPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var portText by remember { mutableStateOf(current.toString()) }
     val parsedPort = portText.toIntOrNull()
     val isValid = parsedPort != null && parsedPort in 1..65_535
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("HTTP port") },
-        text = {
-            OutlinedTextField(
-                value = portText,
-                onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-                label = { Text("Port (1\u201365535)") },
-                singleLine = true,
-                isError = portText.isNotBlank() && !isValid,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { parsedPort?.let { onConfirm(it) } }, enabled = isValid) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+    FoxDialog(
+        title = "HTTP port",
+        onDismiss = onDismiss,
+        onConfirm = { parsedPort?.let { onConfirm(it) } },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = portText,
+            onValueChange = { portText = it.filter(Char::isDigit).take(5) },
+            label = { Text("Port (1\u201365535)") },
+            singleLine = true,
+            isError = portText.isNotBlank() && !isValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+    }
 }
 
 @Composable
@@ -681,33 +1079,31 @@ private fun UpstreamProxyTypePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (SettingsStore.UpstreamProxyType) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var selected by remember { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Proxy type") },
-        text = {
-            Column {
-                SettingsStore.UpstreamProxyType.entries.forEach { type ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(selected = selected == type, onClick = { selected = type })
-                            .padding(vertical = 4.dp),
-                    ) {
-                        RadioButton(selected = selected == type, onClick = { selected = type })
-                        Text(type.name, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
+
+    FoxDialog(
+        title = "Proxy type",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected) },
+    ) {
+        SettingsStore.UpstreamProxyType.entries.forEach { type ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == type, onClick = { selected = type })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(
+                    selected = selected == type,
+                    onClick = { selected = type },
+                    colors = foxRadioColors(c),
+                )
+                Text(type.name, modifier = Modifier.padding(start = 8.dp))
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -717,40 +1113,38 @@ private fun UpstreamProxyAddressDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Int) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var host by remember { mutableStateOf(currentHost) }
     var portText by remember { mutableStateOf(currentPort.toString()) }
     val parsedPort = portText.toIntOrNull()
     val isValid = host.isNotBlank() && parsedPort != null && parsedPort in 1..65_535
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Proxy address") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it.trim() },
-                    label = { Text("Host or IP") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = portText,
-                    onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Port (1\u201365535)") },
-                    singleLine = true,
-                    isError = portText.isNotBlank() && (parsedPort == null || parsedPort !in 1..65_535),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { parsedPort?.let { onConfirm(host, it) } }, enabled = isValid) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+    FoxDialog(
+        title = "Proxy address",
+        onDismiss = onDismiss,
+        onConfirm = { parsedPort?.let { onConfirm(host, it) } },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = host,
+            onValueChange = { host = it.trim() },
+            label = { Text("Host or IP") },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        OutlinedTextField(
+            value = portText,
+            onValueChange = { portText = it.filter(Char::isDigit).take(5) },
+            label = { Text("Port (1\u201365535)") },
+            singleLine = true,
+            isError = portText.isNotBlank() && (parsedPort == null || parsedPort !in 1..65_535),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
 
 @Composable
@@ -760,36 +1154,34 @@ private fun UpstreamProxyCredentialsDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     var username by remember { mutableStateOf(currentUsername) }
     var password by remember { mutableStateOf(currentPassword) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Proxy credentials") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username (optional)") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password (optional)") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(username, password) }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+
+    FoxDialog(
+        title = "Proxy credentials",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(username, password) },
+    ) {
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username (optional)") },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password (optional)") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
 
 private data class InstalledAppEntry(val packageName: String, val label: String)
@@ -800,12 +1192,13 @@ private fun SplitTunnelDialog(
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
 ) {
+    val c = rememberSettingsColors()
     val context = LocalContext.current
     var selected by remember { mutableStateOf(current) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val installedApps by androidx.compose.runtime.produceState<List<InstalledAppEntry>>(initialValue = emptyList()) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val installedApps by produceState<List<InstalledAppEntry>>(initialValue = emptyList()) {
+        value = withContext(Dispatchers.IO) {
             val packageManager = context.packageManager
             packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
                 .asSequence()
@@ -826,83 +1219,76 @@ private fun SplitTunnelDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Split tunneling") },
-        text = {
-            Column {
-                Text(
-                    "Selected apps bypass the VPN and use your normal connection.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = { Text("Search apps") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                )
-                if (installedApps.isEmpty()) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        modifier = Modifier.padding(24.dp).align(Alignment.CenterHorizontally)
-                    )
-                } else if (filteredApps.isEmpty()) {
-                    Text(
-                        "No apps match \"$searchQuery\".",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 12.dp),
-                    )
-                } else {
-                    LazyColumn(modifier = Modifier.height(360.dp)) {
-                        items(filteredApps, key = { it.packageName }) { app ->
-                            val isChecked = selected.contains(app.packageName)
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selected = if (isChecked) {
-                                            selected - app.packageName
-                                        } else {
-                                            selected + app.packageName
-                                        }
-                                    }
-                                    .padding(vertical = 2.dp),
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = {
-                                        selected = if (it) selected + app.packageName else selected - app.packageName
-                                    },
-                                )
-                                Text(app.label, modifier = Modifier.padding(start = 8.dp))
+    FoxDialog(
+        title = "Split tunneling",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected) },
+    ) {
+        Text(
+            "Selected apps bypass the VPN and use your normal connection.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search apps") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SxOrange) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+        )
+        if (installedApps.isEmpty()) {
+            CircularProgressIndicator(
+                color = SxOrange,
+                modifier = Modifier
+                    .padding(24.dp)
+                    .align(Alignment.CenterHorizontally),
+            )
+        } else if (filteredApps.isEmpty()) {
+            Text(
+                "No apps match \"$searchQuery\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+        } else {
+            LazyColumn(modifier = Modifier.height(360.dp)) {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    val isChecked = selected.contains(app.packageName)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                selected = if (isChecked) {
+                                    selected - app.packageName
+                                } else {
+                                    selected + app.packageName
+                                }
                             }
-                        }
+                            .padding(vertical = 2.dp),
+                    ) {
+                        Checkbox(
+                            checked = isChecked,
+                            onCheckedChange = {
+                                selected = if (it) selected + app.packageName else selected - app.packageName
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = SxOrange,
+                                uncheckedColor = c.textSecondary,
+                                checkmarkColor = Color.White,
+                            ),
+                        )
+                        Text(app.label, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
+        }
+    }
 }
