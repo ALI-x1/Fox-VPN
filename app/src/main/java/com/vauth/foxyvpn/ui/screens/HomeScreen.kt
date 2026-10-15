@@ -93,6 +93,23 @@ private object SessionClock {
     var startedAt: Long = 0L
 }
 
+/** کد دو حرفی کشور (مثل "DE") → ایموجی پرچم. برای کد نامعتبر null برمی‌گردونه. */
+private fun flagEmoji(code: String): String? {
+    val cc = code.trim().uppercase().let { if (it == "UK") "GB" else it }
+    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
+    val base = 0x1F1E6
+    return String(Character.toChars(base + (cc[0] - 'A'))) +
+        String(Character.toChars(base + (cc[1] - 'A')))
+}
+
+/** اسم کامل کشور به انگلیسی (DE → Germany)؛ اگه شناخته نشد null. */
+private fun countryDisplayName(code: String): String? {
+    val cc = code.trim().uppercase()
+    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
+    val name = Locale("", cc).getDisplayCountry(Locale.ENGLISH)
+    return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
+}
+
 private fun formatElapsed(totalSeconds: Long): String {
     val h = totalSeconds / 3600
     val m = (totalSeconds % 3600) / 60
@@ -184,11 +201,12 @@ fun HomeScreen(
                     ipAddress = info.ip
                     countryCode = info.countryCode
                 }.onFailure {
-                    ipAddress = "خطا در دریافت"
+                    // فقط عدد نشون می‌دیم؛ اگه آی‌پی نیومد، به‌جای متن خطا خط تیره
+                    ipAddress = "-"
                     countryCode = ""
                 }
             } catch (e: Exception) {
-                ipAddress = "نامشخص"
+                ipAddress = "-"
                 countryCode = ""
             }
         }
@@ -409,27 +427,38 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isIran) {
+                            // پرچم رسمی شیر و خورشید (res/drawable-nodpi/ic_flag_lion_sun.webp)، با نسبت اصلی پرچم
                             Image(
-                                painter = painterResource(id = R.drawable.ic_lion_sun_flag),
+                                painter = painterResource(id = R.drawable.ic_flag_lion_sun),
                                 contentDescription = "Iran Flag",
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
-                                    .size(width = 48.dp, height = 36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .size(width = 56.dp, height = 32.dp)
+                                    .clip(RoundedCornerShape(6.dp))
                             )
                         } else {
-                            Icon(
-                                imageVector = Icons.Filled.Public,
-                                contentDescription = null,
-                                tint = c.accent,
-                                modifier = Modifier.size(36.dp)
-                            )
+                            val flag = flagEmoji(countryCode)
+                            Box(
+                                modifier = Modifier.size(width = 56.dp, height = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (flag != null) {
+                                    Text(text = flag, fontSize = 30.sp)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Public,
+                                        contentDescription = null,
+                                        tint = c.accent,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
+                            }
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (isIran) "Iran (IR)" else countryCode.ifBlank { "Location" },
+                                    text = if (isIran) "Iran" else (countryDisplayName(countryCode) ?: countryCode.ifBlank { "Location" }),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = c.textPrimary
