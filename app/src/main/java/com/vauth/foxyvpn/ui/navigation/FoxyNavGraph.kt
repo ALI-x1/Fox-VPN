@@ -57,6 +57,7 @@ fun FoxyNavGraph(
             HomeScreen(
                 app = app,
                 themeController = themeController,
+                authRepository = app.authRepository,
                 onRequestConnect = onRequestConnect,
                 onDisconnect = onDisconnect,
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
@@ -74,6 +75,7 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.SETTINGS) {
             SettingsScreen(
                 settingsStore = app.settingsStore,
+                themeController = themeController,
                 onOpenLogs = { navController.navigate(FoxyRoutes.LOGS) },
                 onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
                 onSignOut = {
