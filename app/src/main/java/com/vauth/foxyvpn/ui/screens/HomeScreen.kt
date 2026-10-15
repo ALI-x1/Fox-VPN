@@ -58,7 +58,7 @@ import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.TrafficMonitor
-import com.vauth.foxyvpn.data.ByteFormat
+import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
 import com.vauth.foxyvpn.ui.theme.ThemeController
@@ -82,13 +82,11 @@ fun HomeScreen(
     val lastError by FoxyVpnService.lastError.collectAsState()
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
 
-    // وضعیت ترافیک و IP
     val trafficState by TrafficMonitor.trafficState.collectAsState()
     var ipAddress by remember { mutableStateOf("در حال بررسی...") }
     var countryCode by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
 
-    // مدیریت شروع/پایان مانیتورینگ ترافیک و استعلام خودکار IP هنگام تغییر وضعیت اتصال
     LaunchedEffect(state) {
         if (state == ConnectionState.CONNECTED) {
             TrafficMonitor.start()
@@ -96,7 +94,6 @@ fun HomeScreen(
             TrafficMonitor.stop()
         }
 
-        // استعلام IP (اگر متصل باشد از طریق پروکسی پورت 1080 وگرنه به صورت مستقیم)
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
@@ -183,7 +180,6 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // دکمه بزرگ اتصال / قطع اتصال
             Box(
                 modifier = Modifier
                     .size(180.dp)
@@ -241,7 +237,6 @@ fun HomeScreen(
 
             Spacer(Modifier.padding(top = 24.dp))
 
-            // کارت اطلاعات شبکه، IP، پرچم (شیر و خورشید برای ایران) و سرعت آپلود/دانلود
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
@@ -252,11 +247,10 @@ fun HomeScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Alignment.SpaceBetween.let { Arrangement.SpaceBetween },
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // شرط نمایش پرچم شیر و خورشید برای ایران
                             if (countryCode.uppercase() == "IR") {
                                 Image(
                                     painter = painterResource(id = R.drawable.ic_lion_sun_flag),
@@ -292,20 +286,19 @@ fun HomeScreen(
                         )
                     }
 
-                    // بخش نمایش سرعت آپلود و دانلود در صورت اتصال
                     if (state == ConnectionState.CONNECTED) {
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                        Divider()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "⬆️ ${ByteFormat.format(trafficState.uploadSpeed.toLong())}/s",
+                                text = "⬆️ ${formatBytesPerSecond(trafficState.uploadSpeed.toLong())}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "⬇️ ${ByteFormat.format(trafficState.downloadSpeed.toLong())}/s",
+                                text = "⬇️ ${formatBytesPerSecond(trafficState.downloadSpeed.toLong())}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -316,7 +309,6 @@ fun HomeScreen(
 
             Spacer(Modifier.padding(top = 12.dp))
 
-            // کارت انتخاب سرور و لوکیشن
             Card(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenServers),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
