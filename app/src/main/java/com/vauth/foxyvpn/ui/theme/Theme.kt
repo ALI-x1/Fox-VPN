@@ -12,13 +12,14 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = md_theme_light_primary,
     onPrimary = md_theme_light_onPrimary,
     primaryContainer = md_theme_light_primaryContainer,
@@ -57,7 +58,7 @@ private val LightColors = lightColorScheme(
     scrim = md_theme_light_scrim,
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = md_theme_dark_primary,
     onPrimary = md_theme_dark_onPrimary,
     primaryContainer = md_theme_dark_primaryContainer,
@@ -99,22 +100,26 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun FoxyVpnTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    dynamicColor: Boolean = true,
+    palette: ThemePalette = ThemePalette.ORANGE_WHITE,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val systemInDarkTheme = isSystemInDarkTheme()
-    val darkTheme = when (themeMode) {
+    // بعضی پالت‌ها ذاتاً تیره/روشنن (fixedDark) و ThemeMode روشون اثر نداره
+    val darkTheme = palette.fixedDark ?: when (themeMode) {
         ThemeMode.SYSTEM -> systemInDarkTheme
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
+    val spec = remember(palette, darkTheme) { palette.spec(darkTheme) }
+
     val context = LocalContext.current
+    // رنگ داینامیک فقط وقتی کاربر خودش روشنش کنه و پالت پیش‌فرض باشه
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor && palette == ThemePalette.ORANGE_WHITE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColors
-        else -> LightColors
+        else -> spec.scheme
     }
 
     val view = LocalView.current
@@ -129,7 +134,8 @@ fun FoxyVpnTheme(
     }
 
     CompositionLocalProvider(
-        LocalFoxyStatusColors provides if (darkTheme) DarkStatusColors else LightStatusColors,
+        LocalFoxyStatusColors provides spec.status,
+        LocalFoxExtras provides spec.extras,
         LocalLayoutDirection provides LayoutDirection.Ltr,
     ) {
         MaterialExpressiveTheme(
