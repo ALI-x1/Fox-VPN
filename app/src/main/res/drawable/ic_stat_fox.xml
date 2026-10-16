@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- آیکون تک‌رنگ روباه برای نوتیفیکیشن (اندروید فقط کانال آلفا رو استفاده می‌کنه) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M2.5,2.5 L9,6.5 L15,6.5 L21.5,2.5 L20.5,12 L12,21.5 L3.5,12 Z M8,11 L10,12.5 L8,14 Z M16,11 L14,12.5 L16,14 Z" />
+</vector>
