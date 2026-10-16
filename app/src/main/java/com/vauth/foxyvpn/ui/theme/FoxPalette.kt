@@ -40,6 +40,34 @@ enum class ThemePalette(
     GRANITE_GOLD(
         "گرانیت و طلایی", "نرم و شیشه‌ای", false,
         Color(0xFFB89B5E), Color(0xFFF5EFE2), Color(0xFF3A2F1B), Color(0xFF8A7A5C)
+    ),
+    ROSE_WHITE(
+        "صورتی و سفید", "ملایم و شیک", false,
+        Color(0xFFE8548F), Color(0xFFFFF0F6), Color(0xFF2A1420), Color(0xFF8A6475)
+    ),
+    FOREST_GREEN(
+        "سبز جنگلی", "طبیعی و آرام", true,
+        Color(0xFF34D399), Color(0xFF0F2418), Color(0xFFFFFFFF), Color(0xFF8CC7A8)
+    ),
+    ORCHID_PURPLE(
+        "بنفش ارکیده", "شبانه و رویایی", true,
+        Color(0xFFA855F7), Color(0xFF261340), Color(0xFFFFFFFF), Color(0xFFC4A9EE)
+    ),
+    SKY_BLUE(
+        "آبی آسمانی", "روشن و شفاف", false,
+        Color(0xFF3B82F6), Color(0xFFE8F2FE), Color(0xFF0F2038), Color(0xFF5F7A99)
+    ),
+    CYBER_CYAN(
+        "نئون فیروزه‌ای", "سایبر و درخشان", true,
+        Color(0xFF22D3EE), Color(0xFF08151F), Color(0xFFFFFFFF), Color(0xFF7FC4D6)
+    ),
+    LIQUID_GLASS(
+        "شیشه‌ی مایع", "سفید و شفاف", false,
+        Color(0xFF1F2937), Color(0xFFF4F7FB), Color(0xFF111827), Color(0xFF6C7A8C)
+    ),
+    MOCHA_LATTE(
+        "موکا و لاته", "گرم و دنج", true,
+        Color(0xFFC8925A), Color(0xFF2A1D16), Color(0xFFFFFFFF), Color(0xFFC9B39A)
     );
 
     companion object {
@@ -126,6 +154,71 @@ private val GoldExtras = FoxExtras(
     accent = Color(0xFFB89B5E), accentLight = Color(0xFFE0C98E), accentText = Color(0xFF7A5F2B),
     upload = Color(0xFFB89B5E), download = Color(0xFF7F93A3),
     buttonFillCenter = Color(0xFFFCF8EE), buttonFillEdge = Color(0xFFE6D8B8),
+)
+
+private val RoseExtras = FoxExtras(
+    bgTop = Color(0xFFFFFAFC), bgBottom = Color(0xFFFDE7F0),
+    card = Color(0xB3FFFFFF), cardBorder = Color(0x33E8548F), innerCard = Color(0xFFFFF0F6),
+    textPrimary = Color(0xFF2A1420), textSecondary = Color(0xFF7A5A68),
+    accent = Color(0xFFE8548F), accentLight = Color(0xFFFF8FB8), accentText = Color(0xFFB8275F),
+    upload = Color(0xFFE8548F), download = Color(0xFF7C9CF5),
+    buttonFillCenter = Color(0xFFFFFFFF), buttonFillEdge = Color(0xFFFBD3E3),
+)
+
+private val ForestExtras = FoxExtras(
+    bgTop = Color(0xFF07140E), bgBottom = Color(0xFF0F2418),
+    card = Color(0xCC12281C), cardBorder = Color(0x4434D399), innerCard = Color(0xFF173325),
+    textPrimary = Color(0xFFE8F6EE), textSecondary = Color(0xFF9DBBAA),
+    accent = Color(0xFF34D399), accentLight = Color(0xFF86EFAC), accentText = Color(0xFF6EE7B7),
+    upload = Color(0xFF34D399), download = Color(0xFF60A5FA),
+    buttonFillCenter = Color(0xFF1F4A35), buttonFillEdge = Color(0xFF0F2A1D),
+)
+
+private val OrchidExtras = FoxExtras(
+    bgTop = Color(0xFF140B22), bgBottom = Color(0xFF261340),
+    card = Color(0xCC2A1745), cardBorder = Color(0x44C084FC), innerCard = Color(0xFF33205A),
+    textPrimary = Color(0xFFF5ECFF), textSecondary = Color(0xFFB9A6D6),
+    accent = Color(0xFFA855F7), accentLight = Color(0xFFD8B4FE), accentText = Color(0xFFD8B4FE),
+    upload = Color(0xFFC084FC), download = Color(0xFF67E8F9),
+    buttonFillCenter = Color(0xFF4A2A7A), buttonFillEdge = Color(0xFF2A1647),
+)
+
+private val SkyExtras = FoxExtras(
+    bgTop = Color(0xFFF5FAFF), bgBottom = Color(0xFFDCEBFB),
+    card = Color(0xB3FFFFFF), cardBorder = Color(0x333B82F6), innerCard = Color(0xFFE8F2FE),
+    textPrimary = Color(0xFF0F2038), textSecondary = Color(0xFF55708F),
+    accent = Color(0xFF3B82F6), accentLight = Color(0xFF7DB3FF), accentText = Color(0xFF1D4ED8),
+    upload = Color(0xFF3B82F6), download = Color(0xFFF59E0B),
+    buttonFillCenter = Color(0xFFFFFFFF), buttonFillEdge = Color(0xFFCFE3FB),
+)
+
+private val CyberExtras = FoxExtras(
+    bgTop = Color(0xFF03070D), bgBottom = Color(0xFF08151F),
+    card = Color(0xCC0E1C28), cardBorder = Color(0x4422D3EE), innerCard = Color(0xFF122736),
+    textPrimary = Color(0xFFE6FAFF), textSecondary = Color(0xFF8FB3C2),
+    accent = Color(0xFF22D3EE), accentLight = Color(0xFF7DEBFF), accentText = Color(0xFF67E8F9),
+    upload = Color(0xFF22D3EE), download = Color(0xFFA3E635),
+    buttonFillCenter = Color(0xFF0F3A4D), buttonFillEdge = Color(0xFF07202C),
+)
+
+// شیشه‌ی مایع: پس‌زمینه‌ی سفیدِ مایل به آبی‌خاکستری، کارت‌های نیمه‌شفاف مثل شیشه‌ی مات،
+// حاشیه‌ی بلورین و اکسنت گرافیتی؛ بدون رنگ تند تا همه‌چیز سبک و تمیز بمونه.
+private val GlassExtras = FoxExtras(
+    bgTop = Color(0xFFF9FBFE), bgBottom = Color(0xFFE2E9F4),
+    card = Color(0x99FFFFFF), cardBorder = Color(0x40A0AEC0), innerCard = Color(0xCCFFFFFF),
+    textPrimary = Color(0xFF111827), textSecondary = Color(0xFF66758A),
+    accent = Color(0xFF1F2937), accentLight = Color(0xFF6B7A90), accentText = Color(0xFF111827),
+    upload = Color(0xFF4B5563), download = Color(0xFF0EA5E9),
+    buttonFillCenter = Color(0xFFFFFFFF), buttonFillEdge = Color(0xFFDDE5F1),
+)
+
+private val MochaExtras = FoxExtras(
+    bgTop = Color(0xFF17110D), bgBottom = Color(0xFF2A1D16),
+    card = Color(0xCC33251C), cardBorder = Color(0x44D4A373), innerCard = Color(0xFF3E2D22),
+    textPrimary = Color(0xFFF3E9DC), textSecondary = Color(0xFFB9A590),
+    accent = Color(0xFFC8925A), accentLight = Color(0xFFF0D2A8), accentText = Color(0xFFE8C79A),
+    upload = Color(0xFFC8925A), download = Color(0xFF8FB8A8),
+    buttonFillCenter = Color(0xFF5A4130), buttonFillEdge = Color(0xFF2E2018),
 )
 
 private fun buildScheme(
@@ -224,6 +317,90 @@ private val GoldScheme = buildScheme(
     outline = Color(0xFF8C8066),
 )
 
+private val RoseScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFFB8275F), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFD9E6), onPrimaryContainer = Color(0xFF3E0020),
+    secondary = Color(0xFF9C4A68),
+    background = Color(0xFFFFFAFC), onSurface = Color(0xFF2A1420),
+    surfaceLow = Color(0xFFFFF3F8), surfaceMid = Color(0xFFFCEAF2),
+    surfaceHigh = Color(0xFFF7E0EB), surfaceHighest = Color(0xFFF1D6E3),
+    surfaceVariant = Color(0xFFF6DFEA), onSurfaceVariant = Color(0xFF6E4B5B),
+    outline = Color(0xFF9C7A89),
+)
+
+private val ForestScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFF5EE0AB), onPrimary = Color(0xFF00391F),
+    primaryContainer = Color(0xFF0F5C3A), onPrimaryContainer = Color(0xFFC6F7DE),
+    secondary = Color(0xFF8FD6B3),
+    background = Color(0xFF07140E), onSurface = Color(0xFFE8F6EE),
+    surfaceLow = Color(0xFF0C1B13), surfaceMid = Color(0xFF12281C),
+    surfaceHigh = Color(0xFF173325), surfaceHighest = Color(0xFF1D3E2D),
+    surfaceVariant = Color(0xFF1A3526), onSurfaceVariant = Color(0xFF9DBBAA),
+    outline = Color(0xFF5E8A73),
+)
+
+private val OrchidScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFFC79BFF), onPrimary = Color(0xFF2B0057),
+    primaryContainer = Color(0xFF5B21A6), onPrimaryContainer = Color(0xFFEBD9FF),
+    secondary = Color(0xFFE0A6FF),
+    background = Color(0xFF140B22), onSurface = Color(0xFFF5ECFF),
+    surfaceLow = Color(0xFF1B1030), surfaceMid = Color(0xFF241540),
+    surfaceHigh = Color(0xFF2E1A52), surfaceHighest = Color(0xFF382163),
+    surfaceVariant = Color(0xFF33205A), onSurfaceVariant = Color(0xFFB9A6D6),
+    outline = Color(0xFF8A74B0),
+)
+
+private val SkyScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFF1D4ED8), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFD6E6FF), onPrimaryContainer = Color(0xFF001B3E),
+    secondary = Color(0xFF4F6A8F),
+    background = Color(0xFFF5FAFF), onSurface = Color(0xFF0F2038),
+    surfaceLow = Color(0xFFEEF5FD), surfaceMid = Color(0xFFE5EFFB),
+    surfaceHigh = Color(0xFFDBE8F8), surfaceHighest = Color(0xFFD0E0F4),
+    surfaceVariant = Color(0xFFDDE8F6), onSurfaceVariant = Color(0xFF4A6280),
+    outline = Color(0xFF7A91AD),
+)
+
+private val CyberScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFF4EE1F5), onPrimary = Color(0xFF00363F),
+    primaryContainer = Color(0xFF00576A), onPrimaryContainer = Color(0xFFB8F1FF),
+    secondary = Color(0xFF7FD8E8),
+    background = Color(0xFF03070D), onSurface = Color(0xFFE6FAFF),
+    surfaceLow = Color(0xFF08121A), surfaceMid = Color(0xFF0C1B26),
+    surfaceHigh = Color(0xFF112634), surfaceHighest = Color(0xFF173243),
+    surfaceVariant = Color(0xFF12293A), onSurfaceVariant = Color(0xFF8FB3C2),
+    outline = Color(0xFF5A8394),
+)
+
+private val GlassScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFF1F2937), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFE3E9F3), onPrimaryContainer = Color(0xFF0F172A),
+    secondary = Color(0xFF5B6B80),
+    background = Color(0xFFF7F9FC), onSurface = Color(0xFF111827),
+    surfaceLow = Color(0xFFF2F5FA), surfaceMid = Color(0xFFECF0F7),
+    surfaceHigh = Color(0xFFE5EBF4), surfaceHighest = Color(0xFFDEE5F0),
+    surfaceVariant = Color(0xFFE8EDF5), onSurfaceVariant = Color(0xFF4B5B70),
+    outline = Color(0xFF8593A6),
+)
+
+private val MochaScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFFE0AE7C), onPrimary = Color(0xFF3A2410),
+    primaryContainer = Color(0xFF6B4524), onPrimaryContainer = Color(0xFFF6DFC4),
+    secondary = Color(0xFFC9B79F),
+    background = Color(0xFF17110D), onSurface = Color(0xFFF3E9DC),
+    surfaceLow = Color(0xFF1D1611), surfaceMid = Color(0xFF261C15),
+    surfaceHigh = Color(0xFF30241B), surfaceHighest = Color(0xFF3A2C21),
+    surfaceVariant = Color(0xFF33261D), onSurfaceVariant = Color(0xFFB9A590),
+    outline = Color(0xFF8A7561),
+)
+
 private fun status(dark: Boolean, connected: Color, connecting: Color, onVariant: Color) =
     FoxyStatusColors(connected = connected, connecting = connecting, disconnected = onVariant)
 
@@ -251,6 +428,41 @@ fun ThemePalette.spec(dark: Boolean): FoxThemeSpec = when (this) {
     ThemePalette.GRANITE_GOLD -> FoxThemeSpec(
         GoldScheme, GoldExtras,
         status(false, Color(0xFF3B7A3F), Color(0xFF9A6A00), Color(0xFF5E5340))
+    )
+
+    ThemePalette.ROSE_WHITE -> FoxThemeSpec(
+        RoseScheme, RoseExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF6E4B5B))
+    )
+
+    ThemePalette.FOREST_GREEN -> FoxThemeSpec(
+        ForestScheme, ForestExtras,
+        status(true, Color(0xFF4ADE80), Color(0xFFFBBF24), Color(0xFF9DBBAA))
+    )
+
+    ThemePalette.ORCHID_PURPLE -> FoxThemeSpec(
+        OrchidScheme, OrchidExtras,
+        status(true, Color(0xFF5EE6A8), Color(0xFFFFC46B), Color(0xFFB9A6D6))
+    )
+
+    ThemePalette.SKY_BLUE -> FoxThemeSpec(
+        SkyScheme, SkyExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF4A6280))
+    )
+
+    ThemePalette.CYBER_CYAN -> FoxThemeSpec(
+        CyberScheme, CyberExtras,
+        status(true, Color(0xFF4ADE80), Color(0xFFFBBF24), Color(0xFF8FB3C2))
+    )
+
+    ThemePalette.LIQUID_GLASS -> FoxThemeSpec(
+        GlassScheme, GlassExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF4B5B70))
+    )
+
+    ThemePalette.MOCHA_LATTE -> FoxThemeSpec(
+        MochaScheme, MochaExtras,
+        status(true, Color(0xFF4ADE80), Color(0xFFFBBF24), Color(0xFFB9A590))
     )
 }
 
