@@ -100,7 +100,7 @@ private const val LIVE_INTERVAL_MS = 4_000L
 private const val PING_PARALLELISM = 8
 
 /** نمونه‌ی پینگ برای هر سرور تو لیست؛ کم‌تر از هوم‌اسکرین تا دور زنده سریع بمونه. */
-private const val LIST_PING_SAMPLES = 2
+private const val LIST_PING_SAMPLES = 3
 
 // ───────────────────────── رنگ‌ها ─────────────────────────
 // رنگ‌های کارت/متن/اکسنت از تم برنامه (LocalFoxExtras) می‌آن؛ فقط رنگ‌های «کیفیت پینگ» ثابتن.
@@ -149,6 +149,9 @@ fun ServerListScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val selectedState by proxyStateStore.selectedProxyFlow.collectAsState()
+
+    // پینگ از شبکه‌ی مستقیم گوشی (نه تونل VPN) گرفته بشه
+    PingUtil.init(LocalContext.current)
 
     // پینگِ هموارشده‌ی هر لوکیشن (کلید: "کشور:شهر") و وضعیتش
     val pingResults = remember { mutableStateMapOf<String, Int>() }
