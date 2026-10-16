@@ -85,6 +85,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
 
 // ───────────────────────── تایمر اتصال ─────────────────────────
 
