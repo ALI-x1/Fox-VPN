@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -16,9 +18,11 @@ import android.os.ParcelFileDescriptor
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.MainActivity
 import com.vauth.foxyvpn.data.AppLogger
 import com.vauth.foxyvpn.data.ControlPlaneHttp
+import com.vauth.foxyvpn.data.CountryUtil
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
@@ -147,6 +151,9 @@ class FoxyVpnService : VpnService() {
     @Volatile private var lastUnhealthyRedialAt = 0L
 
     @Volatile private var statusLabel: String = "Connecting\u2026"
+    // کشور واقعیِ خروجی (برای «Recommended» که کدش REC هست)
+    @Volatile private var exitCountryCode: String? = null
+    private var largeIconCache: Bitmap? = null
 
     @Volatile private var foregroundActive = false
 
@@ -324,6 +331,7 @@ class FoxyVpnService : VpnService() {
             _state.value = ConnectionState.CONNECTING
             _lastError.value = null
             statusLabel = "Connecting\u2026"
+            exitCountryCode = null
             enterForeground(statusLabel)
 
             acquireWakeLocks()
@@ -572,7 +580,16 @@ class FoxyVpnService : VpnService() {
                 }
             } else {
                 val target = activeCandidate()
-                "Connected \u2022 ${target.countryName.ifBlank { target.countryCode }}"
+                val code = if (target.countryCode.equals(RECOMMENDED_COUNTRY_CODE, ignoreCase = true)) {
+                    exitCountryCode
+                } else {
+                    target.countryCode
+                }
+                val flag = CountryUtil.flagEmoji(code)
+                val name = CountryUtil.countryName(code)
+                    ?: target.countryName.takeIf { it.isNotBlank() && code == null && !it.contains("Recomm", true) }
+                    ?: "Recommended"
+                (if (flag.isEmpty()) "" else "$flag ") + "Connected \u2022 $name"
             }
 
             if (proxyOnlyMode) {
@@ -792,6 +809,11 @@ class FoxyVpnService : VpnService() {
                         .onSuccess { observed ->
                             if (myGeneration == connectionGeneration) {
                                 AppLogger.i(TAG, "exit check: observed country=$observed")
+                                exitCountryCode = observed.countryCode.takeIf { it.length == 2 }
+                                if (_state.value == ConnectionState.CONNECTED && !proxyOnlyMode) {
+                                    statusLabel = connectedLabel()
+                                    updateNotification(statusLabel)
+                                }
                             }
                         }
                         .onFailure { AppLogger.w(TAG, "exit check failed (non-fatal)", it) }
@@ -1007,7 +1029,7 @@ class FoxyVpnService : VpnService() {
             AppLogger.i(TAG, "establishTun: dns=mapdns (${HevSocks5TunnelConfig.MAPDNS_ADDRESS}), resolved on-device")
         }
         return Builder()
-            .setSession("FoxyVPN")
+            .setSession("Fox-VPN")
             .addAddress(HevSocks5TunnelConfig.TUN_ADDRESS, 32)
             .addRoute("0.0.0.0", 0)
             .apply {
@@ -1131,9 +1153,10 @@ class FoxyVpnService : VpnService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val builder = NotificationCompat.Builder(this, FoxyVpnApp.VPN_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("FoxyVPN")
+            .setContentTitle("Fox-VPN")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setSmallIcon(R.drawable.ic_stat_fox)
+            .setLargeIcon(foxLargeIcon())
             .setContentIntent(openIntent)
             .setOngoing(true)
 
@@ -1152,6 +1175,15 @@ class FoxyVpnService : VpnService() {
             builder.setStyle(NotificationCompat.BigTextStyle().bigText("$text\n$subText"))
         }
         return builder.build()
+    }
+
+    private fun foxLargeIcon(): Bitmap? {
+        largeIconCache?.let { return it }
+        return runCatching {
+            val src = BitmapFactory.decodeResource(resources, R.drawable.ic_fox_logo) ?: return null
+            val size = (resources.displayMetrics.density * 64).toInt().coerceAtLeast(64)
+            Bitmap.createScaledBitmap(src, size, size, true).also { largeIconCache = it }
+        }.getOrNull()
     }
 
     private fun enterForeground(text: String) {
