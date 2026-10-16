@@ -2,12 +2,8 @@ name: Android CI
 
 on:
   push:
-    branches: [main]
-    tags: ["v*.*.*"]
-  pull_request:
-    branches: [main]
-  workflow_dispatch: # این خط باعث می‌شود دکمه اجرای دستی در گیت‌هاب ظاهر شود
-
+    tags: ["V*."]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
