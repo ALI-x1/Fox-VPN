@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    tags: ["V*."]
+    tags: ["V*"]
   workflow_dispatch:
 jobs:
   build:
