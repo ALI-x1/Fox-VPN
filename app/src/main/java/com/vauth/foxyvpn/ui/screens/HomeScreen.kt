@@ -75,6 +75,7 @@ import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
 import com.vauth.foxyvpn.ui.theme.ThemeController
 import com.vauth.foxyvpn.vpn.ExitCheck
 import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.vpn.IpInfo
 import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -96,6 +97,14 @@ private fun flagEmoji(code: String): String? {
         String(Character.toChars(base + (cc[1] - 'A')))
 }
 
+/** اسم کامل کشور به انگلیسی (DE → Germany)؛ اگه کد معتبر نبود null. */
+private fun countryDisplayName(code: String): String? {
+    val cc = code.trim().uppercase()
+    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
+    val name = Locale("", cc).getDisplayCountry(Locale.ENGLISH)
+    return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
+}
+
 private fun formatElapsed(totalSeconds: Long): String {
     val h = totalSeconds / 3600
     val m = (totalSeconds % 3600) / 60
@@ -108,8 +117,12 @@ private fun formatElapsed(totalSeconds: Long): String {
 /** اگه کل حجم به‌جای 50 مثلاً 46.6 نشون داده شد، این رو بکن 1_000_000_000.0 */
 private const val BYTES_PER_GB = 1_073_741_824.0
 
-// ───────────────────────── پینگ ─────────────────────────
+// ───────────────────────── پینگ و چک آی‌پی ─────────────────────────
 // همان سنجش TCP صفحه‌ی انتخاب سرور روی سرور انتخاب‌شده اجرا می‌شود.
+
+private const val PING_REFRESH_MS = 5_000L
+private const val EXIT_CHECK_ATTEMPTS = 3
+private const val EXIT_CHECK_RETRY_MS = 2_000L
 
 // ───────────────────────── کارت (رنگ‌ها از تم فعال) ─────────────────────────
 
@@ -142,28 +155,41 @@ fun HomeScreen(
     var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
 
-    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
+    // مانیتور ترافیک فقط به وضعیت اتصال وابسته‌ست (نه به عوض شدن سرور)
+    LaunchedEffect(state) {
         if (state == ConnectionState.CONNECTED) {
             TrafficMonitor.start()
         } else {
             TrafficMonitor.stop()
         }
+    }
 
-        try {
-            val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
-            val result = ExitCheck().verifyExitCountry(socksPort = proxyPort)
-            result.onSuccess { info ->
-                ipAddress = info.ip
-                countryCode = info.countryCode
-            }.onFailure {
-                ipAddress = "-"
-                countryCode = ""
+    // آی‌پی و کشور خروجی: وقتی وصلیم از طریق SOCKS تونل، وگرنه مستقیم (آی‌پی واقعی خودمون).
+    //  - با هر تغییر وضعیت/سرور مقدار قبلی پاک می‌شه تا پرچم و آی‌پی سرور قبلی نمونه.
+    //  - اگه چک شکست خورد (مثلاً تونل هنوز آماده نیست) چند بار با فاصله دوباره امتحان می‌شه.
+    //  - تو حالت CONNECTING چک نمی‌کنیم؛ نتیجه‌اش بی‌معنیه.
+    val exitKey = if (state == ConnectionState.CONNECTED) "${selectedProxy?.host}:${selectedProxy?.port}" else ""
+    LaunchedEffect(state, exitKey) {
+        ipAddress = "-"
+        countryCode = ""
+        if (state == ConnectionState.CONNECTING) return@LaunchedEffect
+
+        val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
+        repeat(EXIT_CHECK_ATTEMPTS) { attempt ->
+            val result: Result<IpInfo> = try {
+                ExitCheck().verifyExitCountry(socksPort = proxyPort)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            ipAddress = "-"
-            countryCode = ""
+            val info = result.getOrNull()
+            if (info != null) {
+                ipAddress = info.ip.ifBlank { "-" }
+                countryCode = info.countryCode
+                return@LaunchedEffect
+            }
+            if (attempt < EXIT_CHECK_ATTEMPTS - 1) delay(EXIT_CHECK_RETRY_MS)
         }
     }
 
@@ -211,13 +237,28 @@ fun HomeScreen(
         if (state != ConnectionState.CONNECTED) return@LaunchedEffect
 
         val proxy = selectedProxy ?: return@LaunchedEffect
+        var misses = 0
         while (true) {
-            pingMs = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port)
-            delay(5_000)
+            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port)
+            if (ms != null) {
+                pingMs = ms
+                misses = 0
+            } else if (++misses >= 2) {
+                pingMs = null // یه timeout تصادفی عدد رو نمی‌پرونه؛ دو بار پشت‌سرهم یعنی واقعاً قطعه
+            }
+            delay(PING_REFRESH_MS)
         }
     }
 
     val c = LocalFoxExtras.current
+
+    // کشوری که نمایش می‌دیم: وصل → کشور خروجی (تا چک تموم نشده کشور سرور انتخابی)،
+    // در حال اتصال → کشور سرور انتخابی، قطع → کشور واقعی خودمون (اگه چک نشد، ایران).
+    val shownCountry = when (state) {
+        ConnectionState.CONNECTED -> countryCode.ifBlank { selectedProxy?.countryCode.orEmpty() }
+        ConnectionState.CONNECTING -> selectedProxy?.countryCode.orEmpty()
+        ConnectionState.DISCONNECTED -> countryCode.ifBlank { "IR" }
+    }
 
     val statusColors = LocalFoxyStatusColors.current
     val ping = pingMs
@@ -338,24 +379,8 @@ fun HomeScreen(
                             )
                         }
 
-                        // پینگ و آی‌پی در دو کارت هم‌عرض
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            PingPill(
-                                pingMs = ping,
-                                color = pingColor,
-                                modifier = Modifier.width(124.dp)
-                            )
-                            IpCountryFlagPill(
-                                state = state,
-                                ipCountryCode = countryCode,
-                                fallbackCountryCode = selectedProxy?.countryCode.orEmpty(),
-                                color = pingColor,
-                                modifier = Modifier.width(124.dp)
-                            )
-                        }
+                        // پینگ
+                        PingPill(pingMs = ping, color = pingColor)
                     }
 
                     // تایمر بزرگ
@@ -398,39 +423,30 @@ fun HomeScreen(
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val activeCountryCode = if (state == ConnectionState.CONNECTED) {
-                            countryCode.ifBlank { selectedProxy?.countryCode.orEmpty() }
-                        } else {
-                            ""
+                        val isIranShown = shownCountry.equals("IR", ignoreCase = true)
+                        val flag = flagEmoji(shownCountry)
+                        val locationTitle = when {
+                            isIranShown -> "Iran"
+                            countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
+                            state == ConnectionState.CONNECTING -> "Connecting…"
+                            else -> "Location"
                         }
-                        when {
-                            state == ConnectionState.DISCONNECTED ||
-                                (state == ConnectionState.CONNECTED && activeCountryCode.equals("IR", ignoreCase = true)) -> {
-                                Image(
+                        Box(
+                            modifier = Modifier.size(width = 56.dp, height = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                isIranShown -> Image(
                                     painter = painterResource(id = R.drawable.ic_flag_lion_sun),
                                     contentDescription = "Iran flag",
                                     contentScale = ContentScale.Fit,
-                                    modifier = Modifier.size(width = 56.dp, height = 32.dp)
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                            }
-                            state == ConnectionState.CONNECTED -> {
-                                val flag = flagEmoji(activeCountryCode)
-                                if (flag != null) {
-                                    Text(text = flag, fontSize = 30.sp)
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.Public,
-                                        contentDescription = "Server location",
-                                        tint = c.accent,
-                                        modifier = Modifier.size(30.dp)
-                                    )
-                                }
-                            }
-                            else -> {
-                                Icon(
+                                flag != null -> Text(text = flag, fontSize = 30.sp)
+                                else -> Icon(
                                     imageVector = Icons.Filled.Public,
                                     contentDescription = "Server location",
-                                    tint = c.textSecondary,
+                                    tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
                                     modifier = Modifier.size(30.dp)
                                 )
                             }
@@ -438,10 +454,18 @@ fun HomeScreen(
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "SERVER LOCATION",
-                                style = MaterialTheme.typography.labelMedium,
+                                text = if (state == ConnectionState.DISCONNECTED) "YOUR LOCATION" else "SERVER LOCATION",
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp,
+                                color = c.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = locationTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
                                 color = c.textPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -457,7 +481,7 @@ fun HomeScreen(
                         Spacer(Modifier.width(10.dp))
                         SignalBars(
                             color = pingColor,
-                            level = if (state == ConnectionState.CONNECTED) 3 else 0
+                            level = if (state == ConnectionState.CONNECTED) (ping?.let { PingUtil.level(it) } ?: 0) else 0
                         )
                         Spacer(Modifier.width(10.dp))
                         Icon(
@@ -667,12 +691,7 @@ private fun SignalBars(
 @Composable
 private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(24.dp)
-    val level = when {
-        pingMs == null -> 0
-        pingMs <= 120 -> 3
-        pingMs <= 300 -> 2
-        else -> 1
-    }
+    val level = pingMs?.let { PingUtil.level(it) } ?: 0
     Row(
         modifier = modifier
             .height(56.dp)
@@ -702,51 +721,6 @@ private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) 
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = color
-            )
-        }
-    }
-}
-
-/** کارت هم‌اندازه‌ی پینگ که فقط پرچم کشور IP را نشان می‌دهد. */
-@Composable
-private fun IpCountryFlagPill(
-    state: ConnectionState,
-    ipCountryCode: String,
-    fallbackCountryCode: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
-    val country = if (state == ConnectionState.CONNECTED) {
-        ipCountryCode.ifBlank { fallbackCountryCode }
-    } else {
-        ""
-    }
-    val showIranFlag = state == ConnectionState.DISCONNECTED ||
-        (state == ConnectionState.CONNECTED && country.equals("IR", ignoreCase = true))
-    val flag = if (state == ConnectionState.CONNECTED && !showIranFlag) flagEmoji(country) else null
-    val shape = RoundedCornerShape(24.dp)
-
-    Box(
-        modifier = modifier
-            .height(56.dp)
-            .clip(shape)
-            .background(color.copy(alpha = 0.12f))
-            .border(1.5.dp, color.copy(alpha = 0.7f), shape),
-        contentAlignment = Alignment.Center
-    ) {
-        when {
-            showIranFlag -> Image(
-                painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                contentDescription = "Iran flag",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(width = 56.dp, height = 32.dp)
-            )
-            flag != null -> Text(text = flag, fontSize = 32.sp)
-            else -> Icon(
-                imageVector = Icons.Filled.Public,
-                contentDescription = "Country flag unavailable",
-                tint = color,
-                modifier = Modifier.size(30.dp)
             )
         }
     }
