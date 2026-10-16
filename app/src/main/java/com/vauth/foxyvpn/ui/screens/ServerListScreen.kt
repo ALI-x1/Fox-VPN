@@ -99,6 +99,9 @@ private const val LIVE_INTERVAL_MS = 4_000L
 /** حداکثر پینگ هم‌زمان؛ که هم سریع باشه هم شبکه خفه نشه. */
 private const val PING_PARALLELISM = 8
 
+/** نمونه‌ی پینگ برای هر سرور تو لیست؛ کم‌تر از هوم‌اسکرین تا دور زنده سریع بمونه. */
+private const val LIST_PING_SAMPLES = 2
+
 // ───────────────────────── رنگ‌ها ─────────────────────────
 // رنگ‌های کارت/متن/اکسنت از تم برنامه (LocalFoxExtras) می‌آن؛ فقط رنگ‌های «کیفیت پینگ» ثابتن.
 
@@ -125,16 +128,12 @@ private fun flagResId(context: Context, code: String): Int {
 }
 
 private fun pingColor(ms: Int): Color = when {
-    ms < 300 -> PingGood
-    ms < 500 -> PingMedium
+    ms < PingUtil.GOOD_MS -> PingGood
+    ms < PingUtil.FAIR_MS -> PingMedium
     else -> PingBad
 }
 
-private fun pingLevel(ms: Int): Int = when {
-    ms < 300 -> 3
-    ms < 500 -> 2
-    else -> 1
-}
+private fun pingLevel(ms: Int): Int = PingUtil.level(ms)
 
 // ───────────────────────── صفحه ─────────────────────────
 
@@ -203,7 +202,7 @@ fun ServerListScreen(
                 for (t in targets) {
                     launch {
                         semaphore.withPermit {
-                            val ms = PingUtil.measureTcpLatencyMs(t.host, t.port)
+                            val ms = PingUtil.measureTcpLatencyMs(t.host, t.port, samples = LIST_PING_SAMPLES)
                             if (ms != null) {
                                 failCounts[t.key] = 0
                                 val prev = pingResults[t.key]
