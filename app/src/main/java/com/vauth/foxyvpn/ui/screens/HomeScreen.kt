@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +68,8 @@ import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
 import com.vauth.foxyvpn.data.TrafficMonitor
+import com.vauth.foxyvpn.data.TrafficState
+import com.vauth.foxyvpn.data.formatBytes
 import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.Entitlement
@@ -121,6 +125,16 @@ private const val BYTES_PER_GB = 1_073_741_824.0
 // همان سنجش TCP صفحه‌ی انتخاب سرور روی سرور انتخاب‌شده اجرا می‌شود.
 
 private const val PING_REFRESH_MS = 5_000L
+
+/** برای اینکه وصل شدن خودکار فقط یک بار در هر اجرای برنامه انجام بشه. */
+private object AutoConnectGate {
+    @Volatile var consumed = false
+}
+
+// همان رنگ‌های کیفیت پینگِ لیست سرورها: زیر ۳۰۰ سبز، زیر ۵۰۰ نارنجی، بالاتر قرمز
+private val PingGood = Color(0xFF22B573)
+private val PingMedium = Color(0xFFF2A81D)
+private val PingBad = Color(0xFFEF5350)
 private const val EXIT_CHECK_ATTEMPTS = 3
 private const val EXIT_CHECK_RETRY_MS = 2_000L
 
@@ -154,6 +168,16 @@ fun HomeScreen(
     val trafficState by TrafficMonitor.trafficState.collectAsState()
     var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
+
+    // وصل شدن خودکار (اگه تو تنظیمات روشن باشه): فقط یک بار در هر بار اجرای برنامه
+    LaunchedEffect(Unit) {
+        if (!AutoConnectGate.consumed) {
+            AutoConnectGate.consumed = true
+            if (app.settingsStore.autoConnect && FoxyVpnService.state.value == ConnectionState.DISCONNECTED) {
+                onRequestConnect()
+            }
+        }
+    }
 
     // مانیتور ترافیک فقط به وضعیت اتصال وابسته‌ست (نه به عوض شدن سرور)
     LaunchedEffect(state) {
@@ -230,21 +254,24 @@ fun HomeScreen(
     val dataTotalGb = ent?.maxBytes?.let { it.toDouble() / BYTES_PER_GB }?.takeIf { it > 0.0 } ?: 50.0
     val dataRemainingGb = ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
 
+    // پینگ همون پینگ لیست سرورهاست (TCP مستقیم به سرور انتخابی) و فقط «قبل از اتصال» اندازه‌گیری می‌شه.
+    // بعد از وصل شدن عدد آخرِ قبل از اتصال ثابت می‌مونه (VPN وصله و پینگ مستقیم دیگه معنی نداره).
     var pingMs by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
-        // هنگام قطع یا اتصال، پینگ اجرا نمی‌شود.
-        pingMs = null
-        if (state != ConnectionState.CONNECTED) return@LaunchedEffect
-
-        val proxy = selectedProxy ?: return@LaunchedEffect
+        if (state != ConnectionState.DISCONNECTED) return@LaunchedEffect
+        val proxy = selectedProxy
+        if (proxy == null) {
+            pingMs = null
+            return@LaunchedEffect
+        }
         var misses = 0
         while (true) {
-            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port)
+            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port, samples = 2)
             if (ms != null) {
                 pingMs = ms
                 misses = 0
             } else if (++misses >= 2) {
-                pingMs = null // یه timeout تصادفی عدد رو نمی‌پرونه؛ دو بار پشت‌سرهم یعنی واقعاً قطعه
+                pingMs = null // دو بار پشت‌سرهم جواب نداد: واقعاً در دسترس نیست
             }
             delay(PING_REFRESH_MS)
         }
@@ -262,11 +289,13 @@ fun HomeScreen(
 
     val statusColors = LocalFoxyStatusColors.current
     val ping = pingMs
-    // رنگ پینگ بر اساس وضعیت VPN است: خاکستری در حالت قطع/اتصال، سبز پس از اتصال.
-    val pingColor = if (state == ConnectionState.CONNECTED) {
-        statusColors.connected
-    } else {
-        c.textSecondary
+    // رنگ پینگ مثل لیست سرورها: سبز / زرد / قرمز بر اساس کیفیت؛ بدون عدد خاکستری
+    val pingLevel = ping?.let { PingUtil.level(it) } ?: 0
+    val pingColor = when (pingLevel) {
+        3 -> PingGood
+        2 -> PingMedium
+        1 -> PingBad
+        else -> c.textSecondary
     }
     val targetRingColor = when (state) {
         ConnectionState.CONNECTED -> statusColors.connected
@@ -291,7 +320,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // ───── هدر: لوگو + نام + تنظیمات ─────
@@ -304,9 +333,9 @@ fun HomeScreen(
                         Image(
                             painter = painterResource(id = R.drawable.ic_fox_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(52.dp)
+                            modifier = Modifier.size(46.dp)
                         )
-                        Spacer(Modifier.width(14.dp))
+                        Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
                                 text = buildAnnotatedString {
@@ -341,86 +370,68 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // ───── کارت اصلی: وضعیت، تایمر، سرعت، سرور ─────
+                // ───── کارت اصلی: وضعیت، تایمر، ترافیک، سرور ─────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .foxCard(c, 28.dp)
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (state == ConnectionState.DISCONNECTED) statusColors.connected else ringColor
-                                    )
-                            )
-                            Spacer(Modifier.width(10.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (state == ConnectionState.DISCONNECTED) statusColors.connected else ringColor
+                                        )
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = when (state) {
+                                        ConnectionState.CONNECTED -> "CONNECTED"
+                                        ConnectionState.CONNECTING -> "CONNECTING…"
+                                        ConnectionState.DISCONNECTED -> "READY TO CONNECT"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    letterSpacing = 1.sp,
+                                    color = c.textSecondary
+                                )
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            // تایمر بزرگ
                             Text(
-                                text = when (state) {
-                                    ConnectionState.CONNECTED -> "CONNECTED"
-                                    ConnectionState.CONNECTING -> "CONNECTING…"
-                                    ConnectionState.DISCONNECTED -> "READY TO CONNECT"
-                                },
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Medium,
-                                letterSpacing = 1.sp,
-                                color = c.textSecondary
+                                text = formatElapsed(elapsedSeconds),
+                                fontSize = 40.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = c.textPrimary
                             )
                         }
 
-                        // پینگ
+                        // پینگ (قبل از اتصال اندازه‌گیری می‌شه)
                         PingPill(pingMs = ping, color = pingColor)
                     }
 
-                    // تایمر بزرگ
-                    Text(
-                        text = formatElapsed(elapsedSeconds),
-                        fontSize = 46.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = c.textPrimary
-                    )
+                    // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
+                    TrafficCard(c = c, traffic = trafficState)
 
-                    // آپلود / دانلود
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        SpeedCard(
-                            modifier = Modifier.weight(1f),
-                            colors = c,
-                            label = "UPLOAD",
-                            value = formatBytesPerSecond(trafficState.uploadSpeed.toLong()),
-                            icon = Icons.Filled.ArrowUpward,
-                            iconColor = c.upload
-                        )
-                        SpeedCard(
-                            modifier = Modifier.weight(1f),
-                            colors = c,
-                            label = "DOWNLOAD",
-                            value = formatBytesPerSecond(trafficState.downloadSpeed.toLong()),
-                            icon = Icons.Filled.ArrowDownward,
-                            iconColor = c.download
-                        )
-                    }
-
-                    // سطر کشور / IP سرور
+                    // سطر کشور / IP سرور + دکمه‌ی تغییر سرور
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .foxCard(c, 18.dp, color = c.innerCard.copy(alpha = 0.6f))
                             .clickable(onClick = onOpenServers)
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                            .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val isIranShown = shownCountry.equals("IR", ignoreCase = true)
@@ -432,7 +443,7 @@ fun HomeScreen(
                             else -> "Location"
                         }
                         Box(
-                            modifier = Modifier.size(width = 56.dp, height = 32.dp),
+                            modifier = Modifier.size(width = 52.dp, height = 32.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             when {
@@ -451,7 +462,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        Spacer(Modifier.width(14.dp))
+                        Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = if (state == ConnectionState.DISCONNECTED) "YOUR LOCATION" else "SERVER LOCATION",
@@ -478,22 +489,12 @@ fun HomeScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
-                        SignalBars(
-                            color = pingColor,
-                            level = if (state == ConnectionState.CONNECTED) (ping?.let { PingUtil.level(it) } ?: 0) else 0
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Icon(
-                            imageVector = Icons.Filled.ArrowForwardIos,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = c.textSecondary
-                        )
+                        Spacer(Modifier.width(8.dp))
+                        ChangeServerButton(c = c, onClick = onOpenServers)
                     }
                 }
 
-                Spacer(Modifier.height(36.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // ───── دکمه بزرگ اتصال با هاله نارنجی ─────
                 ConnectButton(
@@ -507,7 +508,7 @@ fun HomeScreen(
                     }
                 )
 
-                Spacer(Modifier.height(36.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // ───── کارت پایین: Data remaining ─────
                 DataRemainingCard(
@@ -539,13 +540,13 @@ private fun ConnectButton(
 ) {
     val buttonSize = (206 * scale).dp
     Box(
-        modifier = Modifier.size(290.dp),
+        modifier = Modifier.size(250.dp),
         contentAlignment = Alignment.Center
     ) {
         // حلقه‌های هاله بیرونی
         Box(
             modifier = Modifier
-                .size(290.dp)
+                .size(250.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
@@ -556,7 +557,7 @@ private fun ConnectButton(
         )
         Box(
             modifier = Modifier
-                .size(246.dp)
+                .size(228.dp)
                 .clip(CircleShape)
                 .background(ringColor.copy(alpha = 0.07f))
                 .border(1.dp, ringColor.copy(alpha = 0.18f), CircleShape)
@@ -649,7 +650,7 @@ private fun SpeedCard(
 private fun IconBubble(icon: androidx.compose.ui.graphics.vector.ImageVector, c: FoxExtras) {
     Box(
         modifier = Modifier
-            .size(46.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .background(c.accent.copy(alpha = 0.10f))
             .border(1.dp, c.cardBorder, CircleShape),
@@ -659,7 +660,7 @@ private fun IconBubble(icon: androidx.compose.ui.graphics.vector.ImageVector, c:
             imageVector = icon,
             contentDescription = null,
             tint = c.accent,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(22.dp)
         )
     }
 }
@@ -687,42 +688,164 @@ private fun SignalBars(
     }
 }
 
-/** قرص پینگ کنار وضعیت اتصال (سبز = خوب، زرد = متوسط، قرمز = ضعیف). */
+/** قرص پینگ: عدد کامل و خوانا + میله‌های سیگنال؛ رنگ مثل لیست سرورها (سبز / نارنجی / قرمز). */
 @Composable
 private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(16.dp)
     val level = pingMs?.let { PingUtil.level(it) } ?: 0
     Row(
         modifier = modifier
-            .height(56.dp)
+            .widthIn(min = 104.dp)
             .clip(shape)
-            .background(color.copy(alpha = 0.12f))
-            .border(1.5.dp, color.copy(alpha = 0.7f), shape)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .background(color.copy(alpha = 0.13f))
+            .border(1.dp, color.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SignalBars(
-            color = color,
-            level = level,
-            heights = listOf(8.dp, 14.dp, 20.dp),
-            barWidth = 4.dp
-        )
-        Spacer(Modifier.width(10.dp))
-        Column {
+        SignalBars(color = color, level = level)
+        Spacer(Modifier.width(8.dp))
+        if (pingMs != null) {
             Text(
-                text = "PING",
+                text = pingMs.toString(),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = color,
+                maxLines = 1
+            )
+            Spacer(Modifier.width(2.dp))
+            Text(
+                text = "ms",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = color.copy(alpha = 0.85f),
+                maxLines = 1
+            )
+        } else {
+            Text(
+                text = "— ms",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** باکس ترافیک: دانلود و آپلود کنار هم؛ هرکدام سرعت لحظه‌ای + مصرف کل از شروع اتصال. */
+@Composable
+private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .foxCard(c, 20.dp, color = c.innerCard.copy(alpha = 0.6f))
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TrafficColumn(
+            modifier = Modifier.weight(1f),
+            c = c,
+            label = "DOWNLOAD",
+            icon = Icons.Filled.ArrowDownward,
+            tint = c.download,
+            speed = formatBytesPerSecond(traffic.downloadSpeed.toLong()),
+            total = formatBytes(traffic.totalDownload),
+        )
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(54.dp)
+                .background(c.cardBorder)
+        )
+        TrafficColumn(
+            modifier = Modifier.weight(1f),
+            c = c,
+            label = "UPLOAD",
+            icon = Icons.Filled.ArrowUpward,
+            tint = c.upload,
+            speed = formatBytesPerSecond(traffic.uploadSpeed.toLong()),
+            total = formatBytes(traffic.totalUpload),
+        )
+    }
+}
+
+@Composable
+private fun TrafficColumn(
+    modifier: Modifier,
+    c: FoxExtras,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    speed: String,
+    total: String,
+) {
+    Column(modifier = modifier.padding(horizontal = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(tint.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
-                color = color
-            )
-            Text(
-                text = pingMs?.let { "$it ms" } ?: "—",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = color
+                color = c.textSecondary,
+                maxLines = 1
             )
         }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = speed,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = c.textPrimary,
+            maxLines = 1
+        )
+        Text(
+            text = "Total  $total",
+            fontSize = 12.sp,
+            color = c.textSecondary,
+            maxLines = 1
+        )
+    }
+}
+
+/** دکمه‌ی تغییر سرور کنار سطر کشور. */
+@Composable
+private fun ChangeServerButton(c: FoxExtras, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(c.accent, c.accent.copy(alpha = 0.82f))))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.SwapHoriz,
+            contentDescription = "Change server",
+            tint = Color.White,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = "CHANGE",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.8.sp,
+            color = Color.White,
+            maxLines = 1
+        )
     }
 }
 
@@ -772,8 +895,8 @@ private fun DataRemainingCard(
     Column(
         modifier = modifier
             .foxCard(c, 26.dp)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBubble(Icons.Filled.Public, c)
