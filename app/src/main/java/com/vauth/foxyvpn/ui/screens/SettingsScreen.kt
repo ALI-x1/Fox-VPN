@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Description
@@ -93,12 +95,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -325,6 +334,13 @@ fun SettingsScreen(
                     context.startActivity(
                         Intent(Settings.ACTION_VPN_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
+                }.onFailure {
+                    // بعضی گوشی‌ها صفحه VPN را ندارند؛ حداقل تنظیمات شبکه را باز کن
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
                 }
             },
             confirmLabel = "Open settings",
@@ -449,7 +465,11 @@ fun SettingsScreen(
                                         c = c,
                                         icon = Icons.Filled.Apps,
                                         title = "Split tunnel",
-                                        status = if (excludedApps.isEmpty()) "None" else "${excludedApps.size} app(s)",
+                                        status = when (excludedApps.size) {
+                                            0 -> "None"
+                                            1 -> "1 app"
+                                            else -> "${excludedApps.size} apps"
+                                        },
                                         active = excludedApps.isNotEmpty(),
                                         onClick = { showSplitTunnelDialog = true },
                                     )
@@ -900,7 +920,7 @@ private fun AccountHeaderRow(c: FoxExtras, onClick: () -> Unit) {
     }
 }
 
-/** کاشی سریع: آیکون، عنوان و وضعیت؛ وقتی فعاله با رنگ accent پررنگ می‌شه. */
+/** کاشی سریع: آیکون، عنوان و وضعیت (به‌شکل قرص)؛ وقتی فعاله با رنگ accent پررنگ می‌شه. */
 @Composable
 private fun QuickTile(
     modifier: Modifier,
@@ -911,59 +931,107 @@ private fun QuickTile(
     active: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(24.dp)
+    val activeBrush = Brush.verticalGradient(
+        listOf(c.accent.copy(alpha = 0.22f), c.accent.copy(alpha = 0.08f))
+    )
     Column(
         modifier = modifier
-            .height(104.dp)
+            .heightIn(min = 140.dp)
+            .shadow(
+                if (active) 8.dp else 4.dp, shape,
+                ambientColor = c.accent.copy(alpha = 0.18f),
+                spotColor = c.accent.copy(alpha = 0.18f),
+            )
             .clip(shape)
-            .background(if (active) c.accent.copy(alpha = 0.14f) else c.card)
-            .border(1.dp, if (active) c.accent.copy(alpha = 0.6f) else c.cardBorder, shape)
+            .background(if (active) activeBrush else SolidColor(c.card))
+            .border(1.dp, if (active) c.accent.copy(alpha = 0.65f) else c.cardBorder, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(54.dp)
+                .then(
+                    if (active) Modifier.shadow(10.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
+                    else Modifier
+                )
                 .clip(CircleShape)
-                .background(if (active) c.accent else c.accent.copy(alpha = 0.10f)),
+                .background(
+                    if (active) Brush.linearGradient(listOf(c.accentLight, c.accent))
+                    else SolidColor(c.accent.copy(alpha = 0.12f))
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (active) Color.White else c.accent,
-                modifier = Modifier.size(21.dp),
+                modifier = Modifier.size(28.dp),
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
             text = title,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = c.textPrimary,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = status,
-            fontSize = 11.sp,
-            color = if (active) c.accentText else c.textSecondary,
-            maxLines = 1,
-        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(if (active) c.accent.copy(alpha = 0.18f) else c.innerCard)
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+        ) {
+            Text(
+                text = status,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (active) c.accentText else c.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
-/** کارت تلگرام: جایگزین ردیف Source code. */
+/** لوگوی هواپیمای کاغذی تلگرام به‌صورت وکتور (در آیکون‌های Material وجود ندارد). */
+private val TelegramPlane: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "TelegramPlane",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = PathParser().parsePathString(
+            "M9.78,18.65L10.06,14.42L17.74,7.5C18.08,7.19 17.67,7.04 17.22,7.31L7.74,13.3L3.64,12" +
+                "C2.76,11.75 2.75,11.14 3.84,10.7L19.81,4.54C20.54,4.21 21.24,4.72 20.96,5.84L18.24,18.65" +
+                "C18.05,19.56 17.5,19.78 16.74,19.36L12.6,16.3L10.61,18.23C10.39,18.45 10.21,18.63 9.78,18.65Z"
+        ).toNodes(),
+        fill = SolidColor(Color.White),
+    ).build()
+}
+
+/** کارت تلگرام؛ رنگ‌ها از تم فعال (accent) می‌آید و فقط لوگوی تلگرام ثابت است. */
 @Composable
 private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(22.dp)
     Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(c.innerCard.copy(alpha = 0.7f))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(c.accent.copy(alpha = 0.14f), c.innerCard.copy(alpha = 0.7f))
+                    )
+                )
                 .border(1.dp, c.accent.copy(alpha = 0.45f), shape)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -971,23 +1039,23 @@ private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .shadow(8.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
+                    .size(52.dp)
+                    .shadow(10.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = null,
+                    imageVector = TelegramPlane,
+                    contentDescription = "Telegram",
                     tint = Color.White,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(30.dp),
                 )
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Telegram",
+                    text = "Support & updates",
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary,
                 )
@@ -998,12 +1066,20 @@ private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
                     color = c.accentText,
                 )
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = c.textSecondary,
-                modifier = Modifier.size(22.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(c.accent.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = c.accentText,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }
@@ -1041,11 +1117,14 @@ private fun FoxDialog(
     onConfirm: () -> Unit,
     confirmEnabled: Boolean = true,
     confirmLabel: String = "Save",
+    wide: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = LocalFoxExtras.current
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = if (wide) Modifier.fillMaxWidth(0.94f) else Modifier,
+        properties = DialogProperties(usePlatformDefaultWidth = !wide),
         containerColor = c.innerCard,
         shape = RoundedCornerShape(28.dp),
         titleContentColor = c.textPrimary,
@@ -1396,6 +1475,45 @@ private fun UpstreamProxyCredentialsDialog(
 
 private data class InstalledAppEntry(val packageName: String, val label: String)
 
+/** کش کوچک آیکون برنامه‌ها تا اسکرول لیست روان بماند. */
+private object AppIconCache {
+    private val cache = android.util.LruCache<String, ImageBitmap>(160)
+    fun get(pkg: String): ImageBitmap? = cache.get(pkg)
+    fun put(pkg: String, bmp: ImageBitmap) { cache.put(pkg, bmp) }
+}
+
+@Composable
+private fun AppIcon(packageName: String, c: FoxExtras, size: Dp = 42.dp) {
+    val context = LocalContext.current
+    val bitmap by produceState<ImageBitmap?>(initialValue = AppIconCache.get(packageName), packageName) {
+        if (value == null) {
+            val loaded = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
+                }.getOrNull()
+            }
+            if (loaded != null) {
+                AppIconCache.put(packageName, loaded)
+                value = loaded
+            }
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.accent.copy(alpha = 0.08f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val img = bitmap
+        if (img != null) {
+            Image(bitmap = img, contentDescription = null, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(Icons.Filled.Apps, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
 @Composable
 private fun SplitTunnelDialog(
     current: Set<String>,
@@ -1406,8 +1524,9 @@ private fun SplitTunnelDialog(
     val context = LocalContext.current
     var selected by remember { mutableStateOf(current) }
     var searchQuery by remember { mutableStateOf("") }
+    val initiallySelected = remember { current }
 
-    val installedApps by produceState<List<InstalledAppEntry>>(initialValue = emptyList()) {
+    val installedApps by produceState<List<InstalledAppEntry>?>(initialValue = null) {
         value = withContext(Dispatchers.IO) {
             val packageManager = context.packageManager
             packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -1417,15 +1536,20 @@ private fun SplitTunnelDialog(
                 .map { info: android.content.pm.ApplicationInfo ->
                     InstalledAppEntry(info.packageName, info.loadLabel(packageManager).toString())
                 }
-                .sortedBy { it.label.lowercase() }
+                // برنامه‌هایی که از قبل انتخاب شده بالا می‌آیند، بقیه الفبایی
+                .sortedWith(
+                    compareByDescending<InstalledAppEntry> { it.packageName in initiallySelected }
+                        .thenBy { it.label.lowercase() }
+                )
                 .toList()
         }
     }
     val filteredApps = remember(installedApps, searchQuery) {
-        if (searchQuery.isBlank()) {
-            installedApps
-        } else {
-            installedApps.filter { it.label.contains(searchQuery, ignoreCase = true) }
+        val all = installedApps.orEmpty()
+        if (searchQuery.isBlank()) all
+        else all.filter {
+            it.label.contains(searchQuery, ignoreCase = true) ||
+                it.packageName.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -1433,26 +1557,59 @@ private fun SplitTunnelDialog(
         title = "Split tunneling",
         onDismiss = onDismiss,
         onConfirm = { onConfirm(selected) },
+        wide = true,
     ) {
         Text(
             "Selected apps bypass the VPN and use your normal connection.",
             style = MaterialTheme.typography.bodySmall,
             color = c.textSecondary,
-            modifier = Modifier.padding(bottom = 8.dp),
+            modifier = Modifier.padding(bottom = 12.dp),
         )
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            label = { Text("Search apps") },
+            placeholder = { Text("Search apps") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = c.accent) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = c.textSecondary)
+                    }
+                }
+            },
             singleLine = true,
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = foxFieldColors(c),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-        )
-        if (installedApps.isEmpty()) {
+                .padding(top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (selected.isEmpty()) c.innerCard else c.accent.copy(alpha = 0.18f))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = if (selected.isEmpty()) "No apps selected" else "${selected.size} selected",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selected.isEmpty()) c.textSecondary else c.accentText,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            if (selected.isNotEmpty()) {
+                TextButton(onClick = { selected = emptySet() }, colors = foxTextButtonColors(c)) {
+                    Text("Clear all", fontSize = 13.sp)
+                }
+            }
+        }
+        val apps = installedApps
+        if (apps == null) {
             CircularProgressIndicator(
                 color = c.accent,
                 modifier = Modifier
@@ -1467,23 +1624,40 @@ private fun SplitTunnelDialog(
                 modifier = Modifier.padding(vertical = 12.dp),
             )
         } else {
-            LazyColumn(modifier = Modifier.height(360.dp)) {
+            LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
                 items(filteredApps, key = { it.packageName }) { app ->
                     val isChecked = selected.contains(app.packageName)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isChecked) c.accent.copy(alpha = 0.10f) else Color.Transparent)
                             .clickable {
-                                selected = if (isChecked) {
-                                    selected - app.packageName
-                                } else {
-                                    selected + app.packageName
-                                }
+                                selected = if (isChecked) selected - app.packageName else selected + app.packageName
                             }
-                            .padding(vertical = 2.dp),
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                     ) {
+                        AppIcon(packageName = app.packageName, c = c)
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.label,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = c.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = app.packageName,
+                                fontSize = 11.sp,
+                                color = c.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         Checkbox(
                             checked = isChecked,
                             onCheckedChange = {
@@ -1495,7 +1669,6 @@ private fun SplitTunnelDialog(
                                 checkmarkColor = Color.White,
                             ),
                         )
-                        Text(app.label, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
