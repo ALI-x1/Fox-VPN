@@ -18,6 +18,7 @@ import com.vauth.foxyvpn.ui.navigation.FoxyNavGraph
 import com.vauth.foxyvpn.ui.theme.FoxyVpnTheme
 import com.vauth.foxyvpn.ui.theme.rememberThemeController
 import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.vpn.PingUtil
 
 class MainActivity : ComponentActivity() {
 
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
 
             Toast.makeText(
                 this,
-                "Fox-VPN needs Android's VPN permission to tunnel this device's traffic. " +
+                "FoxyVPN needs Android's VPN permission to tunnel this device's traffic. " +
                     "Proxy-only mode in Settings works without it.",
                 Toast.LENGTH_LONG,
             ).show()
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PingUtil.init(applicationContext)
         val app = application as FoxyVpnApp
         setContent {
 
