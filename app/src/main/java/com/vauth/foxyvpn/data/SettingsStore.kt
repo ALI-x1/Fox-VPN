@@ -77,6 +77,11 @@ class SettingsStore(context: Context) {
     val effectiveCustomDnsServer: String?
         get() = if (customDnsEnabled) customDnsServer.takeIf { isValidDnsServer(it) } else null
 
+    /** وصل شدن خودکار هنگام باز شدن برنامه */
+    var autoConnect: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_CONNECT, false)
+        set(value) { prefs.edit().putBoolean(KEY_AUTO_CONNECT, value).apply() }
+
     var proxyOnlyMode: Boolean
         get() = prefs.getBoolean(KEY_PROXY_ONLY_MODE, false)
         set(value) { prefs.edit().putBoolean(KEY_PROXY_ONLY_MODE, value).apply() }
@@ -156,6 +161,7 @@ class SettingsStore(context: Context) {
         private const val KEY_CUSTOM_DNS_ENABLED = "custom_dns_enabled"
         private const val KEY_CUSTOM_DNS_SERVER = "custom_dns_server"
         private const val KEY_PROXY_ONLY_MODE = "proxy_only_mode"
+        private const val KEY_AUTO_CONNECT = "auto_connect"
         private const val KEY_CUSTOM_EDGE_ADDRESS = "custom_edge_address"
         private const val KEY_UPSTREAM_PROXY_ENABLED = "upstream_proxy_enabled"
         private const val KEY_UPSTREAM_PROXY_TYPE = "upstream_proxy_type"
