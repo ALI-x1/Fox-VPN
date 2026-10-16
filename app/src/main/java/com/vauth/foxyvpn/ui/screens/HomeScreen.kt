@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,10 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowForwardIos
@@ -53,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,6 +84,7 @@ import com.vauth.foxyvpn.vpn.PingUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.roundToInt
 
 // ───────────────────────── تایمر اتصال ─────────────────────────
 
@@ -122,7 +123,7 @@ private fun formatElapsed(totalSeconds: Long): String {
 private const val BYTES_PER_GB = 1_073_741_824.0
 
 // ───────────────────────── پینگ و چک آی‌پی ─────────────────────────
-// همان سنجش TCP صفحه‌ی انتخاب سرور روی سرور انتخاب‌شده اجرا می‌شود.
+// همان سنجش TCP صفحه‌ی انتخاب سرور، بعد از اتصال روی سرور انتخاب‌شده اجرا می‌شود.
 
 private const val PING_REFRESH_MS = 5_000L
 
@@ -254,19 +255,17 @@ fun HomeScreen(
     val dataTotalGb = ent?.maxBytes?.let { it.toDouble() / BYTES_PER_GB }?.takeIf { it > 0.0 } ?: 50.0
     val dataRemainingGb = ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
 
-    // پینگ همون پینگ لیست سرورهاست (TCP مستقیم به سرور انتخابی) و فقط «قبل از اتصال» اندازه‌گیری می‌شه.
-    // بعد از وصل شدن عدد آخرِ قبل از اتصال ثابت می‌مونه (VPN وصله و پینگ مستقیم دیگه معنی نداره).
+    // پینگ فقط «بعد از اتصال» اندازه‌گیری می‌شه؛ قبل از اتصال (و تو حالت CONNECTING) null می‌مونه
+    // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
+    // سنجش TCP مستقیم به سرور انتخابی از شبکه‌ی واقعی گوشی انجام می‌شه (نه از دل تونل)؛ PingUtil.init لازمه.
     var pingMs by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
-        if (state != ConnectionState.DISCONNECTED) return@LaunchedEffect
-        val proxy = selectedProxy
-        if (proxy == null) {
-            pingMs = null
-            return@LaunchedEffect
-        }
+        pingMs = null
+        if (state != ConnectionState.CONNECTED) return@LaunchedEffect
+        val proxy = selectedProxy ?: return@LaunchedEffect
         var misses = 0
         while (true) {
-            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port, samples = 2)
+            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port, samples = 3)
             if (ms != null) {
                 pingMs = ms
                 misses = 0
@@ -289,7 +288,7 @@ fun HomeScreen(
 
     val statusColors = LocalFoxyStatusColors.current
     val ping = pingMs
-    // رنگ پینگ مثل لیست سرورها: سبز / زرد / قرمز بر اساس کیفیت؛ بدون عدد خاکستری
+    // رنگ پینگ مثل لیست سرورها: سبز / زرد / قرمز بر اساس کیفیت؛ بدون عدد (قبل از اتصال) خاکستری
     val pingLevel = ping?.let { PingUtil.level(it) } ?: 0
     val pingColor = when (pingLevel) {
         3 -> PingGood
@@ -309,208 +308,227 @@ fun HomeScreen(
         label = "connect-scale",
     )
 
+    val layoutDirection = LocalLayoutDirection.current
+
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
         ) {
+            // بدون اسکرول: بالا (هدر + کارت اصلی) ثابته، وسط فضای باقی‌مانده رو برای دکمه‌ی اتصال
+            // می‌گیره و کارت دیتا چسبیده به لبه‌ی پایین صفحه‌ست.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        end = padding.calculateEndPadding(layoutDirection),
+                        top = padding.calculateTopPadding(),
+                    ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // ───── هدر: لوگو + نام + تنظیمات ─────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_fox_logo),
-                            contentDescription = null,
-                            modifier = Modifier.size(46.dp)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = buildAnnotatedString {
-                                    withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
-                                    withStyle(SpanStyle(color = c.accent)) { append("VPN") }
-                                },
-                                fontSize = 30.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                            )
-                            Text(
-                                text = "Secure & Private",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = c.textSecondary,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(c.card)
-                            .border(1.dp, c.cardBorder, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                            tint = c.textPrimary.copy(alpha = 0.75f)
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // ───── کارت اصلی: وضعیت، تایمر، ترافیک، سرور ─────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .foxCard(c, 28.dp)
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    // ───── هدر: لوگو + نام + تنظیمات ─────
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (state == ConnectionState.DISCONNECTED) statusColors.connected else ringColor
-                                        )
-                                )
-                                Spacer(Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_fox_logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(46.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
                                 Text(
-                                    text = when (state) {
-                                        ConnectionState.CONNECTED -> "CONNECTED"
-                                        ConnectionState.CONNECTING -> "CONNECTING…"
-                                        ConnectionState.DISCONNECTED -> "READY TO CONNECT"
+                                    text = buildAnnotatedString {
+                                        withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
+                                        withStyle(SpanStyle(color = c.accent)) { append("VPN") }
                                     },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Medium,
-                                    letterSpacing = 1.sp,
-                                    color = c.textSecondary
+                                    fontSize = 30.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                )
+                                Text(
+                                    text = "Secure & Private",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = c.textSecondary,
+                                    letterSpacing = 1.sp
                                 )
                             }
-                            Spacer(Modifier.height(2.dp))
-                            // تایمر بزرگ
-                            Text(
-                                text = formatElapsed(elapsedSeconds),
-                                fontSize = 40.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = c.textPrimary
-                            )
                         }
 
-                        // پینگ (قبل از اتصال اندازه‌گیری می‌شه)
-                        PingPill(pingMs = ping, color = pingColor)
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(c.card)
+                                .border(1.dp, c.cardBorder, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                                tint = c.textPrimary.copy(alpha = 0.75f)
+                            )
+                        }
                     }
 
-                    // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
-                    TrafficCard(c = c, traffic = trafficState)
 
-                    // سطر کشور / IP سرور + دکمه‌ی تغییر سرور
-                    Row(
+                    Spacer(Modifier.height(10.dp))
+
+                    // ───── کارت اصلی: وضعیت، تایمر، ترافیک، سرور ─────
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .foxCard(c, 18.dp, color = c.innerCard.copy(alpha = 0.6f))
-                            .clickable(onClick = onOpenServers)
-                            .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .foxCard(c, 28.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val isIranShown = shownCountry.equals("IR", ignoreCase = true)
-                        val flag = flagEmoji(shownCountry)
-                        val locationTitle = when {
-                            isIranShown -> "Iran"
-                            countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
-                            state == ConnectionState.CONNECTING -> "Connecting…"
-                            else -> "Location"
-                        }
-                        Box(
-                            modifier = Modifier.size(width = 52.dp, height = 32.dp),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            when {
-                                isIranShown -> Image(
-                                    painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                                    contentDescription = "Iran flag",
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                flag != null -> Text(text = flag, fontSize = 30.sp)
-                                else -> Icon(
-                                    imageVector = Icons.Filled.Public,
-                                    contentDescription = "Server location",
-                                    tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
-                                    modifier = Modifier.size(30.dp)
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (state == ConnectionState.DISCONNECTED) statusColors.connected else ringColor
+                                            )
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = when (state) {
+                                            ConnectionState.CONNECTED -> "CONNECTED"
+                                            ConnectionState.CONNECTING -> "CONNECTING…"
+                                            ConnectionState.DISCONNECTED -> "READY TO CONNECT"
+                                        },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        letterSpacing = 1.sp,
+                                        color = c.textSecondary
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                // تایمر بزرگ
+                                Text(
+                                    text = formatElapsed(elapsedSeconds),
+                                    fontSize = 40.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = c.textPrimary
                                 )
                             }
+
+                            // پینگ (بعد از اتصال اندازه‌گیری می‌شه؛ قبلش خاکستری "---")
+                            PingPill(pingMs = ping, color = pingColor)
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (state == ConnectionState.DISCONNECTED) "YOUR LOCATION" else "SERVER LOCATION",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp,
-                                color = c.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = locationTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = c.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "IP  $ipAddress",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = c.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+
+                        // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
+                        TrafficCard(c = c, traffic = trafficState)
+
+                        // سطر کشور / IP سرور + دکمه‌ی تغییر سرور
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .foxCard(c, 18.dp, color = c.innerCard.copy(alpha = 0.6f))
+                                .clickable(onClick = onOpenServers)
+                                .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val isIranShown = shownCountry.equals("IR", ignoreCase = true)
+                            val flag = flagEmoji(shownCountry)
+                            val locationTitle = when {
+                                isIranShown -> "Iran"
+                                countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
+                                state == ConnectionState.CONNECTING -> "Connecting…"
+                                else -> "Location"
+                            }
+                            Box(
+                                modifier = Modifier.size(width = 52.dp, height = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                when {
+                                    isIranShown -> Image(
+                                        painter = painterResource(id = R.drawable.ic_flag_lion_sun),
+                                        contentDescription = "Iran flag",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    flag != null -> Text(text = flag, fontSize = 30.sp)
+                                    else -> Icon(
+                                        imageVector = Icons.Filled.Public,
+                                        contentDescription = "Server location",
+                                        tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (state == ConnectionState.DISCONNECTED) "YOUR LOCATION" else "SERVER LOCATION",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = c.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = locationTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = c.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "IP  $ipAddress",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = c.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            ChangeServerButton(c = c, onClick = onOpenServers)
                         }
-                        Spacer(Modifier.width(8.dp))
-                        ChangeServerButton(c = c, onClick = onOpenServers)
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                // ───── دکمه بزرگ اتصال با هاله؛ اندازه‌اش با فضای خالی تنظیم می‌شه ─────
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val buttonArea = minOf(maxWidth, maxHeight, 270.dp)
+                    ConnectButton(
+                        size = buttonArea,
+                        ringColor = ringColor,
+                        scale = scale,
+                        connected = state != ConnectionState.DISCONNECTED,
+                        labelColor = if (state == ConnectionState.DISCONNECTED) c.accentText else ringColor,
+                        c = c,
+                        onClick = {
+                            if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
+                        }
+                    )
+                }
 
-                // ───── دکمه بزرگ اتصال با هاله نارنجی ─────
-                ConnectButton(
-                    ringColor = ringColor,
-                    scale = scale,
-                    connected = state != ConnectionState.DISCONNECTED,
-                    labelColor = if (state == ConnectionState.DISCONNECTED) c.accentText else ringColor,
-                    c = c,
-                    onClick = {
-                        if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
-                    }
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                // ───── کارت پایین: Data remaining ─────
+                // ───── پنل پایین: Data remaining (چسبیده به لبه‌ی پایین) ─────
                 DataRemainingCard(
                     remainingGb = dataRemainingGb,
                     totalGb = dataTotalGb,
@@ -518,10 +536,9 @@ fun HomeScreen(
                     c = c,
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    bottomInset = padding.calculateBottomPadding(),
                 )
-
-                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -531,6 +548,7 @@ fun HomeScreen(
 
 @Composable
 private fun ConnectButton(
+    size: Dp,
     ringColor: Color,
     scale: Float,
     connected: Boolean,
@@ -538,15 +556,16 @@ private fun ConnectButton(
     c: FoxExtras,
     onClick: () -> Unit,
 ) {
-    val buttonSize = (206 * scale).dp
+    // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
+    val buttonSize = size * 0.824f * scale
     Box(
-        modifier = Modifier.size(250.dp),
+        modifier = Modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
         // حلقه‌های هاله بیرونی
         Box(
             modifier = Modifier
-                .size(250.dp)
+                .size(size)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
@@ -557,7 +576,7 @@ private fun ConnectButton(
         )
         Box(
             modifier = Modifier
-                .size(228.dp)
+                .size(size * 0.912f)
                 .clip(CircleShape)
                 .background(ringColor.copy(alpha = 0.07f))
                 .border(1.dp, ringColor.copy(alpha = 0.18f), CircleShape)
@@ -584,14 +603,14 @@ private fun ConnectButton(
                 Image(
                     painter = painterResource(id = R.drawable.ic_fox_logo),
                     contentDescription = if (connected) "Disconnect" else "Connect",
-                    modifier = Modifier.size(64.dp)
+                    modifier = Modifier.size(size * 0.256f)
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(size * 0.056f))
                 Text(
                     text = if (connected) "DISCONNECT" else "CONNECT",
-                    fontSize = 18.sp,
+                    fontSize = (size.value * 0.072f).sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 4.sp,
+                    letterSpacing = (size.value * 0.016f).sp,
                     color = labelColor
                 )
             }
@@ -688,7 +707,7 @@ private fun SignalBars(
     }
 }
 
-/** قرص پینگ: عدد کامل و خوانا + میله‌های سیگنال؛ رنگ مثل لیست سرورها (سبز / نارنجی / قرمز). */
+/** قرص پینگ: عدد + میله‌های سیگنال؛ رنگ مثل لیست سرورها (سبز / نارنجی / قرمز). بدون عدد: خاکستری و "---". */
 @Composable
 private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(16.dp)
@@ -723,9 +742,10 @@ private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) 
             )
         } else {
             Text(
-                text = "— ms",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                text = "---",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp,
                 color = color,
                 maxLines = 1
             )
@@ -850,8 +870,9 @@ private fun ChangeServerButton(c: FoxExtras, onClick: () -> Unit) {
 }
 
 /**
- * کارت «Data remaining» با خط پیشرفت.
+ * پنل «Data remaining»: چسبیده به لبه‌ی پایین صفحه، با درصد، خط پیشرفت و مصرف/کل.
  * خط و متن هم‌رنگ و هماهنگ‌اند: رنگ تم، و با کم شدن دیتا (≤۲۰٪ زرد، ≤۱۰٪ قرمز).
+ * [bottomInset] فاصله‌ی نوار ناوبری سیستمه تا پنل زیرش ادامه پیدا کنه و فاصله‌ای نمونه.
  */
 @Composable
 private fun DataRemainingCard(
@@ -862,6 +883,7 @@ private fun DataRemainingCard(
     lowColor: Color,
     criticalColor: Color,
     modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp,
 ) {
     val fraction = if (unlimited) {
         1f
@@ -891,17 +913,33 @@ private fun DataRemainingCard(
     } else {
         String.format(Locale.US, "%.1f of %s GB", remainingGb, totalText)
     }
+    val percentText = when {
+        unlimited -> "∞"
+        remainingGb == null -> "--%"
+        else -> "${(fraction * 100).roundToInt()}%"
+    }
+    val usedText = if (!unlimited && remainingGb != null) {
+        String.format(Locale.US, "Used %.1f GB", (totalGb - remainingGb).coerceAtLeast(0.0))
+    } else {
+        null
+    }
+
+    val shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+    val pillShape = RoundedCornerShape(12.dp)
 
     Column(
         modifier = modifier
-            .foxCard(c, 26.dp)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .shadow(14.dp, shape, ambientColor = c.accent.copy(alpha = 0.2f), spotColor = c.accent.copy(alpha = 0.2f))
+            .clip(shape)
+            .background(c.card)
+            .border(1.dp, c.cardBorder, shape)
+            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 16.dp + bottomInset),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBubble(Icons.Filled.Public, c)
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Data remaining",
                     style = MaterialTheme.typography.labelMedium,
@@ -914,26 +952,60 @@ private fun DataRemainingCard(
                     color = animatedTone
                 )
             }
+            Box(
+                modifier = Modifier
+                    .clip(pillShape)
+                    .background(animatedTone.copy(alpha = 0.14f))
+                    .border(1.dp, animatedTone.copy(alpha = 0.35f), pillShape)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = percentText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = animatedTone,
+                    maxLines = 1
+                )
+            }
         }
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(10.dp)
-                .clip(RoundedCornerShape(5.dp))
+                .height(12.dp)
+                .clip(RoundedCornerShape(6.dp))
                 .background(animatedTone.copy(alpha = 0.15f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(animatedFraction)
-                    .clip(RoundedCornerShape(5.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(
                         Brush.horizontalGradient(
                             listOf(animatedTone.copy(alpha = 0.55f), animatedTone)
                         )
                     )
             )
+        }
+
+        if (usedText != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = usedText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textSecondary
+                )
+                Text(
+                    text = "Total $totalText GB",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textSecondary
+                )
+            }
         }
     }
 }
