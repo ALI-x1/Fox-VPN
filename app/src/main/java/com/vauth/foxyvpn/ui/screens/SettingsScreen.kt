@@ -174,9 +174,12 @@ fun SettingsScreen(
     val c = LocalFoxExtras.current
 
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
-    var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
-    var customDnsEnabled by remember { mutableStateOf(settingsStore.customDnsEnabled) }
-    var customDnsServer by remember { mutableStateOf(settingsStore.customDnsServer) }
+    var dnsProvider by remember { mutableStateOf(settingsStore.dnsProvider) }
+    var customDohUrl by remember { mutableStateOf(settingsStore.customDohUrl) }
+    var bootstrapDnsProvider by remember { mutableStateOf(settingsStore.bootstrapDnsProvider) }
+    var customBootstrapIp by remember { mutableStateOf(settingsStore.customBootstrapIp) }
+    var mtu by remember { mutableStateOf(settingsStore.mtu) }
+    var tlsSplitMode by remember { mutableStateOf(settingsStore.tlsSplitMode) }
     var socksBindAddress by remember { mutableStateOf(settingsStore.socksBindAddress) }
     var socksPort by remember { mutableStateOf(settingsStore.socksPort) }
     var httpProxyEnabled by remember { mutableStateOf(settingsStore.httpProxyEnabled) }
@@ -197,8 +200,10 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
     BackHandler(enabled = page != SettingsPage.MAIN) { page = SettingsPage.MAIN }
-    var showDohProviderDialog by remember { mutableStateOf(false) }
-    var showCustomDnsDialog by remember { mutableStateOf(false) }
+    var showDnsProviderDialog by remember { mutableStateOf(false) }
+    var showBootstrapDnsDialog by remember { mutableStateOf(false) }
+    var showMtuDialog by remember { mutableStateOf(false) }
+    var showTlsSplitDialog by remember { mutableStateOf(false) }
     var showSocksBindDialog by remember { mutableStateOf(false) }
     var showSocksPortDialog by remember { mutableStateOf(false) }
     var showHttpPortDialog by remember { mutableStateOf(false) }
@@ -208,25 +213,57 @@ fun SettingsScreen(
     var showUpstreamProxyCredentialsDialog by remember { mutableStateOf(false) }
     var showSplitTunnelDialog by remember { mutableStateOf(false) }
 
-    if (showDohProviderDialog) {
-        DohProviderPickerDialog(
-            current = dohProvider,
-            onDismiss = { showDohProviderDialog = false },
-            onConfirm = {
-                dohProvider = it
-                settingsStore.dohProvider = it
-                showDohProviderDialog = false
+    if (showDnsProviderDialog) {
+        DnsProviderPickerDialog(
+            currentProvider = dnsProvider,
+            currentCustomUrl = customDohUrl,
+            onDismiss = { showDnsProviderDialog = false },
+            onConfirm = { provider, url ->
+                dnsProvider = provider
+                settingsStore.dnsProvider = provider
+                if (provider == SettingsStore.DnsProvider.CUSTOM) {
+                    customDohUrl = url
+                    settingsStore.customDohUrl = url
+                }
+                showDnsProviderDialog = false
             },
         )
     }
-    if (showCustomDnsDialog) {
-        CustomDnsPickerDialog(
-            current = customDnsServer,
-            onDismiss = { showCustomDnsDialog = false },
+    if (showBootstrapDnsDialog) {
+        BootstrapDnsPickerDialog(
+            currentProvider = bootstrapDnsProvider,
+            currentCustomIp = customBootstrapIp,
+            onDismiss = { showBootstrapDnsDialog = false },
+            onConfirm = { provider, ip ->
+                bootstrapDnsProvider = provider
+                settingsStore.bootstrapDnsProvider = provider
+                if (provider == SettingsStore.BootstrapDnsProvider.CUSTOM) {
+                    customBootstrapIp = ip
+                    settingsStore.customBootstrapIp = ip
+                }
+                showBootstrapDnsDialog = false
+            },
+        )
+    }
+    if (showMtuDialog) {
+        MtuPickerDialog(
+            current = mtu,
+            onDismiss = { showMtuDialog = false },
             onConfirm = {
-                customDnsServer = it
-                settingsStore.customDnsServer = it
-                showCustomDnsDialog = false
+                mtu = it
+                settingsStore.mtu = it
+                showMtuDialog = false
+            },
+        )
+    }
+    if (showTlsSplitDialog) {
+        TlsSplitModePickerDialog(
+            current = tlsSplitMode,
+            onDismiss = { showTlsSplitDialog = false },
+            onConfirm = {
+                tlsSplitMode = it
+                settingsStore.tlsSplitMode = it
+                showTlsSplitDialog = false
             },
         )
     }
@@ -508,7 +545,11 @@ fun SettingsScreen(
                                         c = c,
                                         icon = Icons.Filled.Dns,
                                         title = "DNS",
-                                        subtitle = if (customDnsEnabled) "Custom • $customDnsServer" else dohProvider.label,
+                                        subtitle = when (dnsProvider) {
+                                            SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Default"
+                                            SettingsStore.DnsProvider.CUSTOM -> "Custom DoH"
+                                            else -> dnsProvider.label
+                                        },
                                         onClick = { page = SettingsPage.DNS },
                                     )
                                     SettingRow(
@@ -589,6 +630,13 @@ fun SettingsScreen(
                                             settingsStore.exitCheckEnabled = it
                                         },
                                     )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Tune,
+                                        title = "Tunnel MTU",
+                                        subtitle = mtu.toString(),
+                                        onClick = { showMtuDialog = true },
+                                    )
                                 }
                             }
 
@@ -597,34 +645,26 @@ fun SettingsScreen(
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Lock,
-                                        title = "Encrypted DNS",
-                                        subtitle = dohProvider.label,
+                                        title = "Tunnel DNS",
+                                        subtitle = when (dnsProvider) {
+                                            SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Default"
+                                            SettingsStore.DnsProvider.CUSTOM -> customDohUrl.ifBlank { "Custom DoH (Not configured)" }
+                                            else -> dnsProvider.label
+                                        },
                                         divider = false,
-                                        onClick = { showDohProviderDialog = true },
+                                        onClick = { showDnsProviderDialog = true },
                                     )
-                                    SettingSwitchRow(
+                                    SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Dns,
-                                        title = "Use a custom DNS server",
-                                        subtitle = "Send your apps' DNS queries to a server you choose",
-                                        checked = customDnsEnabled,
-                                        onCheckedChange = {
-                                            customDnsEnabled = it
-                                            settingsStore.customDnsEnabled = it
+                                        title = "Resolver DNS",
+                                        subtitle = when (bootstrapDnsProvider) {
+                                            SettingsStore.BootstrapDnsProvider.CUSTOM -> customBootstrapIp.ifBlank { "Custom IP (Not configured)" }
+                                            SettingsStore.BootstrapDnsProvider.SYSTEM -> "System DNS"
+                                            else -> bootstrapDnsProvider.label
                                         },
+                                        onClick = { showBootstrapDnsDialog = true },
                                     )
-                                    if (customDnsEnabled) {
-                                        val presetLabel = SettingsStore.CUSTOM_DNS_PRESETS
-                                            .firstOrNull { it.first == customDnsServer }
-                                            ?.second
-                                        SettingRow(
-                                            c = c,
-                                            icon = Icons.Filled.Tune,
-                                            title = "DNS server",
-                                            subtitle = presetLabel ?: customDnsServer,
-                                            onClick = { showCustomDnsDialog = true },
-                                        )
-                                    }
                                 }
                             }
 
@@ -688,6 +728,13 @@ fun SettingsScreen(
                                         subtitle = customEdgeAddress.ifBlank { "Not set" },
                                         divider = false,
                                         onClick = { showEdgeAddressDialog = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Shield,
+                                        title = "TLS fragmentation",
+                                        subtitle = tlsSplitMode.label,
+                                        onClick = { showTlsSplitDialog = true },
                                     )
                                     SettingSwitchRow(
                                         c = c,
@@ -1195,20 +1242,31 @@ private fun SignOutConfirmDialog(
 }
 
 @Composable
-private fun DohProviderPickerDialog(
-    current: SettingsStore.DohProvider,
+private fun DnsProviderPickerDialog(
+    currentProvider: SettingsStore.DnsProvider,
+    currentCustomUrl: String,
     onDismiss: () -> Unit,
-    onConfirm: (SettingsStore.DohProvider) -> Unit,
+    onConfirm: (SettingsStore.DnsProvider, String) -> Unit,
 ) {
     val c = LocalFoxExtras.current
-    var selected by remember { mutableStateOf(current) }
+    var selected by remember { mutableStateOf(currentProvider) }
+    var urlText by remember { mutableStateOf(currentCustomUrl) }
+    val isCustom = selected == SettingsStore.DnsProvider.CUSTOM
+    val isValidUrl = SettingsStore.isValidDohUrl(urlText)
 
     FoxDialog(
-        title = "Encrypted DNS",
+        title = "Tunnel DNS",
         onDismiss = onDismiss,
-        onConfirm = { onConfirm(selected) },
+        onConfirm = { onConfirm(selected, urlText) },
+        confirmEnabled = !isCustom || isValidUrl,
     ) {
-        SettingsStore.DohProvider.entries.forEach { provider ->
+        Text(
+            "DNS used inside the VPN tunnel for all app and browsing traffic.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        SettingsStore.DnsProvider.entries.forEach { provider ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -1224,15 +1282,129 @@ private fun DohProviderPickerDialog(
                 Column(Modifier.padding(start = 8.dp)) {
                     Text(provider.label)
                     val detail = when (provider) {
-                        SettingsStore.DohProvider.AUTOMATIC -> "Use whichever answers first"
-                        SettingsStore.DohProvider.OFF -> "Use the network's own DNS"
-                        else -> provider.addresses.joinToString(", ")
+                        SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Resolved at the VPN edge"
+                        SettingsStore.DnsProvider.CUSTOM -> "Specify an HTTPS DoH endpoint URL"
+                        else -> provider.dohUrl ?: ""
                     }
-                    Text(
-                        detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = c.textSecondary,
-                    )
+                    if (detail.isNotEmpty()) {
+                        Text(detail, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                    }
+                }
+            }
+        }
+        if (isCustom) {
+            OutlinedTextField(
+                value = urlText,
+                onValueChange = { urlText = it.trim() },
+                label = { Text("DoH URL (https://...)") },
+                placeholder = { Text("https://example.com/dns-query") },
+                singleLine = true,
+                isError = urlText.isNotBlank() && !isValidUrl,
+                shape = RoundedCornerShape(16.dp),
+                colors = foxFieldColors(c),
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BootstrapDnsPickerDialog(
+    currentProvider: SettingsStore.BootstrapDnsProvider,
+    currentCustomIp: String,
+    onDismiss: () -> Unit,
+    onConfirm: (SettingsStore.BootstrapDnsProvider, String) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var selected by remember { mutableStateOf(currentProvider) }
+    var ipText by remember { mutableStateOf(currentCustomIp) }
+    val isCustom = selected == SettingsStore.BootstrapDnsProvider.CUSTOM
+    val isValidIp = SettingsStore.isValidIpAddress(ipText.trim())
+
+    FoxDialog(
+        title = "Resolver DNS",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected, ipText.trim()) },
+        confirmEnabled = !isCustom || isValidIp,
+    ) {
+        Text(
+            "DNS used to resolve the VPN server address before the tunnel connects.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        SettingsStore.BootstrapDnsProvider.entries.forEach { provider ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == provider, onClick = { selected = provider })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(
+                    selected = selected == provider,
+                    onClick = { selected = provider },
+                    colors = foxRadioColors(c),
+                )
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(provider.label)
+                    Text(provider.description, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                }
+            }
+        }
+        if (isCustom) {
+            OutlinedTextField(
+                value = ipText,
+                onValueChange = { ipText = it.trim() },
+                label = { Text("Resolver IP address") },
+                placeholder = { Text("e.g. 76.76.2.2") },
+                singleLine = true,
+                isError = ipText.isNotBlank() && !isValidIp,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                shape = RoundedCornerShape(16.dp),
+                colors = foxFieldColors(c),
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TlsSplitModePickerDialog(
+    current: SettingsStore.TlsSplitMode,
+    onDismiss: () -> Unit,
+    onConfirm: (SettingsStore.TlsSplitMode) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var selected by remember { mutableStateOf(current) }
+
+    FoxDialog(
+        title = "TLS fragmentation",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(selected) },
+    ) {
+        Text(
+            "Fragments the TLS ClientHello into multiple TCP packets to bypass SNI-based filtering on censored networks.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        SettingsStore.TlsSplitMode.entries.forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == mode, onClick = { selected = mode })
+                    .padding(vertical = 6.dp),
+            ) {
+                RadioButton(
+                    selected = selected == mode,
+                    onClick = { selected = mode },
+                    colors = foxRadioColors(c),
+                )
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(mode.label)
+                    Text(mode.description, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 }
             }
         }
@@ -1240,47 +1412,44 @@ private fun DohProviderPickerDialog(
 }
 
 @Composable
-private fun CustomDnsPickerDialog(
-    current: String,
+private fun MtuPickerDialog(
+    current: Int,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (Int) -> Unit,
 ) {
     val c = LocalFoxExtras.current
-    var value by remember { mutableStateOf(current) }
-    val isValid = SettingsStore.isValidDnsServer(value)
+    var mtuText by remember { mutableStateOf(current.toString()) }
+    val parsed = mtuText.toIntOrNull()
+    val isValid = parsed != null && parsed in SettingsStore.MIN_MTU..SettingsStore.MAX_MTU
 
     FoxDialog(
-        title = "DNS server",
+        title = "Tunnel MTU",
         onDismiss = onDismiss,
-        onConfirm = { onConfirm(value) },
+        onConfirm = { parsed?.let { onConfirm(it) } },
         confirmEnabled = isValid,
     ) {
-        SettingsStore.CUSTOM_DNS_PRESETS.forEach { (address, label) ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(selected = value == address, onClick = { value = address })
-                    .padding(vertical = 4.dp),
-            ) {
-                RadioButton(
-                    selected = value == address,
-                    onClick = { value = address },
-                    colors = foxRadioColors(c),
-                )
-                Text(label, modifier = Modifier.padding(start = 8.dp))
-            }
-        }
+        Text(
+            "Maximum Transmission Unit for the VPN tunnel. Default is ${SettingsStore.DEFAULT_MTU}. Lower values (e.g. 1280\u20131400) prevent packet fragmentation on mobile networks.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
         OutlinedTextField(
-            value = value,
-            onValueChange = { value = it.trim() },
-            label = { Text("IPv4 address") },
+            value = mtuText,
+            onValueChange = { mtuText = it.filter(Char::isDigit).take(4) },
+            label = { Text("MTU (${SettingsStore.MIN_MTU}\u2013${SettingsStore.MAX_MTU})") },
             singleLine = true,
-            isError = value.isNotBlank() && !isValid,
+            isError = mtuText.isNotBlank() && !isValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             shape = RoundedCornerShape(16.dp),
             colors = foxFieldColors(c),
-            modifier = Modifier.padding(top = 8.dp),
         )
+        TextButton(
+            onClick = { mtuText = SettingsStore.DEFAULT_MTU.toString() },
+            colors = foxTextButtonColors(c),
+        ) {
+            Text("Reset to default (${SettingsStore.DEFAULT_MTU})")
+        }
     }
 }
 
