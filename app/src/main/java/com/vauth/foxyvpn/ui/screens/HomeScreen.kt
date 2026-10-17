@@ -39,6 +39,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -557,7 +567,9 @@ fun HomeScreen(
                         c = c,
                         onClick = {
                             if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
-                        }
+                        },
+                        connecting = state == ConnectionState.CONNECTING,
+                        animate = isForeground,
                     )
                 }
 
@@ -588,6 +600,8 @@ private fun ConnectButton(
     labelColor: Color,
     c: FoxExtras,
     onClick: () -> Unit,
+    connecting: Boolean = false,
+    animate: Boolean = true,
 ) {
     // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
     val buttonSize = size * 0.824f * scale
@@ -615,6 +629,13 @@ private fun ConnectButton(
                 .background(ringColor.copy(alpha = 0.07f))
                 .border(1.dp, ringColor.copy(alpha = 0.18f), CircleShape)
         )
+
+        // انیمیشن‌های ریز: فقط وقتی لازمه و برنامه جلوی چشمه ساخته می‌شن (مصرف باتری ~صفر در حالت قطع)
+        if (animate && connecting) {
+            ConnectingArc(size = size * 0.868f, color = ringColor)
+        } else if (animate && connected) {
+            PulseRing(size = size * 0.912f, maxScale = 1f / 0.912f, color = ringColor)
+        }
 
         // دکمه اصلی
         Box(
@@ -651,6 +672,63 @@ private fun ConnectButton(
             }
         }
     }
+}
+
+/** قوس چرخان دور دکمه وقتی در حال اتصال است. */
+@Composable
+private fun ConnectingArc(size: Dp, color: Color) {
+    val transition = rememberInfiniteTransition(label = "connecting-arc")
+    val angle = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
+        label = "arc-angle",
+    )
+    Canvas(
+        modifier = Modifier
+            .size(size)
+            // خوندن angle فقط تو فاز رسم؛ بدون recompose
+            .graphicsLayer { rotationZ = angle.value },
+    ) {
+        val stroke = 4.dp.toPx()
+        drawArc(
+            brush = Brush.sweepGradient(
+                0f to Color.Transparent,
+                0.75f to color,
+                1f to color,
+            ),
+            startAngle = 0f,
+            sweepAngle = 270f,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+            size = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** موج ملایم که از حلقه‌ی داخلی به بیرون پخش می‌شه و محو می‌شه؛ نشونه‌ی «وصل و زنده». */
+@Composable
+private fun PulseRing(size: Dp, maxScale: Float, color: Color) {
+    val transition = rememberInfiniteTransition(label = "pulse-ring")
+    val p = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(3000, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        label = "pulse-progress",
+    )
+    Box(
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer {
+                val t = p.value
+                val sc = 1f + (maxScale - 1f) * t
+                scaleX = sc
+                scaleY = sc
+                alpha = 0.55f * (1f - t)
+            }
+            .border(2.dp, color, CircleShape),
+    )
 }
 
 @Composable
