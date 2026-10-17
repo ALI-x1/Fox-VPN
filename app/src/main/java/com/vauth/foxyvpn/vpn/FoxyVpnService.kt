@@ -5,8 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -34,7 +32,6 @@ import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.TokenInvalidError
 import com.vauth.foxyvpn.data.TokenStore
-import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.RuntimeAuth
@@ -153,7 +150,6 @@ class FoxyVpnService : VpnService() {
     @Volatile private var statusLabel: String = "Connecting\u2026"
     // کشور واقعیِ خروجی (برای «Recommended» که کدش REC هست)
     @Volatile private var exitCountryCode: String? = null
-    private var largeIconCache: Bitmap? = null
 
     @Volatile private var foregroundActive = false
 
@@ -1121,24 +1117,27 @@ class FoxyVpnService : VpnService() {
     private fun startSpeedUpdates() {
         speedJob?.cancel()
         speedJob = scope.launch {
-            var lastStats = HevSocks5Tunnel.stats()
-            var lastSampleAt = System.currentTimeMillis()
             while (isActive) {
                 delay(SPEED_UPDATE_INTERVAL_MS)
-                val stats = HevSocks5Tunnel.stats()
-                val now = System.currentTimeMillis()
-                val elapsedSeconds = ((now - lastSampleAt).coerceAtLeast(1)).toDouble() / 1_000.0
-
-                val txRate = ((stats[1] - lastStats[1]).coerceAtLeast(0) / elapsedSeconds).toLong()
-                val rxRate = ((stats[3] - lastStats[3]).coerceAtLeast(0) / elapsedSeconds).toLong()
-                lastStats = stats
-                lastSampleAt = now
                 if (_state.value != ConnectionState.CONNECTED) continue
+                // مجموع دیتای مصرف‌شده از اول اتصال (نه سرعت لحظه‌ای که اغلب صفر می‌شد)
+                val stats = HevSocks5Tunnel.stats()
                 updateNotification(
                     statusLabel,
-                    "\u2193 ${formatBytesPerSecond(rxRate)}  \u2191 ${formatBytesPerSecond(txRate)}",
+                    "\u2193 ${formatTotalBytes(stats[3])}  \u2191 ${formatTotalBytes(stats[1])}",
                 )
             }
+        }
+    }
+
+    /** حجم کل با واحد مناسب، مثل 12.3 MB (بدون کلمه‌ی Total). */
+    private fun formatTotalBytes(bytes: Long): String {
+        val value = bytes.coerceAtLeast(0).toDouble()
+        return when {
+            value < 1_024.0 -> "${value.toLong()} B"
+            value < 1_024.0 * 1_024.0 -> String.format(java.util.Locale.US, "%.1f KB", value / 1_024.0)
+            value < 1_024.0 * 1_024.0 * 1_024.0 -> String.format(java.util.Locale.US, "%.1f MB", value / (1_024.0 * 1_024.0))
+            else -> String.format(java.util.Locale.US, "%.2f GB", value / (1_024.0 * 1_024.0 * 1_024.0))
         }
     }
 
@@ -1155,8 +1154,7 @@ class FoxyVpnService : VpnService() {
         val builder = NotificationCompat.Builder(this, FoxyVpnApp.VPN_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Fox-VPN")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_stat_fox)
-            .setLargeIcon(foxLargeIcon())
+            .setSmallIcon(R.drawable.ic_fox_mono)
             .setContentIntent(openIntent)
             .setOngoing(true)
 
@@ -1175,15 +1173,6 @@ class FoxyVpnService : VpnService() {
             builder.setStyle(NotificationCompat.BigTextStyle().bigText("$text\n$subText"))
         }
         return builder.build()
-    }
-
-    private fun foxLargeIcon(): Bitmap? {
-        largeIconCache?.let { return it }
-        return runCatching {
-            val src = BitmapFactory.decodeResource(resources, R.drawable.ic_fox_logo) ?: return null
-            val size = (resources.displayMetrics.density * 64).toInt().coerceAtLeast(64)
-            Bitmap.createScaledBitmap(src, size, size, true).also { largeIconCache = it }
-        }.getOrNull()
     }
 
     private fun enterForeground(text: String) {
