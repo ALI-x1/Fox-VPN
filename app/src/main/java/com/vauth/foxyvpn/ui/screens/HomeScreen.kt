@@ -39,6 +39,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -168,6 +173,27 @@ fun HomeScreen(
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
     val lastError by FoxyVpnService.lastError.collectAsState()
 
+    // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) حلقه‌های تکراری زیر متوقف می‌شن تا باتری هدر نره.
+    val lifecycleOwner = LocalContext.current as? LifecycleOwner
+    var isForeground by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val lifecycle = lifecycleOwner?.lifecycle
+        if (lifecycle == null) {
+            onDispose { }
+        } else {
+            isForeground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> isForeground = true
+                    Lifecycle.Event.ON_STOP -> isForeground = false
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
+    }
+
     val trafficState by TrafficMonitor.trafficState.collectAsState()
     var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
@@ -176,15 +202,18 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         if (!AutoConnectGate.consumed) {
             AutoConnectGate.consumed = true
-            if (app.settingsStore.autoConnect && FoxyVpnService.state.value == ConnectionState.DISCONNECTED) {
+            if (app.settingsStore.autoConnect &&
+                app.proxyStateStore.load() != null &&
+                FoxyVpnService.state.value == ConnectionState.DISCONNECTED
+            ) {
                 onRequestConnect()
             }
         }
     }
 
     // مانیتور ترافیک فقط به وضعیت اتصال وابسته‌ست (نه به عوض شدن سرور)
-    LaunchedEffect(state) {
-        if (state == ConnectionState.CONNECTED) {
+    LaunchedEffect(state, isForeground) {
+        if (state == ConnectionState.CONNECTED && isForeground) {
             TrafficMonitor.start()
         } else {
             TrafficMonitor.stop()
@@ -221,12 +250,14 @@ fun HomeScreen(
     }
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(state) {
+    LaunchedEffect(state, isForeground) {
         if (state == ConnectionState.CONNECTED) {
             if (SessionClock.startedAt == 0L) SessionClock.startedAt = SystemClock.elapsedRealtime()
-            while (true) {
-                elapsedSeconds = (SystemClock.elapsedRealtime() - SessionClock.startedAt) / 1000
-                delay(1000)
+            if (isForeground) {
+                while (true) {
+                    elapsedSeconds = (SystemClock.elapsedRealtime() - SessionClock.startedAt) / 1000
+                    delay(1000)
+                }
             }
         } else {
             SessionClock.startedAt = 0L
@@ -236,8 +267,8 @@ fun HomeScreen(
 
     // دیتای اکانت (همون منبع صفحه‌ی Account)؛ بعد از هر تغییر وضعیت اتصال و هر یک دقیقه رفرش می‌شه
     var entitlement by remember { mutableStateOf<Entitlement?>(null) }
-    LaunchedEffect(authRepository, state) {
-        if (authRepository == null) return@LaunchedEffect
+    LaunchedEffect(authRepository, state, isForeground) {
+        if (authRepository == null || !isForeground) return@LaunchedEffect
         while (true) {
             try {
                 val token = authRepository.currentAccessToken()
@@ -261,9 +292,9 @@ fun HomeScreen(
     // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
     // سنجش TCP مستقیم به سرور انتخابی از شبکه‌ی واقعی گوشی انجام می‌شه (نه از دل تونل)؛ PingUtil.init لازمه.
     var pingMs by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port) {
-        pingMs = null
-        if (state != ConnectionState.CONNECTED) return@LaunchedEffect
+    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port, isForeground) {
+        if (state != ConnectionState.CONNECTED) pingMs = null
+        if (state != ConnectionState.CONNECTED || !isForeground) return@LaunchedEffect
         val proxy = selectedProxy ?: return@LaunchedEffect
         var misses = 0
         while (true) {
