@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
+import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +34,7 @@ class MainActivity : ComponentActivity() {
 
             Toast.makeText(
                 this,
-                "FoxyVPN needs Android's VPN permission to tunnel this device's traffic. " +
+                "Fox-VPN needs Android's VPN permission to tunnel this device's traffic. " +
                     "Proxy-only mode in Settings works without it.",
                 Toast.LENGTH_LONG,
             ).show()
@@ -71,6 +74,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // تمام‌صفحه: نوار وضعیت و نوار ناوبری شفاف می‌شن و پس‌زمینه‌ی برنامه زیرشون دیده می‌شه
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+        )
         PingUtil.init(applicationContext)
         val app = application as FoxyVpnApp
         setContent {
