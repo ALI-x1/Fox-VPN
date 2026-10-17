@@ -560,8 +560,7 @@ private fun ConnectButton(
 ) {
     // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
     val buttonSize = size * 0.824f * scale
-    // رنگ لوگو هم‌رنگ متن دکمه: رنگ تم در حالت قطع، زرد در connecting، سبز در connected
-    val logoTint by animateColorAsState(targetValue = labelColor, label = "connect-logo-tint")
+    val logoTint = c.accent
     Box(
         modifier = Modifier.size(size),
         contentAlignment = Alignment.Center
