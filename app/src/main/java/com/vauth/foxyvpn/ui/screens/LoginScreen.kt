@@ -26,7 +26,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -34,7 +33,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,12 +68,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -149,7 +149,6 @@ private fun Modifier.reveal(progress: () -> Float, offsetPx: Float = 40f): Modif
 
 // ───────────────────────── صفحه ورود ─────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LoginScreen(
     authRepository: FxaAuthRepository,
@@ -167,8 +166,25 @@ fun LoginScreen(
 
     val c = LocalFoxExtras.current.toLoginColors()
 
-    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد پسورد و دکمه پشت کیبورد نمونن
-    val imeVisible = WindowInsets.isImeVisible
+    // کدوم فیلد فوکوس داره؟ (برای تشخیص «کیبورد واقعاً بازه»)
+    var emailFocused by remember { mutableStateOf(false) }
+    var passwordFocused by remember { mutableStateOf(false) }
+    var codeFocused by remember { mutableStateOf(false) }
+    // با رفتن بین مرحله‌ی ورود و کد تأیید، فوکوس قبلی پاک می‌شه
+    LaunchedEffect(awaitingTwoFactor) {
+        emailFocused = false
+        passwordFocused = false
+        codeFocused = false
+    }
+
+    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد پسورد و دکمه پشت کیبورد نمونن.
+    // فقط وقتی «واقعاً» باز باشه: یه فیلد فوکوس داشته باشه و ارتفاع کیبورد معنی‌دار باشه.
+    // (قبلاً فقط به WindowInsets.isImeVisible تکیه می‌شد؛ تو بعضی گوشی‌ها اون مقدار بدون کیبورد هم
+    // true می‌مونه و لوگو و توضیحات برای همیشه مخفی می‌شدن.)
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val imeVisible = (emailFocused || passwordFocused || codeFocused) &&
+        imeBottomPx > with(density) { 120.dp.toPx() }
 
     // انیمیشن ورود پله‌ای (هدر ← کارت ← فوتر)
     var entered by remember { mutableStateOf(false) }
@@ -318,6 +334,7 @@ fun LoginScreen(
                                             .lowercase()
                                     },
                                     label = "Firefox account email",
+                                    onFocusChange = { emailFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Email,
                                     colors = c,
@@ -338,6 +355,7 @@ fun LoginScreen(
                                         password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
                                     },
                                     label = "Password",
+                                    onFocusChange = { passwordFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Lock,
                                     colors = c,
@@ -401,6 +419,7 @@ fun LoginScreen(
                                         code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
                                     },
                                     label = "Confirmation code",
+                                    onFocusChange = { codeFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Lock,
                                     colors = c,
@@ -570,6 +589,7 @@ private fun LoginField(
     enabled: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
+    onFocusChange: (Boolean) -> Unit = {},
     textStyle: TextStyle = TextStyle.Default.copy(color = colors.textPrimary, fontSize = 16.sp),
 ) {
     OutlinedTextField(
@@ -599,7 +619,9 @@ private fun LoginField(
             cursorColor = colors.accent,
             errorBorderColor = MaterialTheme.colorScheme.error,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { onFocusChange(it.isFocused) },
     )
 }
 
