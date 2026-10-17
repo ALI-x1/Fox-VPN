@@ -46,8 +46,6 @@ class MainActivity : ComponentActivity() {
     ) {  }
 
     private fun requestConnect() {
-        requestNotificationPermissionIfNeeded()
-
         if ((application as FoxyVpnApp).settingsStore.proxyOnlyMode) {
             FoxyVpnService.start(this)
             return
@@ -59,6 +57,14 @@ class MainActivity : ComponentActivity() {
         } else {
             FoxyVpnService.start(this)
         }
+    }
+
+    /** فقط یک بار (بعد از ورود به حساب)، نه هنگام زدن دکمه‌ی اتصال. */
+    private fun requestNotificationPermissionOnce() {
+        val prefs = getSharedPreferences("foxyvpn_ui", MODE_PRIVATE)
+        if (prefs.getBoolean("notif_permission_asked", false)) return
+        prefs.edit().putBoolean("notif_permission_asked", true).apply()
+        requestNotificationPermissionIfNeeded()
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -96,6 +102,7 @@ class MainActivity : ComponentActivity() {
                         themeController = themeController,
                         onRequestConnect = { requestConnect() },
                         onDisconnect = { FoxyVpnService.stop(this) },
+                        onHomeShown = { requestNotificationPermissionOnce() },
                     )
                 }
             }
