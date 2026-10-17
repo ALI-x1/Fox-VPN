@@ -560,6 +560,8 @@ private fun ConnectButton(
 ) {
     // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
     val buttonSize = size * 0.824f * scale
+    // رنگ لوگو هم‌رنگ متن دکمه: رنگ تم در حالت قطع، زرد در connecting، سبز در connected
+    val logoTint by animateColorAsState(targetValue = labelColor, label = "connect-logo-tint")
     Box(
         modifier = Modifier.size(size),
         contentAlignment = Alignment.Center
@@ -602,9 +604,10 @@ private fun ConnectButton(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_fox_logo),
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_fox_mono),
                     contentDescription = if (connected) "Disconnect" else "Connect",
+                    tint = logoTint,
                     modifier = Modifier.size(size * 0.256f)
                 )
                 Spacer(Modifier.height(size * 0.056f))
