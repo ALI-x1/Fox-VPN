@@ -192,6 +192,7 @@ fun SettingsScreen(
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
     var autoConnect by remember { mutableStateOf(settingsStore.autoConnect) }
     var showKillSwitchDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
@@ -320,6 +321,16 @@ fun SettingsScreen(
                 excludedApps = it
                 settingsStore.excludedApps = it
                 showSplitTunnelDialog = false
+            },
+        )
+    }
+
+    if (showSignOutDialog) {
+        SignOutConfirmDialog(
+            onDismiss = { showSignOutDialog = false },
+            onConfirm = {
+                showSignOutDialog = false
+                onSignOut()
             },
         )
     }
@@ -535,7 +546,7 @@ fun SettingsScreen(
 
                                 val signOutShape = RoundedCornerShape(20.dp)
                                 Button(
-                                    onClick = onSignOut,
+                                    onClick = { showSignOutDialog = true },
                                     shape = signOutShape,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = SxDanger.copy(alpha = 0.12f),
@@ -1137,6 +1148,45 @@ private fun FoxDialog(
                 enabled = confirmEnabled,
                 colors = foxTextButtonColors(c),
             ) { Text(confirmLabel, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SignOutConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.innerCard,
+        shape = RoundedCornerShape(28.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Logout,
+                contentDescription = null,
+                tint = SxDanger,
+            )
+        },
+        title = {
+            Text("Sign out?", fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
+        },
+        text = {
+            Text(
+                "You'll need to sign in again with your Firefox account to use FoxyVPN.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.textSecondary,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = SxDanger),
+            ) { Text("Sign out", fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text("Cancel") }
