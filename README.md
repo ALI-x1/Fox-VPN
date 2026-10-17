@@ -29,6 +29,8 @@ Jetpack Compose (Material 3) UI.*
 - **Split tunneling**
 - **Private DNS by default**
 - **Encrypted DNS (DNS over HTTPS)**
+- **TLS fragmentation**
+- **Custom Tunnel MTU**
 - **Upstream proxy chaining**
 - **Proxy-only mode**
 - **Dark / light / follow-system theme**
