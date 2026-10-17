@@ -34,11 +34,11 @@ object PingUtil {
     /** تعداد نمونه‌ی پیش‌فرض؛ کم‌ترین زمانِ نمونه‌های موفق برگردونده می‌شه. */
     const val DEFAULT_SAMPLES = 3
 
-    /** کم‌تر از این = خوب (سبز، ۳ میله). */
-    const val GOOD_MS = 300
+    /** تا ۳۵۰ms = سبز (۳ میله). */
+    const val GOOD_MS = 350
 
-    /** کم‌تر از این = متوسط (زرد، ۲ میله)؛ بیشتر = ضعیف (قرمز، ۱ میله). */
-    const val FAIR_MS = 500
+    /** از ۳۵۰ تا ۷۰۰ms = نارنجی (۲ میله)؛ از ۷۰۰ به بالا = قرمز (۱ میله). */
+    const val FAIR_MS = 700
 
     @Volatile
     private var connectivityManager: ConnectivityManager? = null
@@ -51,7 +51,7 @@ object PingUtil {
         }
     }
 
-    /** تعداد میله‌ی روشن برای یک پینگ: ۳ خوب، ۲ متوسط، ۱ ضعیف. */
+    /** تعداد میله‌ی روشن برای یک پینگ: ۳ سبز، ۲ نارنجی، ۱ قرمز. */
     fun level(ms: Int): Int = when {
         ms < GOOD_MS -> 3
         ms < FAIR_MS -> 2
