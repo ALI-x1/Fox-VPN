@@ -5,6 +5,9 @@ import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.vauth.foxyvpn.vpn.upstream.TlsClientHelloSplitter
+import java.io.FilterOutputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -67,10 +70,58 @@ class SimpleCookieJar : CookieJar {
     fun snapshotAll(): List<Cookie> = byDomain.values.flatten()
 }
 
+private class SplitClientHelloSocket(
+    private val modeProvider: () -> SettingsStore.TlsSplitMode,
+) : Socket() {
+    private var splitDone = false
+
+    override fun getOutputStream(): OutputStream {
+        val realOut = super.getOutputStream()
+        return object : FilterOutputStream(realOut) {
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                val mode = modeProvider()
+                if (splitDone || mode == SettingsStore.TlsSplitMode.OFF) {
+                    realOut.write(b, off, len)
+                    return
+                }
+
+                if (!TlsClientHelloSplitter.looksLikeClientHello(b, off, len)) {
+                    realOut.write(b, off, len)
+                    return
+                }
+
+                splitDone = true
+                val segments = try {
+                    TlsClientHelloSplitter.splitBytes(b, off, len, mode)
+                } catch (e: Throwable) {
+                    null
+                }
+
+                if (segments.isNullOrEmpty()) {
+                    realOut.write(b, off, len)
+                    return
+                }
+
+                runCatching { this@SplitClientHelloSocket.tcpNoDelay = true }
+                for (seg in segments) {
+                    realOut.write(seg)
+                    realOut.flush()
+                }
+            }
+
+            override fun write(b: ByteArray) {
+                write(b, 0, b.size)
+            }
+        }
+    }
+}
+
 private class ProtectingSocketFactory : SocketFactory() {
 
-    private fun protect(socket: Socket, localAddress: InetSocketAddress?): Socket {
+    private fun createRawSocket(): Socket =
+        SplitClientHelloSocket { ControlPlaneHttp.tlsSplitModeProvider?.invoke() ?: SettingsStore.TlsSplitMode.OFF }
 
+    private fun protect(socket: Socket, localAddress: InetSocketAddress?): Socket {
         runCatching {
             if (!socket.isBound) socket.bind(localAddress ?: InetSocketAddress(0))
         }.onFailure {
@@ -90,20 +141,20 @@ private class ProtectingSocketFactory : SocketFactory() {
         return socket
     }
 
-    override fun createSocket(): Socket = protect(Socket(), null)
+    override fun createSocket(): Socket = protect(createRawSocket(), null)
 
     override fun createSocket(host: String, port: Int): Socket =
-        protect(Socket(), null).apply { connect(InetSocketAddress(host, port)) }
+        protect(createRawSocket(), null).apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: String, port: Int, localAddr: InetAddress, localPort: Int): Socket =
-        protect(Socket(), InetSocketAddress(localAddr, localPort))
+        protect(createRawSocket(), InetSocketAddress(localAddr, localPort))
             .apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: InetAddress, port: Int): Socket =
-        protect(Socket(), null).apply { connect(InetSocketAddress(host, port)) }
+        protect(createRawSocket(), null).apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: InetAddress, port: Int, localAddr: InetAddress, localPort: Int): Socket =
-        protect(Socket(), InetSocketAddress(localAddr, localPort))
+        protect(createRawSocket(), InetSocketAddress(localAddr, localPort))
             .apply { connect(InetSocketAddress(host, port)) }
 }
 
@@ -112,6 +163,9 @@ object ControlPlaneHttp {
 
     @Volatile
     var socketProtector: ((Socket) -> Boolean)? = null
+
+    @Volatile
+    var tlsSplitModeProvider: (() -> SettingsStore.TlsSplitMode)? = null
 
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()

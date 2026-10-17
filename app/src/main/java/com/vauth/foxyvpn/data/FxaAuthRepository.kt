@@ -20,8 +20,6 @@ import javax.crypto.spec.SecretKeySpec
 
 private const val TAG = "FxaAuthRepository"
 
-enum class LoginStep { CREDENTIALS, TWO_FACTOR }
-
 enum class SessionStatus {
     ACTIVE,
     NEEDS_LOGIN,
@@ -54,7 +52,13 @@ class FxaAuthRepository(
     private val tokenStore: TokenStore,
     private val challengeSolver: FastlyChallengeSolver = FastlyChallengeSolver(ControlPlaneHttp.cookieJar),
 ) {
-    private var pendingSessionToken: String? = null
+    var pendingSessionToken: String?
+        get() = tokenStore.pendingSessionToken
+        set(value) { tokenStore.pendingSessionToken = value }
+
+    fun clearPendingSession() {
+        tokenStore.pendingSessionToken = null
+    }
 
     companion object {
         fun normalizeEmail(email: String): String =
@@ -74,6 +78,7 @@ class FxaAuthRepository(
             true
         } else {
             completeLogin(sessionToken)
+            clearPendingSession()
             false
         }
     }
@@ -83,6 +88,7 @@ class FxaAuthRepository(
         val sessionToken = pendingSessionToken ?: error("No pending FxA session. Start sign-in again.")
         fxaDo("POST", "/session/verify_code", sessionToken = sessionToken, jsonBody = JSONObject().put("code", cleanCode))
         completeLogin(sessionToken)
+        clearPendingSession()
         false
     }
 
@@ -203,7 +209,7 @@ class FxaAuthRepository(
                 expiresAtEpochSeconds = expiryFrom(tokenData),
             ),
         )
-        pendingSessionToken = null
+        clearPendingSession()
     }
 
     private suspend fun loginAttempt(email: String, password: String, withVerificationMethod: Boolean = true): JSONObject {
