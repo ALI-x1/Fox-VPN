@@ -37,6 +37,46 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_EXIT_CHECK, true)
         set(value) { prefs.edit().putBoolean(KEY_EXIT_CHECK, value).apply() }
 
+    var mtu: Int
+        get() = prefs.getInt(KEY_CUSTOM_MTU, DEFAULT_MTU)
+        set(value) { prefs.edit().putInt(KEY_CUSTOM_MTU, value.coerceIn(MIN_MTU, MAX_MTU)).apply() }
+
+    var cachedRealIp: String?
+        get() = prefs.getString(KEY_CACHED_REAL_IP, null)
+        set(value) { prefs.edit().putString(KEY_CACHED_REAL_IP, value).apply() }
+
+    var cachedRealCountry: String?
+        get() = prefs.getString(KEY_CACHED_REAL_COUNTRY, null)
+        set(value) { prefs.edit().putString(KEY_CACHED_REAL_COUNTRY, value).apply() }
+
+    var cachedQuotaRemaining: Long?
+        get() = if (prefs.contains(KEY_CACHED_QUOTA_REMAINING)) prefs.getLong(KEY_CACHED_QUOTA_REMAINING, -1L).takeIf { it >= 0 } else null
+        set(value) {
+            if (value != null && value >= 0) prefs.edit().putLong(KEY_CACHED_QUOTA_REMAINING, value).apply()
+            else prefs.edit().remove(KEY_CACHED_QUOTA_REMAINING).apply()
+        }
+
+    var cachedQuotaMax: Long?
+        get() = if (prefs.contains(KEY_CACHED_QUOTA_MAX)) prefs.getLong(KEY_CACHED_QUOTA_MAX, -1L).takeIf { it >= 0 } else null
+        set(value) {
+            if (value != null && value >= 0) prefs.edit().putLong(KEY_CACHED_QUOTA_MAX, value).apply()
+            else prefs.edit().remove(KEY_CACHED_QUOTA_MAX).apply()
+        }
+
+    var cachedIsUnlimited: Boolean
+        get() = prefs.getBoolean(KEY_CACHED_IS_UNLIMITED, false)
+        set(value) { prefs.edit().putBoolean(KEY_CACHED_IS_UNLIMITED, value).apply() }
+
+    fun clearAccountSession() {
+        prefs.edit()
+            .remove(KEY_CACHED_REAL_IP)
+            .remove(KEY_CACHED_REAL_COUNTRY)
+            .remove(KEY_CACHED_QUOTA_REMAINING)
+            .remove(KEY_CACHED_QUOTA_MAX)
+            .remove(KEY_CACHED_IS_UNLIMITED)
+            .apply()
+    }
+
     var socksBindAddress: String
         get() = prefs.getString(KEY_SOCKS_BIND_ADDRESS, DEFAULT_SOCKS_BIND_ADDRESS) ?: DEFAULT_SOCKS_BIND_ADDRESS
         set(value) {
@@ -148,6 +188,31 @@ class SettingsStore(context: Context) {
             prefs.edit().putStringSet(KEY_EXCLUDED_APPS, HashSet(value)).apply()
         }
 
+    var tlsSplitMode: TlsSplitMode
+        get() = TlsSplitMode.entries.firstOrNull {
+            it.name == prefs.getString(KEY_TLS_SPLIT_MODE, null)
+        } ?: TlsSplitMode.OFF
+        set(value) { prefs.edit().putString(KEY_TLS_SPLIT_MODE, value.name).apply() }
+
+    enum class TlsSplitMode(
+        val label: String,
+        val description: String,
+    ) {
+        OFF(
+            label = "Disabled",
+            description = "Standard TLS handshake without fragmentation",
+        ),
+        FIRST_BYTE(
+            label = "First byte",
+            description = "Splits TLS record header at byte 0 (0x16)",
+        ),
+        SNI(
+            label = "SNI hostname",
+            description = "Fragments the SNI extension across packets (defeats DPI)",
+        ),
+        ;
+    }
+
     enum class UpstreamProxyType { SOCKS5, HTTP }
 
     enum class DnsProvider(
@@ -222,6 +287,15 @@ class SettingsStore(context: Context) {
     companion object {
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_EXIT_CHECK = "exit_check_enabled"
+        private const val KEY_CUSTOM_MTU = "custom_mtu"
+        private const val KEY_CACHED_REAL_IP = "cached_real_ip"
+        private const val KEY_CACHED_REAL_COUNTRY = "cached_real_country"
+        private const val KEY_CACHED_QUOTA_REMAINING = "cached_quota_remaining"
+        private const val KEY_CACHED_QUOTA_MAX = "cached_quota_max"
+        private const val KEY_CACHED_IS_UNLIMITED = "cached_is_unlimited"
+        const val DEFAULT_MTU = 1400
+        const val MIN_MTU = 576
+        const val MAX_MTU = 9000
         private const val KEY_SOCKS_BIND_ADDRESS = "socks_bind_address"
         private const val KEY_SOCKS_PORT = "socks_port"
         private const val KEY_HTTP_PROXY_ENABLED = "http_proxy_enabled"
@@ -239,6 +313,7 @@ class SettingsStore(context: Context) {
         private const val KEY_UPSTREAM_PROXY_USERNAME = "upstream_proxy_username"
         private const val KEY_UPSTREAM_PROXY_PASSWORD = "upstream_proxy_password"
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
+        private const val KEY_TLS_SPLIT_MODE = "tls_split_mode"
         const val DEFAULT_SOCKS_BIND_ADDRESS = "127.0.0.1"
         const val DEFAULT_SOCKS_PORT = 1080
         const val DEFAULT_HTTP_PROXY_PORT = 8080

@@ -132,11 +132,16 @@ internal object DohDnsClient {
 
     private val health = ConcurrentHashMap<String, EndpointHealth>()
 
-    fun endpointFor(resolverHost: String): String? {
-        val preferred = DohEndpoints.forResolver(resolverHost) ?: return null
-        if (!isSuppressed(preferred)) return preferred
-        return DohEndpoints.operatorEndpointsFor(resolverHost)
-            .firstOrNull { !isSuppressed(it) }
+    const val DEFAULT_DOH_URL = "https://1.1.1.1/dns-query"
+
+    fun endpointFor(resolverHost: String): String {
+        val preferred = DohEndpoints.forResolver(resolverHost)
+        if (preferred != null) {
+            if (!isSuppressed(preferred)) return preferred
+            val alt = DohEndpoints.operatorEndpointsFor(resolverHost).firstOrNull { !isSuppressed(it) }
+            if (alt != null) return alt
+        }
+        return DEFAULT_DOH_URL
     }
 
     fun query(socksProxy: InetSocketAddress, endpointUrl: String, query: ByteArray): ByteArray? {

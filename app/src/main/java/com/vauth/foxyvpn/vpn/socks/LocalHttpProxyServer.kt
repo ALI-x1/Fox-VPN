@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.vpn.socks
 
+import android.net.InetAddresses
+import android.os.Build
 import com.vauth.foxyvpn.data.AppLogger
 import com.vauth.foxyvpn.vpn.RelayDispatchers
 import com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig
@@ -155,8 +157,24 @@ class LocalHttpProxyServer(
         }
     }
 
+    private fun isIpLiteral(host: String): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return InetAddresses.isNumericAddress(host)
+        }
+        if (host.contains(':')) {
+            return host.all { it == ':' || it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+        }
+        val parts = host.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all { it in '0'..'9' } &&
+                (part.toIntOrNull() ?: -1) in 0..255
+        }
+    }
+
     private fun isLocalNetwork(host: String): Boolean {
-        if (host.equals("localhost", ignoreCase = true) || host == "127.0.0.1" || host == "::1") return true
+        if (host.equals("localhost", ignoreCase = true)) return true
+        if (!isIpLiteral(host)) return false
         val inet = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return false
         val raw = inet.address
         if (inet.isAnyLocalAddress || inet.isLoopbackAddress || inet.isLinkLocalAddress || inet.isSiteLocalAddress || inet.isMulticastAddress) return true

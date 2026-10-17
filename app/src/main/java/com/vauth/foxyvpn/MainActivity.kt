@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == RESULT_OK) {
+            requestNotificationPermissionIfNeeded()
             FoxyVpnService.start(this)
         } else {
 
@@ -42,9 +43,8 @@ class MainActivity : ComponentActivity() {
     ) {  }
 
     private fun requestConnect() {
-        requestNotificationPermissionIfNeeded()
-
         if ((application as FoxyVpnApp).settingsStore.proxyOnlyMode) {
+            requestNotificationPermissionIfNeeded()
             FoxyVpnService.start(this)
             return
         }
@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
         if (prepareIntent != null) {
             vpnPermissionLauncher.launch(prepareIntent)
         } else {
+            requestNotificationPermissionIfNeeded()
             FoxyVpnService.start(this)
         }
     }

@@ -2,7 +2,9 @@ package com.vauth.foxyvpn.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -48,9 +50,10 @@ fun SplashScreen(
             Icon(
                 imageVector = Icons.Filled.Shield,
                 contentDescription = null,
-                modifier = Modifier.padding(bottom = 16.dp),
+                modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
+            Spacer(Modifier.height(16.dp))
             Text("FoxyVPN", fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurface)
             CircularProgressIndicator(
                 modifier = Modifier

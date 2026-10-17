@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
+import com.vauth.foxyvpn.data.ControlPlaneHttp
 import com.vauth.foxyvpn.data.CrashReporter
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GuardianClient
@@ -41,6 +42,7 @@ class FoxyVpnApp : Application() {
         tokenStore = TokenStore(this)
         proxyStateStore = ProxyStateStore(this)
         settingsStore = SettingsStore(this)
+        ControlPlaneHttp.tlsSplitModeProvider = { settingsStore.tlsSplitMode }
         guardianClient = GuardianClient()
         serverListClient = ServerListClient(this)
         authRepository = FxaAuthRepository(tokenStore)

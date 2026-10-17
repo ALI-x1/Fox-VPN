@@ -69,13 +69,27 @@ internal class Socks5UdpDnsRelay(
                 }
 
                 if (packet.address != clientAddress) {
-
                     if (foreignSourceDropped.getAndIncrement() == 0) {
                         AppLogger.w(
                             TAG,
                             "dropping a datagram from ${packet.address}: this association belongs to " +
                                 "$clientAddress, and relaying for anyone else would make this an open resolver",
                         )
+                    }
+                    continue
+                }
+
+                val targetPort = extractTargetPort(packet.data, packet.offset, packet.length)
+                if (targetPort != DNS_PORT) {
+                    nonDnsDropped.incrementAndGet()
+                    if (unsupportedFlowReported.compareAndSet(false, true)) {
+                        AppLogger.d(
+                            TAG,
+                            "dropping a datagram for port $targetPort: this tunnel carries TCP only, so general " +
+                                "UDP (QUIC included) cannot be relayed and the sender has to fall back to TCP. " +
+                                "The DNS association stays up.",
+                        )
+                        runCatching { onUnsupportedFlow() }
                     }
                     continue
                 }
@@ -121,21 +135,6 @@ internal class Socks5UdpDnsRelay(
             otherDropped.incrementAndGet()
             return
         }
-        if (request.port != DNS_PORT) {
-
-            nonDnsDropped.incrementAndGet()
-
-            if (unsupportedFlowReported.compareAndSet(false, true)) {
-                AppLogger.d(
-                    TAG,
-                    "dropping a datagram for port ${request.port}: this tunnel carries TCP only, so general " +
-                        "UDP (QUIC included) cannot be relayed and the sender has to fall back to TCP. " +
-                        "The DNS association stays up.",
-                )
-                runCatching { onUnsupportedFlow() }
-            }
-            return
-        }
 
         val query = datagram.copyOfRange(request.payloadOffset, datagram.size)
         if (query.isEmpty() || query.size > MAX_DNS_MESSAGE_BYTES) {
@@ -165,7 +164,7 @@ internal class Socks5UdpDnsRelay(
         query: ByteArray,
     ): ByteArray? {
         if (socksProxy == null) return null
-        val endpoint = dohUrl ?: DohDnsClient.endpointFor(resolverHost) ?: return null
+        val endpoint = dohUrl ?: DohDnsClient.endpointFor(resolverHost)
         val answer = DohDnsClient.query(socksProxy, endpoint, query)
         if (answer != null) {
             queriesOverHttps.incrementAndGet()
@@ -211,5 +210,24 @@ internal class Socks5UdpDnsRelay(
         val port = ((datagram[offset].toInt() and 0xFF) shl 8) or (datagram[offset + 1].toInt() and 0xFF)
         offset += 2
         return Request(offset, host, port)
+    }
+
+    private fun extractTargetPort(data: ByteArray, offset: Int, length: Int): Int {
+        if (length < SOCKS5_UDP_HEADER_MIN_BYTES) return -1
+        if (data[offset].toInt() != 0 || data[offset + 1].toInt() != 0 || data[offset + 2].toInt() != 0) return -1
+        var pos = offset + 3
+        val addressType = data[pos++].toInt() and 0xFF
+        when (addressType) {
+            0x01 -> pos += 4
+            0x03 -> {
+                if (pos >= offset + length) return -1
+                val domainLen = data[pos++].toInt() and 0xFF
+                pos += domainLen
+            }
+            0x04 -> pos += 16
+            else -> return -1
+        }
+        if (pos + 2 > offset + length) return -1
+        return ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
     }
 }
