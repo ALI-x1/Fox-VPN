@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -19,6 +20,8 @@ import java.net.Socket
  *    قبلاً وقتی به VPN وصل بودی (حتی خود فاکس)، پینگ از دل تونل رد می‌شد و دو برابر می‌اومد.
  *    اتصال واقعیِ فاکس هم از شبکه‌ی مستقیم می‌ره، پس این عدد همون چیزیه که کاربر تجربه می‌کنه.
  *  - DNS هم از همون شبکه‌ی مستقیم حل می‌شه و داخل زمان پینگ حساب نمی‌شه.
+ *  - اگه اسم سرور هم IPv4 داشته باشه هم IPv6، هر دو (مثل Happy Eyeballs مرورگرها) آزموده می‌شن و
+ *    سریع‌ترین مسیر عدد پینگه؛ بدون اینکه تعداد اتصال‌ها بیشتر بشه. آدرسی که خراب باشه کنار گذاشته می‌شه.
  *  - عدد نمایش‌داده‌شده «کم‌ترین زمان» بین نمونه‌هاست (استاندارد RTT)؛ نمونه‌ی اولِ دیتای موبایل
  *    که رادیو تازه بیدار شده و کنده، عدد رو خراب نمی‌کنه.
  *  - سرور مرده زود رد می‌شه: دو شکستِ پشت‌سرهم قبل از اولین موفقیت یعنی null.
@@ -30,6 +33,9 @@ import java.net.Socket
  */
 object PingUtil {
     private const val CONNECT_TIMEOUT_MS = 1_200
+
+    /** حداکثر آدرس آزموده‌شده برای یک اسم: یکی از هر خانواده (IPv4 / IPv6). */
+    private const val MAX_ADDRESSES = 2
 
     /** تعداد نمونه‌ی پیش‌فرض؛ کم‌ترین زمانِ نمونه‌های موفق برگردونده می‌شه. */
     const val DEFAULT_SAMPLES = 3
@@ -69,23 +75,31 @@ object PingUtil {
         val wanted = samples.coerceAtLeast(1)
         val network = underlyingNetwork()
 
-        val address = resolve(host, port, network)
-        if (address == null || address.isUnresolved) return@withContext null
+        // آدرس‌ها (حداکثر یکی IPv4 و یکی IPv6) یک بار حل می‌شن و تو زمان پینگ حساب نمی‌شن
+        val candidates = resolveAll(host, port, network).toMutableList()
+        if (candidates.isEmpty()) return@withContext null
 
         val results = ArrayList<Int>(wanted)
         var failures = 0
         var attempts = 0
-        // یک تلاشِ اضافه برای جبران یه timeout تصادفی وسط نمونه‌ها
-        while (results.size < wanted && attempts < wanted + 1) {
+        var index = 0
+        // چند تلاشِ اضافه برای جبران timeout تصادفی یا آدرس خراب
+        while (results.size < wanted && attempts < wanted + MAX_ADDRESSES) {
             ensureActive()
             attempts++
+            val address = candidates[index % candidates.size]
             val ms = connectOnce(address, network)
             if (ms != null) {
                 results.add(ms)
+                index++ // نمونه‌ی بعدی روی آدرس بعدی؛ هر دو مسیر آزموده می‌شن
             } else {
                 failures++
-                // هنوز هیچ جوابی نیومده و دو بار پشت‌سرهم شکست: سرور مرده، منتظر نمون
-                if (results.isEmpty() && failures >= 2) return@withContext null
+                if (candidates.size > 1) {
+                    candidates.remove(address) // آدرس خراب (مثلاً IPv6 بی‌مسیر) کنار می‌ره
+                } else if (results.isEmpty() && failures >= 2) {
+                    // هنوز هیچ جوابی نیومده و دو بار پشت‌سرهم شکست: سرور مرده، منتظر نمون
+                    return@withContext null
+                }
             }
         }
         results.minOrNull()
@@ -106,12 +120,16 @@ object PingUtil {
         } ?: candidates.firstOrNull()
     }.getOrNull()
 
-    private fun resolve(host: String, port: Int, network: Network?): InetSocketAddress? =
+    /** یک آدرس از هر خانواده‌ی IP (به ترتیب ترجیح سیستم)، حل‌شده از شبکه‌ی مستقیم. */
+    private fun resolveAll(host: String, port: Int, network: Network?): List<InetSocketAddress> =
         runCatching {
-            val ip: InetAddress = network?.let { runCatching { it.getByName(host) }.getOrNull() }
-                ?: InetAddress.getByName(host)
-            InetSocketAddress(ip, port)
-        }.getOrNull()
+            val all: Array<InetAddress> =
+                network?.let { runCatching { it.getAllByName(host) }.getOrNull() }
+                    ?: InetAddress.getAllByName(host)
+            all.distinctBy { it is Inet6Address }
+                .take(MAX_ADDRESSES)
+                .map { InetSocketAddress(it, port) }
+        }.getOrElse { emptyList() }
 
     private fun connectOnce(address: InetSocketAddress, network: Network?): Int? =
         runCatching {
