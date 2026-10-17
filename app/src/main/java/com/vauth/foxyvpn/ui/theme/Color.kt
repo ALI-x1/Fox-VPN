@@ -110,6 +110,3 @@ val DarkStatusColors = FoxyStatusColors(
 )
 
 val LocalFoxyStatusColors = staticCompositionLocalOf { LightStatusColors }
-
-val ConnectedGreen = LightStatusColors.connected
-val ConnectingAmber = LightStatusColors.connecting
