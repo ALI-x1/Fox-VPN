@@ -3,13 +3,17 @@ package com.vauth.foxyvpn.vpn.upstream
 import android.os.Build
 import com.vauth.foxyvpn.BuildConfig
 import com.vauth.foxyvpn.data.AppLogger
+import com.vauth.foxyvpn.data.SettingsStore
 import io.netty.bootstrap.Bootstrap
+import io.netty.buffer.ByteBuf
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelOption
+import io.netty.channel.ChannelOutboundHandlerAdapter
+import io.netty.channel.ChannelPromise
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.WriteBufferWaterMark
 import io.netty.channel.nio.NioEventLoopGroup
@@ -76,7 +80,7 @@ private const val TAG = "H2UpstreamSession"
 
 private const val KEEPALIVE_CHECK_INTERVAL_MS = 3_000L
 private const val KEEPALIVE_IDLE_THRESHOLD_MS = 15_000L
-private const val KEEPALIVE_PING_TIMEOUT_MS = 10_000L
+private const val KEEPALIVE_PING_TIMEOUT_MS = 25_000L
 
 private const val KEEPALIVE_PING_PAYLOAD = 0x466F78795650_4EL
 
@@ -131,6 +135,7 @@ class H2UpstreamSession(
     bearerToken: String,
     private val upstreamProxy: UpstreamProxyConfig? = null,
     private val edgeAddress: String? = null,
+    private val tlsSplitMode: SettingsStore.TlsSplitMode = SettingsStore.TlsSplitMode.OFF,
 ) : UpstreamSession {
 
     private val group = NioEventLoopGroup(1)
@@ -273,6 +278,10 @@ class H2UpstreamSession(
                     }
 
                     upstreamProxy?.let { proxy -> ch.pipeline().addLast(buildProxyHandler(proxy)) }
+
+                    if (tlsSplitMode != SettingsStore.TlsSplitMode.OFF) {
+                        ch.pipeline().addLast("tlsSplit", TlsSplitHandler(tlsSplitMode))
+                    }
 
                     val sslHandler = sslContext.newHandler(ch.alloc(), upstreamHost, upstreamPort)
 
@@ -813,3 +822,57 @@ private suspend fun ChannelFuture.awaitChannel(): Channel =
 internal class FoxyNioSocketChannel : io.netty.channel.socket.nio.NioSocketChannel() {
     fun publicJavaChannel(): java.nio.channels.SocketChannel = super.javaChannel() as java.nio.channels.SocketChannel
 }
+
+private class TlsSplitHandler(
+    private val mode: SettingsStore.TlsSplitMode,
+) : ChannelOutboundHandlerAdapter() {
+    private var splitDone = false
+
+    override fun write(
+        ctx: ChannelHandlerContext,
+        msg: Any,
+        promise: ChannelPromise,
+    ) {
+        if (splitDone || msg !is ByteBuf) {
+            super.write(ctx, msg, promise)
+            return
+        }
+
+        if (!TlsClientHelloSplitter.looksLikeClientHello(msg)) {
+            super.write(ctx, msg, promise)
+            return
+        }
+
+        splitDone = true
+        val segments = try {
+            TlsClientHelloSplitter.split(msg, mode)
+        } catch (e: Throwable) {
+            AppLogger.w(TAG, "failed to split TLS ClientHello, falling back to direct write", e)
+            null
+        }
+
+        if (segments.isNullOrEmpty()) {
+            super.write(ctx, msg, promise)
+            return
+        }
+
+        AppLogger.i(TAG, "TLS ClientHello fragmented ($mode) into ${segments.size} TCP segment(s)")
+        val total = segments.size
+        for (i in segments.indices) {
+            val seg = segments[i]
+            if (i == total - 1) {
+                ctx.writeAndFlush(seg, promise)
+            } else {
+                val subPromise = ctx.newPromise()
+                subPromise.addListener { f ->
+                    if (!f.isSuccess) {
+                        promise.tryFailure(f.cause())
+                    }
+                }
+                ctx.writeAndFlush(seg, subPromise)
+            }
+        }
+        ReferenceCountUtil.release(msg)
+    }
+}
+

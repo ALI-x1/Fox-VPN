@@ -7,10 +7,12 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -21,13 +23,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +56,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.BuildConfig
 import com.vauth.foxyvpn.data.SettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val GITHUB_URL = "https://github.com/vauth/foxyvpn"
 
@@ -60,7 +65,6 @@ private const val GITHUB_URL = "https://github.com/vauth/foxyvpn"
 fun SettingsScreen(
     settingsStore: SettingsStore,
     onOpenLogs: () -> Unit,
-    onOpenAccount: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -83,8 +87,10 @@ fun SettingsScreen(
     var upstreamProxyUsername by remember { mutableStateOf(settingsStore.upstreamProxyUsername) }
     var upstreamProxyPassword by remember { mutableStateOf(settingsStore.upstreamProxyPassword) }
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
+    var mtu by remember { mutableStateOf(settingsStore.mtu) }
     var showDnsProviderDialog by remember { mutableStateOf(false) }
     var showBootstrapDnsDialog by remember { mutableStateOf(false) }
+    var showMtuDialog by remember { mutableStateOf(false) }
     var showSocksBindDialog by remember { mutableStateOf(false) }
     var showSocksPortDialog by remember { mutableStateOf(false) }
     var showHttpPortDialog by remember { mutableStateOf(false) }
@@ -93,6 +99,20 @@ fun SettingsScreen(
     var showUpstreamProxyAddressDialog by remember { mutableStateOf(false) }
     var showUpstreamProxyCredentialsDialog by remember { mutableStateOf(false) }
     var showSplitTunnelDialog by remember { mutableStateOf(false) }
+    var tlsSplitMode by remember { mutableStateOf(settingsStore.tlsSplitMode) }
+    var showTlsSplitDialog by remember { mutableStateOf(false) }
+
+    if (showMtuDialog) {
+        MtuPickerDialog(
+            current = mtu,
+            onDismiss = { showMtuDialog = false },
+            onConfirm = {
+                mtu = it
+                settingsStore.mtu = it
+                showMtuDialog = false
+            },
+        )
+    }
 
     if (showDnsProviderDialog) {
         DnsProviderPickerDialog(
@@ -216,6 +236,17 @@ fun SettingsScreen(
             },
         )
     }
+    if (showTlsSplitDialog) {
+        TlsSplitModePickerDialog(
+            current = tlsSplitMode,
+            onDismiss = { showTlsSplitDialog = false },
+            onConfirm = {
+                tlsSplitMode = it
+                settingsStore.tlsSplitMode = it
+                showTlsSplitDialog = false
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -248,6 +279,12 @@ fun SettingsScreen(
                         },
                     )
                 },
+            )
+            ListItem(
+                headlineContent = { Text("Tunnel MTU") },
+                supportingContent = { Text(mtu.toString()) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showMtuDialog = true },
             )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -354,6 +391,12 @@ fun SettingsScreen(
                 modifier = Modifier.clickable { showEdgeAddressDialog = true },
             )
             ListItem(
+                headlineContent = { Text("TLS fragmentation") },
+                supportingContent = { Text(tlsSplitMode.label) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showTlsSplitDialog = true },
+            )
+            ListItem(
                 headlineContent = { Text("Chain through upstream proxy") },
                 supportingContent = { Text("Connect to the VPN server through another proxy first") },
                 trailingContent = {
@@ -419,14 +462,6 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionLabel("Account")
-            ListItem(
-                headlineContent = { Text("Manage account") },
-                supportingContent = { Text("Subscription status and data usage") },
-                leadingContent = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onOpenAccount),
-            )
             Button(
                 onClick = onSignOut,
                 colors = ButtonDefaults.buttonColors(
@@ -438,7 +473,8 @@ fun SettingsScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                Text("  Sign out")
+                Spacer(Modifier.width(8.dp))
+                Text("Sign out")
             }
         }
     }
@@ -783,6 +819,54 @@ private fun UpstreamProxyTypePickerDialog(
 }
 
 @Composable
+private fun TlsSplitModePickerDialog(
+    current: SettingsStore.TlsSplitMode,
+    onDismiss: () -> Unit,
+    onConfirm: (SettingsStore.TlsSplitMode) -> Unit,
+) {
+    var selected by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("TLS fragmentation") },
+        text = {
+            Column {
+                Text(
+                    "Fragments the TLS ClientHello into multiple TCP packets to bypass SNI-based filtering on censored networks.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                SettingsStore.TlsSplitMode.entries.forEach { mode ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(selected = selected == mode, onClick = { selected = mode })
+                            .padding(vertical = 6.dp),
+                    ) {
+                        RadioButton(selected = selected == mode, onClick = { selected = mode })
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Text(mode.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                mode.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selected) }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
 private fun UpstreamProxyAddressDialog(
     currentHost: String,
     currentPort: Int,
@@ -876,14 +960,14 @@ private fun SplitTunnelDialog(
     var selected by remember { mutableStateOf(current) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val installedApps by androidx.compose.runtime.produceState<List<InstalledAppEntry>>(initialValue = emptyList()) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val installedApps by produceState<List<InstalledAppEntry>>(initialValue = emptyList()) {
+        value = withContext(Dispatchers.IO) {
             val packageManager = context.packageManager
             packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
                 .asSequence()
                 .filter { it.packageName != context.packageName }
                 .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
-                .map { info: android.content.pm.ApplicationInfo ->
+                .map { info: ApplicationInfo ->
                     InstalledAppEntry(info.packageName, info.loadLabel(packageManager).toString())
                 }
                 .sortedBy { it.label.lowercase() }
@@ -920,7 +1004,7 @@ private fun SplitTunnelDialog(
                         .padding(bottom = 8.dp),
                 )
                 if (installedApps.isEmpty()) {
-                    androidx.compose.material3.CircularProgressIndicator(
+                    CircularProgressIndicator(
                         modifier = Modifier.padding(24.dp).align(Alignment.CenterHorizontally)
                     )
                 } else if (filteredApps.isEmpty()) {
@@ -976,5 +1060,52 @@ private fun SectionLabel(text: String) {
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun MtuPickerDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var mtuText by remember { mutableStateOf(current.toString()) }
+    val parsedMtu = mtuText.toIntOrNull()
+    val isValid = parsedMtu != null && parsedMtu in SettingsStore.MIN_MTU..SettingsStore.MAX_MTU
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tunnel MTU") },
+        text = {
+            Column {
+                Text(
+                    "Maximum Transmission Unit for the VPN tunnel. Default is ${SettingsStore.DEFAULT_MTU}. Lower values (e.g. 1280\u20131400) prevent packet fragmentation on mobile networks.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                OutlinedTextField(
+                    value = mtuText,
+                    onValueChange = { mtuText = it.filter(Char::isDigit).take(4) },
+                    label = { Text("MTU (${SettingsStore.MIN_MTU}\u2013${SettingsStore.MAX_MTU})") },
+                    singleLine = true,
+                    isError = mtuText.isNotBlank() && !isValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    onClick = { mtuText = SettingsStore.DEFAULT_MTU.toString() },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("Reset to default (${SettingsStore.DEFAULT_MTU})")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { parsedMtu?.let { onConfirm(it) } }, enabled = isValid) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
     )
 }

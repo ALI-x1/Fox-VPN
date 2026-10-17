@@ -6,7 +6,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.FoxyVpnApp
-import com.vauth.foxyvpn.ui.screens.AccountScreen
 import com.vauth.foxyvpn.ui.screens.HomeScreen
 import com.vauth.foxyvpn.ui.screens.LoginScreen
 import com.vauth.foxyvpn.ui.screens.LogsScreen
@@ -21,7 +20,6 @@ object FoxyRoutes {
     const val HOME = "home"
     const val SERVERS = "servers"
     const val SETTINGS = "settings"
-    const val ACCOUNT = "account"
     const val LOGS = "logs"
 }
 
@@ -75,18 +73,13 @@ fun FoxyNavGraph(
             SettingsScreen(
                 settingsStore = app.settingsStore,
                 onOpenLogs = { navController.navigate(FoxyRoutes.LOGS) },
-                onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
                 onSignOut = {
                     onDisconnect()
                     app.tokenStore.clear()
+                    app.settingsStore.clearAccountSession()
+                    app.proxyStateStore.clear()
                     navController.navigate(FoxyRoutes.LOGIN) { popUpTo(0) { inclusive = true } }
                 },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(FoxyRoutes.ACCOUNT) {
-            AccountScreen(
-                authRepository = app.authRepository,
                 onBack = { navController.popBackStack() },
             )
         }

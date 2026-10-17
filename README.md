@@ -39,9 +39,9 @@ Jetpack Compose (Material 3) UI.*
 
 ## 📸 Screenshots
 <div align="center">
-  <img src="https://i.ibb.co/hx3Gh7d9/91728322b4ad.jpg" alt="Screenshot 1" width="30%">
-  <img src="https://i.ibb.co/zVFc07CD/b6b8e29ec4ac.jpg" alt="Screenshot 2" width="30%">
-  <img src="https://i.ibb.co/ZzP5mgfq/dc50132fb3cb.jpg" alt="Screenshot 3" width="30%">
+  <img src="https://i.ibb.co/cK1L8wGk/90a25df7e3c6.jpg" alt="Screenshot 1" width="30%">
+  <img src="https://i.ibb.co/tMff3B7C/198e4f622a58.jpg" alt="Screenshot 2" width="30%">
+  <img src="https://i.ibb.co/G3V0CwCb/8524a888adee.jpg" alt="Screenshot 3" width="30%">
 </div>
 
 <br>
@@ -86,7 +86,6 @@ gradle :app:assembleRelease --no-daemon
 <br>
 
 ### 📝 To-Do List
-The project is on test phase so not much yet.
 - [x] Improve stability.
 - [x] Better Logo.
 - [ ] HTTP/3 implementation (Not Planned Yet).

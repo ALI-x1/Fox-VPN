@@ -10,6 +10,7 @@ import okhttp3.Response
 import org.json.JSONObject
 
 const val GUARDIAN_ENDPOINT_DEFAULT = "https://vpn.mozilla.org"
+private const val GUARDIAN_MAX_CHALLENGE_ATTEMPTS = 5
 
 class GuardianHttpError(message: String, val statusCode: Int? = null) : Exception(message)
 class QuotaExceededError(message: String) : Exception(message)
@@ -102,10 +103,12 @@ class GuardianClient(
             return builder.build()
         }
         var response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
-        if (response.code == 406) {
+        var attempts = 1
+        while (response.code == 406 && attempts < GUARDIAN_MAX_CHALLENGE_ATTEMPTS) {
             response.close()
             challengeSolver.solveAndInstall()
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+            attempts++
         }
         return response
     }
