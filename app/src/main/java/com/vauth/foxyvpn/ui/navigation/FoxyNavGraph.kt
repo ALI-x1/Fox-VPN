@@ -1,6 +1,7 @@
 package com.vauth.foxyvpn.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -39,6 +40,7 @@ fun FoxyNavGraph(
     themeController: ThemeController,
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onHomeShown: () -> Unit = {},
 ) {
     // scope سطح NavGraph؛ بعد از برگشت از صفحه‌ی سرورها هم زنده می‌مونه (scope خود صفحه لغو می‌شد)
     val scope = rememberCoroutineScope()
@@ -64,11 +66,20 @@ fun FoxyNavGraph(
             )
         }
         composable(FoxyRoutes.HOME) {
+            // بعد از ورود به حساب (رسیدن به صفحه‌ی اصلی) یک بار اجازه‌ی نوتیفیکیشن پرسیده می‌شه
+            LaunchedEffect(Unit) { onHomeShown() }
             HomeScreen(
                 app = app,
                 themeController = themeController,
                 authRepository = app.authRepository,
-                onRequestConnect = onRequestConnect,
+                // هنوز سروری انتخاب نشده: به‌جای وصل شدن خودکار، اول لیست سرورها باز می‌شه
+                onRequestConnect = {
+                    if (app.proxyStateStore.load() == null) {
+                        navController.navigate(FoxyRoutes.SERVERS)
+                    } else {
+                        onRequestConnect()
+                    }
+                },
                 onDisconnect = onDisconnect,
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
                 onOpenSettings = { navController.navigate(FoxyRoutes.SETTINGS) },
