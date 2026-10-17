@@ -34,7 +34,72 @@ data class IpInfo(
     val countryCode: String = "---"
 )
 
+
+// ───── API نسخه‌ی ۱.۰.۷ پروژه‌ی اصلی (برای سرویس VPN) ─────
+private const val UPSTREAM_TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
+
+data class IpLocationInfo(
+    val ip: String,
+    val countryCode: String,
+)
+
 class ExitCheck {
+
+    /** آی‌پی و کشور از مسیر مستقیم شبکه (بدون پروکسی). */
+    suspend fun fetchDirectIpInfo(): Result<IpLocationInfo> = withContext(Dispatchers.IO) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(8, TimeUnit.SECONDS)
+            .build()
+        try {
+            runCatching {
+                val request = Request.Builder().url(UPSTREAM_TRACE_URL).build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) error("Direct IP check request failed: HTTP ${response.code}")
+                    parseTrace(response.body?.string().orEmpty())
+                }
+            }
+        } finally {
+            client.dispatcher.executorService.shutdown()
+            client.connectionPool.evictAll()
+        }
+    }
+
+    /** آی‌پی و کشور از طریق پروکسی SOCKS محلی (یعنی از دل تونل). */
+    suspend fun fetchProxiedIpInfo(socksPort: Int): Result<IpLocationInfo> = withContext(Dispatchers.IO) {
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+        val client = OkHttpClient.Builder()
+            .proxy(proxy)
+            .connectTimeout(EXIT_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(EXIT_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(EXIT_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
+        try {
+            runCatching {
+                val request = Request.Builder().url(UPSTREAM_TRACE_URL).build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) error("Proxied exit check failed: HTTP ${response.code}")
+                    parseTrace(response.body?.string().orEmpty())
+                }
+            }
+        } finally {
+            client.dispatcher.executorService.shutdown()
+            client.connectionPool.evictAll()
+        }
+    }
+
+    private fun parseTrace(body: String): IpLocationInfo {
+        var ip = ""
+        var loc = ""
+        for (line in body.lineSequence()) {
+            if (line.startsWith("ip=")) ip = line.removePrefix("ip=").trim()
+            else if (line.startsWith("loc=")) loc = line.removePrefix("loc=").trim()
+        }
+        if (ip.isEmpty() && loc.isEmpty()) error("Trace response did not contain IP or location")
+        return IpLocationInfo(ip = ip, countryCode = loc)
+    }
+
 
     // اگر socksPort برابر با null یا صفر باشد، یعنی VPN قطع است و بدون پروکسی تست می‌کند
     suspend fun verifyExitCountry(socksPort: Int? = null, expectedCountryCode: String? = null): Result<IpInfo> =

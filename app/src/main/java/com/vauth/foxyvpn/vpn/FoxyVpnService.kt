@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -59,6 +60,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+
+data class VpnLiveStats(
+    val txRateBytesPerSec: Long = 0L,
+    val rxRateBytesPerSec: Long = 0L,
+    val sessionBytes: Long = 0L,
+)
 
 private const val TAG = "FoxyVpnService"
 private const val CONNECT_TIMEOUT_MS = 20_000L
@@ -353,6 +360,11 @@ class FoxyVpnService : VpnService() {
 
         val endedGeneration = ++connectionGeneration
         _state.value = ConnectionState.DISCONNECTED
+        _vpnLiveStats.value = VpnLiveStats()
+        _connectedAtEpochMs.value = null
+        _pingLatencyMs.value = null
+        _vpnEdgeIp.value = null
+        _connectedEndpoint.value = null
         connectJob?.cancel()
         connectJob = null
         watchdogJob?.cancel()
@@ -552,11 +564,16 @@ class FoxyVpnService : VpnService() {
                 ""
             }
 
-            val dohEndpointAddresses = settingsStore.dohProvider.addresses
+            val dohEndpointAddresses = settingsStore.effectiveBootstrapAddresses
+            val bootstrapDesc = if (dohEndpointAddresses.isEmpty()) {
+                "system DNS"
+            } else {
+                "${settingsStore.bootstrapDnsProvider.label} (${dohEndpointAddresses.joinToString(", ")})"
+            }
 
             AppLogger.i(
                 TAG,
-                "connect: target=${primaryCandidate.authority} country=${primaryCandidate.countryCode}$chainSuffix$edgeSuffix",
+                "connect: target=${primaryCandidate.authority} country=${primaryCandidate.countryCode} bootstrap=$bootstrapDesc$chainSuffix$edgeSuffix",
             )
 
             val socksPort = settingsStore.socksPort
@@ -566,7 +583,7 @@ class FoxyVpnService : VpnService() {
             val proxyOnlyMode = settingsStore.proxyOnlyMode
             val excludedApps = settingsStore.excludedApps
 
-            val customDnsServer = settingsStore.effectiveCustomDnsServer
+            val dohUrl = settingsStore.effectiveDohUrl
 
             fun connectedLabel(): String = if (proxyOnlyMode) {
                 if (httpProxyEnabled) {
@@ -594,11 +611,12 @@ class FoxyVpnService : VpnService() {
                 ControlPlaneHttp.socketProtector = { socket -> protect(socket) }
             }
 
-            val mapdnsActive = !proxyOnlyMode && customDnsServer == null
+            val mapdnsActive = !proxyOnlyMode && dohUrl == null
             val socks = LocalSocks5Server(
                 socksBindAddress,
                 socksPort,
                 mapdnsActive,
+                dohUrl,
                 { upstreamSession },
             ) {
                 onUpstreamSessionUnhealthy()
@@ -628,7 +646,7 @@ class FoxyVpnService : VpnService() {
                         "local proxy at $socksBindAddress:$socksPort",
                 )
             } else {
-                val fd = establishTun(excludedApps, customDnsServer) ?: error("Failed to establish TUN interface")
+                val fd = establishTun(excludedApps, dohUrl, mtu = settingsStore.mtu) ?: error("Failed to establish TUN interface")
                 tunFd = fd
                 tunnelInterfaceActive = true
 
@@ -641,7 +659,8 @@ class FoxyVpnService : VpnService() {
                 val tunnelConfigPath = HevSocks5TunnelConfig.write(
                     applicationContext,
                     socksPort,
-                    customDnsServer,
+                    useMapDns = mapdnsActive,
+                    mtu = settingsStore.mtu,
                 )
                 val tunnelStarted = HevSocks5Tunnel.start(tunnelConfigPath, fd.fd)
                 if (!tunnelStarted) error("Failed to start the tun2socks tunnel (hev-socks5-tunnel)")
@@ -653,7 +672,7 @@ class FoxyVpnService : VpnService() {
             suspend fun mintProxyPass(): ProxyPass {
                 var auth = tokenStore.loadAuth() ?: throw TokenInvalidError("Not signed in")
 
-                if (!tokenStore.hasValidSession()) {
+                if (!tokenStore.hasValidAccessToken()) {
                     val renewed = renewAccessToken(tokenStore)
                     if (renewed != null) {
                         auth = renewed
@@ -669,18 +688,25 @@ class FoxyVpnService : VpnService() {
                 }
                 val guardian = GuardianClient()
 
-                return try {
+                val pass = try {
                     guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
                 } catch (invalid: TokenInvalidError) {
                     AppLogger.w(TAG, "proxy pass rejected, activating Guardian entitlement and retrying", invalid)
                     guardian.activateGuardian(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
                     guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
                 }
+                if (pass.quotaRemaining != null) {
+                    settingsStore.cachedQuotaRemaining = pass.quotaRemaining
+                }
+                if (pass.quotaMax != null) {
+                    settingsStore.cachedQuotaMax = pass.quotaMax
+                }
+                return pass
             }
 
             var currentPassExpiry: Long? = null
 
-            suspend fun dialUpstream(): Pair<com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession, Long?> {
+            suspend fun dialUpstream(): Pair<H2UpstreamSession, Long?> {
                 val target = activeCandidate()
                 val pass = mintProxyPass()
                 currentPassExpiry = pass.expiresAtEpochSeconds
@@ -693,12 +719,13 @@ class FoxyVpnService : VpnService() {
                 val edgeAddress = customEdgeAddress
                     ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses)
 
-                val session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
+                val session = H2UpstreamSession(
                     target.host,
                     target.port,
                     pass.token,
                     upstreamProxyConfig,
                     edgeAddress,
+                    tlsSplitMode = settingsStore.tlsSplitMode,
                 )
                 try {
                     session.connect()
@@ -792,20 +819,31 @@ class FoxyVpnService : VpnService() {
             }
 
             val connectedText = connectedLabel()
+            _connectedAtEpochMs.value = System.currentTimeMillis()
             _state.value = ConnectionState.CONNECTED
             statusLabel = connectedText
             updateNotification(connectedText)
             AppLogger.i(TAG, "connect: CONNECTED via ${establishedCandidate.authority}")
 
+            _connectedEndpoint.value = establishedCandidate.host to establishedCandidate.port
+            scope.launch {
+                val ping = PingUtil.measureTcpLatencyMs(establishedCandidate.host, establishedCandidate.port)
+                if (myGeneration == connectionGeneration) {
+                    _pingLatencyMs.value = ping
+                }
+            }
+
             startProxyPassRenewal(myGeneration, currentPassExpiry) { mintProxyPass() }
 
             if (settingsStore.exitCheckEnabled) {
                 scope.launch {
-                    ExitCheck().verifyExitCountry(socksPort, establishedCandidate.countryCode)
-                        .onSuccess { observed ->
+                    val exitCheck = ExitCheck()
+                    exitCheck.fetchProxiedIpInfo(socksPort)
+                        .onSuccess { info ->
                             if (myGeneration == connectionGeneration) {
-                                AppLogger.i(TAG, "exit check: observed country=$observed")
-                                exitCountryCode = observed.countryCode.takeIf { it.length == 2 }
+                                _vpnEdgeIp.value = info
+                                AppLogger.i(TAG, "exit check: observed ip=${info.ip}, country=${info.countryCode}")
+                                exitCountryCode = info.countryCode.takeIf { it.length == 2 }
                                 if (_state.value == ConnectionState.CONNECTED && !proxyOnlyMode) {
                                     statusLabel = connectedLabel()
                                     updateNotification(statusLabel)
@@ -951,7 +989,12 @@ class FoxyVpnService : VpnService() {
     private suspend fun resolveConnectCandidate(proxyStateStore: ProxyStateStore): ProxyCandidate {
         proxyStateStore.load()?.let { return it }
         AppLogger.i(TAG, "connect: no server previously selected; auto-selecting recommended location")
-        val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
+        val client = (applicationContext as? FoxyVpnApp)?.serverListClient ?: ServerListClient(applicationContext)
+        val countries = runCatching {
+            withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { client.fetchCountries() }
+        }.getOrElse {
+            client.loadCachedCountries()
+        }
         val recommended = ServerListClient.candidatesForCountry(countries, RECOMMENDED_COUNTRY_CODE).randomOrNull()
         val chosen = recommended ?: countries.firstOrNull { it.code.isNotBlank() }?.let { country ->
             ServerListClient.candidatesForCountry(countries, country.code).randomOrNull()
@@ -963,7 +1006,12 @@ class FoxyVpnService : VpnService() {
 
     private suspend fun discoverAlternateCandidates(primary: ProxyCandidate): List<ProxyCandidate> {
         val attempt = runCatching {
-            val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
+            val client = (applicationContext as? FoxyVpnApp)?.serverListClient ?: ServerListClient(applicationContext)
+            val countries = runCatching {
+                withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { client.fetchCountries() }
+            }.getOrElse {
+                client.loadCachedCountries()
+            }
             val sameCity = ServerListClient.candidatesForCity(countries, primary.countryCode, primary.cityCode)
             val sameCountry = ServerListClient.candidatesForCountry(countries, primary.countryCode)
             (sameCity + sameCountry)
@@ -985,7 +1033,10 @@ class FoxyVpnService : VpnService() {
         dohEndpointAddresses: List<String>,
     ): String? {
         if (upstreamProxy != null) return null
-        if (dohEndpointAddresses.isEmpty()) return null
+        if (dohEndpointAddresses.isEmpty()) {
+            AppLogger.d(TAG, "resolving $host via system DNS resolver (direct network)")
+            return null
+        }
         return EdgeAddressResolver.resolve(host, dohEndpointAddresses)
     }
 
@@ -1017,12 +1068,16 @@ class FoxyVpnService : VpnService() {
         }
     }
 
-    private fun establishTun(excludedApps: Set<String>, customDnsServer: String?): ParcelFileDescriptor? {
-        val dnsServer = customDnsServer ?: HevSocks5TunnelConfig.MAPDNS_ADDRESS
-        if (customDnsServer != null) {
-            AppLogger.i(TAG, "establishTun: dns=$customDnsServer (user-selected, resolved over the tunnel)")
+    private fun establishTun(
+        excludedApps: Set<String>,
+        dohUrl: String?,
+        mtu: Int = HevSocks5TunnelConfig.TUN_MTU,
+    ): ParcelFileDescriptor? {
+        val dnsServer = HevSocks5TunnelConfig.MAPDNS_ADDRESS
+        if (dohUrl != null) {
+            AppLogger.i(TAG, "establishTun: dns=DoH ($dohUrl)")
         } else {
-            AppLogger.i(TAG, "establishTun: dns=mapdns (${HevSocks5TunnelConfig.MAPDNS_ADDRESS}), resolved on-device")
+            AppLogger.i(TAG, "establishTun: dns=mapdns ($dnsServer)")
         }
         return Builder()
             .setSession("Fox-VPN")
@@ -1055,7 +1110,7 @@ class FoxyVpnService : VpnService() {
             }
             .addDnsServer(dnsServer)
 
-            .setMtu(HevSocks5TunnelConfig.TUN_MTU)
+            .setMtu(mtu)
             .setBlocking(true)
             .apply {
 
@@ -1081,6 +1136,11 @@ class FoxyVpnService : VpnService() {
         watchdogJob = null
         releaseResources(detachResources(), stopNativeTunnel = true)
         _state.value = ConnectionState.DISCONNECTED
+        _vpnLiveStats.value = VpnLiveStats()
+        _connectedAtEpochMs.value = null
+        _pingLatencyMs.value = null
+        _vpnEdgeIp.value = null
+        _connectedEndpoint.value = null
     }
 
     private fun detachResources(): SessionResources {
@@ -1117,11 +1177,25 @@ class FoxyVpnService : VpnService() {
     private fun startSpeedUpdates() {
         speedJob?.cancel()
         speedJob = scope.launch {
+            var lastStats = HevSocks5Tunnel.stats()
+            var lastSampleAt = System.currentTimeMillis()
             while (isActive) {
                 delay(SPEED_UPDATE_INTERVAL_MS)
-                if (_state.value != ConnectionState.CONNECTED) continue
-                // مجموع دیتای مصرف‌شده از اول اتصال (نه سرعت لحظه‌ای که اغلب صفر می‌شد)
                 val stats = HevSocks5Tunnel.stats()
+                val now = System.currentTimeMillis()
+                val elapsedSeconds = ((now - lastSampleAt).coerceAtLeast(1)).toDouble() / 1_000.0
+
+                val txRate = ((stats[1] - lastStats[1]).coerceAtLeast(0) / elapsedSeconds).toLong()
+                val rxRate = ((stats[3] - lastStats[3]).coerceAtLeast(0) / elapsedSeconds).toLong()
+                val totalSessionBytes = (stats[1] + stats[3]).coerceAtLeast(0L)
+                lastStats = stats
+                lastSampleAt = now
+                if (_state.value != ConnectionState.CONNECTED) continue
+                _vpnLiveStats.value = VpnLiveStats(
+                    txRateBytesPerSec = txRate,
+                    rxRateBytesPerSec = rxRate,
+                    sessionBytes = totalSessionBytes,
+                )
                 updateNotification(
                     statusLabel,
                     "\u2193 ${formatTotalBytes(stats[3])}  \u2191 ${formatTotalBytes(stats[1])}",
@@ -1178,7 +1252,15 @@ class FoxyVpnService : VpnService() {
     private fun enterForeground(text: String) {
         foregroundActive = true
         lastNotificationText = text
-        startForeground(NOTIFICATION_ID, buildNotification(text))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(text),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification(text))
+        }
     }
 
     private fun exitForeground() {
@@ -1208,6 +1290,30 @@ class FoxyVpnService : VpnService() {
 
         private val _lastError = MutableStateFlow<String?>(null)
         val lastError: StateFlow<String?> = _lastError
+
+        private val _vpnLiveStats = MutableStateFlow(VpnLiveStats())
+        val vpnLiveStats: StateFlow<VpnLiveStats> = _vpnLiveStats
+
+        private val _connectedAtEpochMs = MutableStateFlow<Long?>(null)
+        val connectedAtEpochMs: StateFlow<Long?> = _connectedAtEpochMs
+
+        private val _pingLatencyMs = MutableStateFlow<Int?>(null)
+        val pingLatencyMs: StateFlow<Int?> = _pingLatencyMs
+
+        private val _vpnEdgeIp = MutableStateFlow<IpLocationInfo?>(null)
+        val vpnEdgeIp: StateFlow<IpLocationInfo?> = _vpnEdgeIp
+
+        private val _connectedEndpoint = MutableStateFlow<Pair<String, Int>?>(null)
+        val connectedEndpoint: StateFlow<Pair<String, Int>?> = _connectedEndpoint
+
+        suspend fun pingNow(): Int? {
+            val endpoint = _connectedEndpoint.value ?: return null
+            val latency = PingUtil.measureTcpLatencyMs(endpoint.first, endpoint.second)
+            if (_state.value == ConnectionState.CONNECTED) {
+                _pingLatencyMs.value = latency
+            }
+            return latency
+        }
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FoxyVpnService::class.java).setAction(ACTION_CONNECT))
