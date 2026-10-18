@@ -130,6 +130,18 @@ class SettingsStore(context: Context) {
             prefs.edit().putStringSet(KEY_EXCLUDED_APPS, HashSet(value)).apply()
         }
 
+    /**
+     * اثرانگشت تنظیماتی که روی اتصال اثر می‌ذارن (تم، زبان و وصل‌شدن خودکار حساب نمی‌شن).
+     * برای تشخیص اینکه «اتصال فعلی با تنظیمات جدید فرق داره» استفاده می‌شه.
+     */
+    fun connectionFingerprint(): Int = listOf(
+        dohProvider.name, customDnsEnabled, customDnsServer,
+        socksBindAddress, socksPort, httpProxyEnabled, httpProxyPort, proxyOnlyMode,
+        customEdgeAddress, upstreamProxyEnabled, upstreamProxyType.name, upstreamProxyHost,
+        upstreamProxyPort, upstreamProxyUsername, upstreamProxyPassword,
+        excludedApps.sorted(),
+    ).hashCode()
+
     enum class UpstreamProxyType { SOCKS5, HTTP }
 
     enum class DohProvider(val label: String) {
