@@ -1,5 +1,8 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
+import com.vauth.foxyvpn.i18n.Lang
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -7,6 +10,24 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import com.vauth.foxyvpn.data.AppliedConfig
+import com.vauth.foxyvpn.data.SystemVpnState
+import com.vauth.foxyvpn.data.model.ConnectionState
+import com.vauth.foxyvpn.vpn.FoxyVpnService
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -193,6 +214,9 @@ fun SettingsScreen(
     var autoConnect by remember { mutableStateOf(settingsStore.autoConnect) }
     var showKillSwitchDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
+    // زبان برنامه: کشوی انتخاب (سیستم / فارسی / English)
+    var languageChoice by remember { mutableStateOf(Lang.choice(context)) }
+    var showLanguageSheet by remember { mutableStateOf(false) }
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
@@ -325,6 +349,22 @@ fun SettingsScreen(
         )
     }
 
+    if (showLanguageSheet) {
+        LanguagePickerSheet(
+            current = languageChoice,
+            onSelect = { choice ->
+                showLanguageSheet = false
+                if (choice != languageChoice) {
+                    languageChoice = choice
+                    Lang.setChoice(context, choice)
+                    Lang.markChosen(context)
+                    context.findActivity()?.recreate() // زبان و جهت صفحه عوض می‌شه
+                }
+            },
+            onDismiss = { showLanguageSheet = false },
+        )
+    }
+
     if (showSignOutDialog) {
         SignOutConfirmDialog(
             onDismiss = { showSignOutDialog = false },
@@ -337,7 +377,7 @@ fun SettingsScreen(
 
     if (showKillSwitchDialog) {
         FoxDialog(
-            title = "Kill switch",
+            title = tr("Kill switch"),
             onDismiss = { showKillSwitchDialog = false },
             onConfirm = {
                 showKillSwitchDialog = false
@@ -354,19 +394,69 @@ fun SettingsScreen(
                     }
                 }
             },
-            confirmLabel = "Open settings",
+            confirmLabel = tr("Open settings"),
         ) {
             Text(
-                text = "Android's own kill switch blocks all traffic if the VPN drops, so nothing leaks. " +
-                    "In the VPN settings, tap the gear next to Fox-VPN and turn on \"Always-on VPN\" and " +
-                    "\"Block connections without VPN\".",
+                text = tr("Android's own kill switch blocks all traffic if the VPN drops, so nothing leaks. In the VPN settings, tap the gear next to Fox-VPN and turn on \"Always-on VPN\" and \"Block connections without VPN\"."),
                 color = c.textSecondary,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
     }
 
-    Scaffold(containerColor = Color.Transparent) { padding ->
+    // ── وضعیت واقعی کیل‌سوییچ اندروید (با برگشتن از تنظیمات سیستم تازه می‌شه) ──
+    var sysVpn by remember { mutableStateOf(SystemVpnState.read(context)) }
+    val lifecycleOwner = LocalContext.current as? LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val lifecycle = lifecycleOwner?.lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) sysVpn = SystemVpnState.read(context)
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+
+    // ── تغییرِ تنظیماتِ مؤثر بر اتصال، وقتی VPN وصله ──
+    val vpnState by FoxyVpnService.state.collectAsState()
+    val settingsFingerprint = remember(
+        dohProvider, customDnsEnabled, customDnsServer, socksBindAddress, socksPort,
+        httpProxyEnabled, httpProxyPort, proxyOnlyMode, customEdgeAddress, upstreamProxyEnabled,
+        upstreamProxyType, upstreamProxyHost, upstreamProxyPort, upstreamProxyUsername,
+        upstreamProxyPassword, excludedApps,
+    ) { settingsStore.connectionFingerprint() }
+    var dismissedFingerprint by remember { mutableStateOf<Int?>(null) }
+    val needsReconnect = vpnState == ConnectionState.CONNECTED &&
+        AppliedConfig.fingerprint != null &&
+        settingsFingerprint != AppliedConfig.fingerprint &&
+        settingsFingerprint != dismissedFingerprint
+    val reconnectScope = rememberCoroutineScope()
+
+    Scaffold(
+        containerColor = Color.Transparent,
+        bottomBar = {
+            AnimatedVisibility(
+                visible = needsReconnect,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+            ) {
+                ApplyChangesBar(
+                    c = c,
+                    onLater = { dismissedFingerprint = settingsFingerprint },
+                    onReconnect = {
+                        dismissedFingerprint = settingsFingerprint
+                        reconnectScope.launch {
+                            FoxyVpnService.stop(context)
+                            withTimeoutOrNull(10_000) {
+                                FoxyVpnService.state.first { it == ConnectionState.DISCONNECTED }
+                            }
+                            delay(400)
+                            FoxyVpnService.start(context)
+                        }
+                    },
+                )
+            }
+        },
+    ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -394,20 +484,20 @@ fun SettingsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = tr("Back"),
                             tint = c.textPrimary.copy(alpha = 0.75f)
                         )
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = page.title,
+                            text = tr(page.title),
                             fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = c.textPrimary,
                         )
                         Text(
-                            text = page.subtitle,
+                            text = tr(page.subtitle),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.textSecondary,
                             letterSpacing = 1.sp,
@@ -454,8 +544,8 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f),
                                         c = c,
                                         icon = Icons.Filled.Bolt,
-                                        title = "Auto-connect",
-                                        status = if (autoConnect) "On" else "Off",
+                                        title = tr("Auto-connect"),
+                                        status = if (autoConnect) tr("On") else tr("Off"),
                                         active = autoConnect,
                                         onClick = {
                                             autoConnect = !autoConnect
@@ -466,20 +556,24 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f),
                                         c = c,
                                         icon = Icons.Filled.Shield,
-                                        title = "Kill switch",
-                                        status = "System",
-                                        active = false,
+                                        title = tr("Kill switch"),
+                                        status = when {
+                                            sysVpn.lockdown -> tr("On")
+                                            sysVpn.alwaysOn -> tr("Always-on")
+                                            else -> tr("Off")
+                                        },
+                                        active = sysVpn.alwaysOn || sysVpn.lockdown,
                                         onClick = { showKillSwitchDialog = true },
                                     )
                                     QuickTile(
                                         modifier = Modifier.weight(1f),
                                         c = c,
                                         icon = Icons.Filled.Apps,
-                                        title = "Split tunnel",
+                                        title = tr("Split tunnel"),
                                         status = when (excludedApps.size) {
-                                            0 -> "None"
-                                            1 -> "1 app"
-                                            else -> "${excludedApps.size} apps"
+                                            0 -> tr("None")
+                                            1 -> tr("1 app")
+                                            else -> trf("%d apps", excludedApps.size)
                                         },
                                         active = excludedApps.isNotEmpty(),
                                         onClick = { showSplitTunnelDialog = true },
@@ -488,58 +582,65 @@ fun SettingsScreen(
                                 Spacer(Modifier.height(20.dp))
 
                                 // ───── گروه‌ها؛ هرکدام وارد صفحه‌ی خودش می‌شه ─────
-                                SettingsSection(c, "Preferences") {
+                                SettingsSection(c, tr("Preferences")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Palette,
-                                        title = "Appearance",
-                                        subtitle = "Theme and colors",
+                                        title = tr("Appearance"),
+                                        subtitle = tr("Theme and colors"),
                                         divider = false,
                                         onClick = { page = SettingsPage.APPEARANCE },
                                     )
                                     SettingRow(
                                         c = c,
+                                        icon = Icons.Filled.Language,
+                                        title = tr("Language"),
+                                        subtitle = languageLabel(languageChoice),
+                                        onClick = { showLanguageSheet = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
                                         icon = Icons.Filled.VerifiedUser,
-                                        title = "Connection",
-                                        subtitle = if (exitCheckEnabled) "Exit location check on" else "Exit location check off",
+                                        title = tr("Connection"),
+                                        subtitle = if (exitCheckEnabled) tr("Exit location check on") else tr("Exit location check off"),
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Dns,
-                                        title = "DNS",
-                                        subtitle = if (customDnsEnabled) "Custom • $customDnsServer" else dohProvider.label,
+                                        title = tr("DNS"),
+                                        subtitle = if (customDnsEnabled) trf("Custom • %s", customDnsServer) else tr(dohProvider.label),
                                         onClick = { page = SettingsPage.DNS },
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Router,
-                                        title = "Local proxy",
-                                        subtitle = (if (proxyOnlyMode) "Proxy-only • " else "") + "SOCKS5 $socksPort",
+                                        title = tr("Local proxy"),
+                                        subtitle = (if (proxyOnlyMode) tr("Proxy-only • ") else "") + "SOCKS5 $socksPort",
                                         onClick = { page = SettingsPage.LOCAL_PROXY },
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Tune,
-                                        title = "Advanced",
-                                        subtitle = if (upstreamProxyEnabled) "Chained via ${upstreamProxyType.name}" else "Edge address and upstream proxy",
+                                        title = tr("Advanced"),
+                                        subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else tr("Edge address and upstream proxy"),
                                         onClick = { page = SettingsPage.ADVANCED },
                                     )
                                 }
 
-                                SettingsSection(c, "About") {
+                                SettingsSection(c, tr("About")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Description,
-                                        title = "View logs",
-                                        subtitle = "Recent connection activity",
+                                        title = tr("View logs"),
+                                        subtitle = tr("Recent connection activity"),
                                         divider = false,
                                         onClick = onOpenLogs,
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Info,
-                                        title = "Version",
+                                        title = tr("Version"),
                                         subtitle = BuildConfig.VERSION_NAME,
                                     )
                                 }
@@ -560,12 +661,12 @@ fun SettingsScreen(
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Sign out", fontWeight = FontWeight.SemiBold)
+                                    Text(tr("Sign out"), fontWeight = FontWeight.SemiBold)
                                 }
                             }
 
                             SettingsPage.APPEARANCE -> {
-                                SettingsSection(c, "Theme") {
+                                SettingsSection(c, tr("Theme")) {
                                     Box(modifier = Modifier.padding(12.dp)) {
                                         ThemePickerSection(
                                             themeController = themeController,
@@ -576,12 +677,12 @@ fun SettingsScreen(
                             }
 
                             SettingsPage.CONNECTION -> {
-                                SettingsSection(c, "Connection") {
+                                SettingsSection(c, tr("Connection")) {
                                     SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.VerifiedUser,
-                                        title = "Verify exit location",
-                                        subtitle = "Check that the tunnel exits in the selected country",
+                                        title = tr("Verify exit location"),
+                                        subtitle = tr("Check that the tunnel exits in the selected country"),
                                         checked = exitCheckEnabled,
                                         divider = false,
                                         onCheckedChange = {
@@ -593,20 +694,20 @@ fun SettingsScreen(
                             }
 
                             SettingsPage.DNS -> {
-                                SettingsSection(c, "DNS") {
+                                SettingsSection(c, tr("DNS")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Lock,
-                                        title = "Encrypted DNS",
-                                        subtitle = dohProvider.label,
+                                        title = tr("Encrypted DNS"),
+                                        subtitle = tr(dohProvider.label),
                                         divider = false,
                                         onClick = { showDohProviderDialog = true },
                                     )
                                     SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.Dns,
-                                        title = "Use a custom DNS server",
-                                        subtitle = "Send your apps' DNS queries to a server you choose",
+                                        title = tr("Use a custom DNS server"),
+                                        subtitle = tr("Send your apps' DNS queries to a server you choose"),
                                         checked = customDnsEnabled,
                                         onCheckedChange = {
                                             customDnsEnabled = it
@@ -620,7 +721,7 @@ fun SettingsScreen(
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.Tune,
-                                            title = "DNS server",
+                                            title = tr("DNS server"),
                                             subtitle = presetLabel ?: customDnsServer,
                                             onClick = { showCustomDnsDialog = true },
                                         )
@@ -629,12 +730,12 @@ fun SettingsScreen(
                             }
 
                             SettingsPage.LOCAL_PROXY -> {
-                                SettingsSection(c, "Local proxy") {
+                                SettingsSection(c, tr("Local proxy")) {
                                     SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.Router,
-                                        title = "Proxy-only mode",
-                                        subtitle = "Run local proxy servers (SOCKS5 & HTTP), without a VPN interface",
+                                        title = tr("Proxy-only mode"),
+                                        subtitle = tr("Run local proxy servers (SOCKS5 & HTTP), without a VPN interface"),
                                         checked = proxyOnlyMode,
                                         divider = false,
                                         onCheckedChange = {
@@ -645,22 +746,22 @@ fun SettingsScreen(
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Public,
-                                        title = "Local address",
+                                        title = tr("Local address"),
                                         subtitle = socksBindAddress,
                                         onClick = { showSocksBindDialog = true },
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Hub,
-                                        title = "SOCKS5 port",
+                                        title = tr("SOCKS5 port"),
                                         subtitle = socksPort.toString(),
                                         onClick = { showSocksPortDialog = true },
                                     )
                                     SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.Language,
-                                        title = "Enable HTTP proxy",
-                                        subtitle = "Run local HTTP proxy alongside SOCKS5",
+                                        title = tr("Enable HTTP proxy"),
+                                        subtitle = tr("Run local HTTP proxy alongside SOCKS5"),
                                         checked = httpProxyEnabled,
                                         onCheckedChange = {
                                             httpProxyEnabled = it
@@ -671,7 +772,7 @@ fun SettingsScreen(
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.Tune,
-                                            title = "HTTP port",
+                                            title = tr("HTTP port"),
                                             subtitle = httpProxyPort.toString(),
                                             onClick = { showHttpPortDialog = true },
                                         )
@@ -680,20 +781,20 @@ fun SettingsScreen(
                             }
 
                             SettingsPage.ADVANCED -> {
-                                SettingsSection(c, "Advanced") {
+                                SettingsSection(c, tr("Advanced")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Link,
-                                        title = "Custom edge address",
-                                        subtitle = customEdgeAddress.ifBlank { "Not set" },
+                                        title = tr("Custom edge address"),
+                                        subtitle = customEdgeAddress.ifBlank { tr("Not set") },
                                         divider = false,
                                         onClick = { showEdgeAddressDialog = true },
                                     )
                                     SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.AltRoute,
-                                        title = "Chain through upstream proxy",
-                                        subtitle = "Connect to the VPN server through another proxy first",
+                                        title = tr("Chain through upstream proxy"),
+                                        subtitle = tr("Connect to the VPN server through another proxy first"),
                                         checked = upstreamProxyEnabled,
                                         onCheckedChange = {
                                             upstreamProxyEnabled = it
@@ -704,16 +805,16 @@ fun SettingsScreen(
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.Hub,
-                                            title = "Proxy type",
+                                            title = tr("Proxy type"),
                                             subtitle = upstreamProxyType.name,
                                             onClick = { showUpstreamProxyTypeDialog = true },
                                         )
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.Router,
-                                            title = "Proxy address",
+                                            title = tr("Proxy address"),
                                             subtitle = if (upstreamProxyHost.isBlank()) {
-                                                "Not set"
+                                                tr("Not set")
                                             } else {
                                                 "$upstreamProxyHost:$upstreamProxyPort"
                                             },
@@ -722,8 +823,8 @@ fun SettingsScreen(
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.Person,
-                                            title = "Proxy credentials",
-                                            subtitle = if (upstreamProxyUsername.isBlank()) "None" else upstreamProxyUsername,
+                                            title = tr("Proxy credentials"),
+                                            subtitle = if (upstreamProxyUsername.isBlank()) tr("None") else upstreamProxyUsername,
                                             onClick = { showUpstreamProxyCredentialsDialog = true },
                                         )
                                     }
@@ -906,18 +1007,18 @@ private fun AccountHeaderRow(c: FoxExtras, onClick: () -> Unit) {
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Account",
+                text = tr("Account"),
                 style = MaterialTheme.typography.labelMedium,
                 color = c.textSecondary,
             )
             Text(
-                text = "Manage account",
+                text = tr("Manage account"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = c.textPrimary,
             )
             Text(
-                text = "Subscription status and data usage",
+                text = tr("Subscription status and data usage"),
                 style = MaterialTheme.typography.bodySmall,
                 color = c.textSecondary,
             )
@@ -932,6 +1033,50 @@ private fun AccountHeaderRow(c: FoxExtras, onClick: () -> Unit) {
 }
 
 /** کاشی سریع: آیکون، عنوان و وضعیت (به‌شکل قرص)؛ وقتی فعاله با رنگ accent پررنگ می‌شه. */
+// ───────────────────────── نوار «اعمال تغییرات» ─────────────────────────
+
+@Composable
+private fun ApplyChangesBar(
+    c: FoxExtras,
+    onLater: () -> Unit,
+    onReconnect: () -> Unit,
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .background(c.card)
+            .border(1.dp, c.accent.copy(alpha = 0.45f), shape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = tr("Settings changed"),
+            color = c.textPrimary,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = tr("Reconnect to apply your changes to the current connection."),
+            color = c.textSecondary,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onLater) { Text(tr("Later"), color = c.textSecondary) }
+            Spacer(Modifier.width(6.dp))
+            Button(onClick = onReconnect, shape = RoundedCornerShape(14.dp)) { Text(tr("Reconnect")) }
+        }
+    }
+}
+
 @Composable
 private fun QuickTile(
     modifier: Modifier,
@@ -1058,7 +1203,7 @@ private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
             ) {
                 Icon(
                     imageVector = TelegramPlane,
-                    contentDescription = "Telegram",
+                    contentDescription = tr("Telegram"),
                     tint = Color.White,
                     modifier = Modifier.size(30.dp),
                 )
@@ -1066,7 +1211,7 @@ private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Support & updates",
+                    text = tr("Support & updates"),
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary,
                 )
@@ -1127,7 +1272,7 @@ private fun FoxDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     confirmEnabled: Boolean = true,
-    confirmLabel: String = "Save",
+    confirmLabel: String = tr("Save"),
     wide: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -1150,7 +1295,7 @@ private fun FoxDialog(
             ) { Text(confirmLabel, fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text("Cancel") }
+            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text(tr("Cancel")) }
         },
     )
 }
@@ -1173,11 +1318,11 @@ private fun SignOutConfirmDialog(
             )
         },
         title = {
-            Text("Sign out?", fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
+            Text(tr("Sign out?"), fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
         },
         text = {
             Text(
-                "You'll need to sign in again with your Firefox account to use FoxyVPN.",
+                tr("You'll need to sign in again with your Firefox account to use FoxyVPN."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = c.textSecondary,
             )
@@ -1186,10 +1331,10 @@ private fun SignOutConfirmDialog(
             TextButton(
                 onClick = onConfirm,
                 colors = ButtonDefaults.textButtonColors(contentColor = SxDanger),
-            ) { Text("Sign out", fontWeight = FontWeight.Bold) }
+            ) { Text(tr("Sign out"), fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text("Cancel") }
+            TextButton(onClick = onDismiss, colors = foxTextButtonColors(c)) { Text(tr("Cancel")) }
         },
     )
 }
@@ -1204,7 +1349,7 @@ private fun DohProviderPickerDialog(
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
-        title = "Encrypted DNS",
+        title = tr("Encrypted DNS"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(selected) },
     ) {
@@ -1222,10 +1367,10 @@ private fun DohProviderPickerDialog(
                     colors = foxRadioColors(c),
                 )
                 Column(Modifier.padding(start = 8.dp)) {
-                    Text(provider.label)
+                    Text(tr(provider.label))
                     val detail = when (provider) {
-                        SettingsStore.DohProvider.AUTOMATIC -> "Use whichever answers first"
-                        SettingsStore.DohProvider.OFF -> "Use the network's own DNS"
+                        SettingsStore.DohProvider.AUTOMATIC -> tr("Use whichever answers first")
+                        SettingsStore.DohProvider.OFF -> tr("Use the network's own DNS")
                         else -> provider.addresses.joinToString(", ")
                     }
                     Text(
@@ -1250,7 +1395,7 @@ private fun CustomDnsPickerDialog(
     val isValid = SettingsStore.isValidDnsServer(value)
 
     FoxDialog(
-        title = "DNS server",
+        title = tr("DNS server"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(value) },
         confirmEnabled = isValid,
@@ -1274,7 +1419,7 @@ private fun CustomDnsPickerDialog(
         OutlinedTextField(
             value = value,
             onValueChange = { value = it.trim() },
-            label = { Text("IPv4 address") },
+            label = { Text(tr("IPv4 address")) },
             singleLine = true,
             isError = value.isNotBlank() && !isValid,
             shape = RoundedCornerShape(16.dp),
@@ -1296,7 +1441,7 @@ private fun CustomEdgeAddressDialog(
     val isValid = trimmed.isEmpty() || SettingsStore.isValidEdgeHost(trimmed)
 
     FoxDialog(
-        title = "Custom edge address",
+        title = tr("Custom edge address"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(trimmed) },
         confirmEnabled = isValid,
@@ -1304,14 +1449,14 @@ private fun CustomEdgeAddressDialog(
         OutlinedTextField(
             value = value,
             onValueChange = { value = it },
-            label = { Text("Host or IP") },
+            label = { Text(tr("Host or IP")) },
             singleLine = true,
             isError = !isValid,
             shape = RoundedCornerShape(16.dp),
             colors = foxFieldColors(c),
         )
         Text(
-            "Leave empty to resolve the server hostname normally.",
+            tr("Leave empty to resolve the server hostname normally."),
             style = MaterialTheme.typography.bodySmall,
             color = c.textSecondary,
             modifier = Modifier.padding(top = 8.dp),
@@ -1329,7 +1474,7 @@ private fun SocksBindAddressPickerDialog(
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
-        title = "Local address",
+        title = tr("Local address"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(selected) },
     ) {
@@ -1364,7 +1509,7 @@ private fun SocksPortPickerDialog(
     val isValid = parsedPort != null && parsedPort in 1..65_535
 
     FoxDialog(
-        title = "Local port",
+        title = tr("Local port"),
         onDismiss = onDismiss,
         onConfirm = { parsedPort?.let { onConfirm(it) } },
         confirmEnabled = isValid,
@@ -1372,7 +1517,7 @@ private fun SocksPortPickerDialog(
         OutlinedTextField(
             value = portText,
             onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-            label = { Text("Port (1\u201365535)") },
+            label = { Text(tr("Port (1\u201365535)")) },
             singleLine = true,
             isError = portText.isNotBlank() && !isValid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1394,7 +1539,7 @@ private fun HttpPortPickerDialog(
     val isValid = parsedPort != null && parsedPort in 1..65_535
 
     FoxDialog(
-        title = "HTTP port",
+        title = tr("HTTP port"),
         onDismiss = onDismiss,
         onConfirm = { parsedPort?.let { onConfirm(it) } },
         confirmEnabled = isValid,
@@ -1402,7 +1547,7 @@ private fun HttpPortPickerDialog(
         OutlinedTextField(
             value = portText,
             onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-            label = { Text("Port (1\u201365535)") },
+            label = { Text(tr("Port (1\u201365535)")) },
             singleLine = true,
             isError = portText.isNotBlank() && !isValid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1422,7 +1567,7 @@ private fun UpstreamProxyTypePickerDialog(
     var selected by remember { mutableStateOf(current) }
 
     FoxDialog(
-        title = "Proxy type",
+        title = tr("Proxy type"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(selected) },
     ) {
@@ -1459,7 +1604,7 @@ private fun UpstreamProxyAddressDialog(
     val isValid = host.isNotBlank() && parsedPort != null && parsedPort in 1..65_535
 
     FoxDialog(
-        title = "Proxy address",
+        title = tr("Proxy address"),
         onDismiss = onDismiss,
         onConfirm = { parsedPort?.let { onConfirm(host, it) } },
         confirmEnabled = isValid,
@@ -1467,7 +1612,7 @@ private fun UpstreamProxyAddressDialog(
         OutlinedTextField(
             value = host,
             onValueChange = { host = it.trim() },
-            label = { Text("Host or IP") },
+            label = { Text(tr("Host or IP")) },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             colors = foxFieldColors(c),
@@ -1475,7 +1620,7 @@ private fun UpstreamProxyAddressDialog(
         OutlinedTextField(
             value = portText,
             onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-            label = { Text("Port (1\u201365535)") },
+            label = { Text(tr("Port (1\u201365535)")) },
             singleLine = true,
             isError = portText.isNotBlank() && (parsedPort == null || parsedPort !in 1..65_535),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1498,14 +1643,14 @@ private fun UpstreamProxyCredentialsDialog(
     var password by remember { mutableStateOf(currentPassword) }
 
     FoxDialog(
-        title = "Proxy credentials",
+        title = tr("Proxy credentials"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(username, password) },
     ) {
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username (optional)") },
+            label = { Text(tr("Username (optional)")) },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             colors = foxFieldColors(c),
@@ -1513,7 +1658,7 @@ private fun UpstreamProxyCredentialsDialog(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password (optional)") },
+            label = { Text(tr("Password (optional)")) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             shape = RoundedCornerShape(16.dp),
@@ -1604,13 +1749,13 @@ private fun SplitTunnelDialog(
     }
 
     FoxDialog(
-        title = "Split tunneling",
+        title = tr("Split tunneling"),
         onDismiss = onDismiss,
         onConfirm = { onConfirm(selected) },
         wide = true,
     ) {
         Text(
-            "Selected apps bypass the VPN and use your normal connection.",
+            tr("Selected apps bypass the VPN and use your normal connection."),
             style = MaterialTheme.typography.bodySmall,
             color = c.textSecondary,
             modifier = Modifier.padding(bottom = 12.dp),
@@ -1618,12 +1763,12 @@ private fun SplitTunnelDialog(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search apps") },
+            placeholder = { Text(tr("Search apps")) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = c.accent) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = c.textSecondary)
+                        Icon(Icons.Filled.Close, contentDescription = tr("Clear"), tint = c.textSecondary)
                     }
                 }
             },
@@ -1645,7 +1790,7 @@ private fun SplitTunnelDialog(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 Text(
-                    text = if (selected.isEmpty()) "No apps selected" else "${selected.size} selected",
+                    text = if (selected.isEmpty()) tr("No apps selected") else trf("%d selected", selected.size),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (selected.isEmpty()) c.textSecondary else c.accentText,
@@ -1654,7 +1799,7 @@ private fun SplitTunnelDialog(
             Spacer(Modifier.weight(1f))
             if (selected.isNotEmpty()) {
                 TextButton(onClick = { selected = emptySet() }, colors = foxTextButtonColors(c)) {
-                    Text("Clear all", fontSize = 13.sp)
+                    Text(tr("Clear all"), fontSize = 13.sp)
                 }
             }
         }
@@ -1668,7 +1813,7 @@ private fun SplitTunnelDialog(
             )
         } else if (filteredApps.isEmpty()) {
             Text(
-                "No apps match \"$searchQuery\".",
+                trf("No apps match \"%s\".", searchQuery),
                 style = MaterialTheme.typography.bodySmall,
                 color = c.textSecondary,
                 modifier = Modifier.padding(vertical = 12.dp),
