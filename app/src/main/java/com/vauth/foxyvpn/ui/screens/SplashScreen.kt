@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -121,7 +122,7 @@ fun SplashScreen(
                 fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = "Secure & Private",
+                text = tr("Secure & Private"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = c.textSecondary,
                 letterSpacing = 1.sp,
