@@ -48,6 +48,8 @@ class FoxyVpnApp : Application() {
         serverListClient = ServerListClient()
         authRepository = FxaAuthRepository(tokenStore)
         createNotificationChannel()
+        // اگه پروسه‌ی قبلی بدون پاک‌کردن نوتیف کشته شده، نوتیفِ جامانده را بردار
+        FoxyVpnService.clearStaleNotification(this)
     }
 
     private fun installConscrypt() {
