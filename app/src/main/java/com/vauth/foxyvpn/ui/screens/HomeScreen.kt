@@ -5,6 +5,9 @@ import com.vauth.foxyvpn.i18n.trf
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.StartOffsetType
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -450,7 +453,12 @@ fun HomeScreen(
                                             .size(10.dp)
                                             .clip(CircleShape)
                                             .background(
-                                                if (state == ConnectionState.DISCONNECTED) statusColors.connected else ringColor
+                                                // قطع: خاکستری · در حال اتصال: نارنجی · وصل: سبز
+                                                when (state) {
+                                                    ConnectionState.DISCONNECTED -> c.textSecondary.copy(alpha = 0.45f)
+                                                    ConnectionState.CONNECTING -> Color(0xFFFF9F1C)
+                                                    ConnectionState.CONNECTED -> Color(0xFF2ECC71)
+                                                }
                                             )
                                     )
                                     Spacer(Modifier.width(8.dp))
@@ -637,7 +645,7 @@ private fun ConnectButton(
         if (animate && connecting) {
             ConnectingArc(size = size * 0.868f, color = ringColor)
         } else if (animate && connected) {
-            PulseRing(size = size * 0.912f, maxScale = 1f / 0.912f, color = ringColor)
+            PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
         }
 
         // دکمه اصلی
@@ -710,28 +718,44 @@ private fun ConnectingArc(size: Dp, color: Color) {
     }
 }
 
-/** موج ملایم که از حلقه‌ی داخلی به بیرون پخش می‌شه و محو می‌شه؛ نشونه‌ی «وصل و زنده». */
+/**
+ * موج‌های ضربان: از لبه‌ی دکمه شروع می‌شن، از هاله‌ی بیرونی هم رد می‌شن و آروم محو می‌شن.
+ * دو موج با فاصله‌ی نیم‌دوره پشت هم می‌آن تا پیوسته و پخش‌تر دیده بشه.
+ */
 @Composable
 private fun PulseRing(size: Dp, maxScale: Float, color: Color) {
     val transition = rememberInfiniteTransition(label = "pulse-ring")
-    val p = transition.animateFloat(
+    val period = 3200
+    val first = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(3000, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "pulse-progress",
+        animationSpec = infiniteRepeatable(tween(period, easing = LinearOutSlowInEasing), RepeatMode.Restart),
+        label = "pulse-progress-1",
     )
-    Box(
-        modifier = Modifier
-            .size(size)
-            .graphicsLayer {
-                val t = p.value
-                val sc = 1f + (maxScale - 1f) * t
-                scaleX = sc
-                scaleY = sc
-                alpha = 0.55f * (1f - t)
-            }
-            .border(2.dp, color, CircleShape),
+    val second = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(period, easing = LinearOutSlowInEasing),
+            RepeatMode.Restart,
+            initialStartOffset = StartOffset(period / 2, StartOffsetType.FastForward),
+        ),
+        label = "pulse-progress-2",
     )
+    listOf(first, second).forEach { p ->
+        Box(
+            modifier = Modifier
+                .size(size)
+                .graphicsLayer {
+                    val t = p.value
+                    val sc = 1f + (maxScale - 1f) * t
+                    scaleX = sc
+                    scaleY = sc
+                    alpha = 0.5f * (1f - t) * (1f - t * 0.3f)
+                }
+                .border(2.dp, color, CircleShape),
+        )
+    }
 }
 
 @Composable
