@@ -253,6 +253,7 @@ class FoxyVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         runCatching {
 
             val underlyingNetworks = NetworkRequest.Builder()
@@ -271,6 +272,8 @@ class FoxyVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
+        runCatching { getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID) }
         ControlPlaneHttp.socketProtector = null
         runCatching {
             getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback)
@@ -1222,6 +1225,26 @@ class FoxyVpnService : VpnService() {
 
         private val _lastError = MutableStateFlow<String?>(null)
         val lastError: StateFlow<String?> = _lastError
+
+        @Volatile
+        private var instance: FoxyVpnService? = null
+
+        /** وضعیت زنده‌ی Always-on / Block از خود سیستم؛ فقط وقتی سرویس در حال اجراست. */
+        fun liveSystemFlags(): com.vauth.foxyvpn.data.SystemVpnState.Snapshot? {
+            val svc = instance ?: return null
+            if (Build.VERSION.SDK_INT < 29) return null
+            return runCatching {
+                com.vauth.foxyvpn.data.SystemVpnState.Snapshot(svc.isAlwaysOn, svc.isLockdownEnabled)
+            }.getOrNull()
+        }
+
+        /** نوتیف جامانده از پروسه‌ی قبلیِ کشته‌شده را پاک می‌کند (وقتی VPN وصل نیست). */
+        fun clearStaleNotification(context: Context) {
+            if (state.value != ConnectionState.DISCONNECTED || instance != null) return
+            runCatching {
+                context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+            }
+        }
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FoxyVpnService::class.java).setAction(ACTION_CONNECT))
