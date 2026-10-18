@@ -1,6 +1,7 @@
 package com.vauth.foxyvpn
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
@@ -17,6 +18,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
+import com.vauth.foxyvpn.i18n.Lang
+import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.ui.navigation.FoxyNavGraph
 import com.vauth.foxyvpn.ui.theme.FoxyVpnTheme
 import com.vauth.foxyvpn.ui.theme.rememberThemeController
@@ -24,6 +27,11 @@ import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.PingUtil
 
 class MainActivity : ComponentActivity() {
+
+    // زبان انتخابی (و جهت راست‌به‌چپ) روی Context فعالیت اعمال می‌شه
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(Lang.wrap(newBase))
+    }
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -34,8 +42,7 @@ class MainActivity : ComponentActivity() {
 
             Toast.makeText(
                 this,
-                "Fox-VPN needs Android's VPN permission to tunnel this device's traffic. " +
-                    "Proxy-only mode in Settings works without it.",
+                tr("Fox-VPN needs Android's VPN permission to tunnel this device's traffic. Proxy-only mode in Settings works without it."),
                 Toast.LENGTH_LONG,
             ).show()
         }
