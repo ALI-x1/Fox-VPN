@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import android.content.Context
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -353,7 +355,7 @@ fun ServerListScreen(
     LaunchedEffect(Unit) {
         runCatching { serverListClient.fetchCountries() }
             .onSuccess { countries = it }
-            .onFailure { errorMessage = it.message ?: "Failed to load server list" }
+            .onFailure { errorMessage = it.message ?: tr("Failed to load server list") }
         isLoading = false
     }
 
@@ -539,7 +541,7 @@ fun ServerListScreen(
                     proxyStateStore.save(chosen)
                     onServerSelected()
                 } else {
-                    errorMessage = "No available servers in ${entry.city.code}"
+                    errorMessage = trf("No available servers in %s", entry.city.code)
                 }
             }
         }
@@ -557,7 +559,7 @@ fun ServerListScreen(
                     proxyStateStore.save(chosen)
                     onServerSelected()
                 } else {
-                    errorMessage = "No available servers for ${rec.name}"
+                    errorMessage = trf("No available servers for %s", rec.name)
                 }
             }
         }
@@ -613,14 +615,14 @@ fun ServerListScreen(
                     CircleIconButton(c = c, onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = tr("Back"),
                             tint = c.textPrimary.copy(alpha = 0.8f),
                         )
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Choose location",
+                            text = tr("Choose location"),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = c.textPrimary,
@@ -628,7 +630,7 @@ fun ServerListScreen(
                         if (locationCount > 0) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "$locationCount locations",
+                                    text = trf("%d locations", locationCount),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                 )
@@ -644,7 +646,7 @@ fun ServerListScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh ping",
+                            contentDescription = tr("Refresh ping"),
                             tint = c.accent,
                             modifier = Modifier.rotate(refreshRotation),
                         )
@@ -714,12 +716,12 @@ fun ServerListScreen(
                                     renderCity(entry, Modifier.animateItem())
                                 }
                             } else {
-                                citySection("current", "Current location", Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
-                                citySection("favorites", "Favorites", Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
-                                citySection("recent", "Recent", Icons.Filled.History, c.accentText, c, recentCities, renderCity)
+                                citySection("current", tr("Current location"), Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
+                                citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
+                                citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
                                 citySection(
                                     id = "all",
-                                    title = "All locations",
+                                    title = tr("All locations"),
                                     icon = null,
                                     iconTint = c.accentText,
                                     c = c,
@@ -817,13 +819,13 @@ private fun RecommendedCard(
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Recommended",
+                text = tr("Recommended"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = c.textPrimary,
             )
             Text(
-                text = "Automatically chosen for the best performance",
+                text = tr("Automatically chosen for the best performance"),
                 style = MaterialTheme.typography.bodySmall,
                 color = c.textSecondary,
             )
@@ -832,7 +834,7 @@ private fun RecommendedCard(
             Spacer(Modifier.width(10.dp))
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
-                contentDescription = "Selected",
+                contentDescription = tr("Selected"),
                 tint = c.accent,
                 modifier = Modifier.size(28.dp),
             )
@@ -895,7 +897,7 @@ private fun CityCard(
             if (isSelected) {
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = "Selected",
+                    contentDescription = tr("Selected"),
                     tint = c.accent,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -967,7 +969,7 @@ private fun FavoriteButton(c: FoxExtras, isFavorite: Boolean, onClick: () -> Uni
     ) {
         Icon(
             imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-            contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+            contentDescription = if (isFavorite) tr("Remove from favorites") else tr("Add to favorites"),
             tint = tint,
             modifier = Modifier
                 .size(24.dp)
@@ -1046,7 +1048,7 @@ private fun SearchField(
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(
-                    text = "Search country or city",
+                    text = tr("Search country or city"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textSecondary,
                     maxLines = 1,
@@ -1077,7 +1079,7 @@ private fun SearchField(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "Clear search",
+                    contentDescription = tr("Clear search"),
                     tint = c.textSecondary,
                     modifier = Modifier.size(20.dp),
                 )
@@ -1104,7 +1106,7 @@ private fun SortButton(c: FoxExtras, mode: SortMode, onSelected: (SortMode) -> U
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Sort,
-                contentDescription = "Sort locations",
+                contentDescription = tr("Sort locations"),
                 tint = c.accent,
                 modifier = Modifier.size(24.dp),
             )
@@ -1120,7 +1122,7 @@ private fun SortButton(c: FoxExtras, mode: SortMode, onSelected: (SortMode) -> U
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = option.label,
+                            text = tr(option.label),
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                             color = if (selected) c.accentText else c.textPrimary,
                         )
@@ -1163,7 +1165,7 @@ private fun NoResults(c: FoxExtras, query: String) {
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "No locations match \u201C$query\u201D",
+            text = trf("No locations match \u201C%s\u201D", query),
             style = MaterialTheme.typography.bodyMedium,
             color = c.textSecondary,
         )
@@ -1200,7 +1202,7 @@ private fun PickingOverlay(c: FoxExtras) {
             )
             Spacer(Modifier.height(14.dp))
             Text(
-                text = "Finding the fastest server\u2026",
+                text = tr("Finding the fastest server\u2026"),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = c.textPrimary,
@@ -1213,9 +1215,9 @@ private fun PickingOverlay(c: FoxExtras) {
 @Composable
 private fun StatusChip(status: CardStatus, c: FoxExtras) {
     val (text, color) = when (status) {
-        CardStatus.CONNECTED -> "CONNECTED" to PingGood
-        CardStatus.CONNECTING -> "CONNECTING" to PingMedium
-        CardStatus.SELECTED -> "SELECTED" to c.accent
+        CardStatus.CONNECTED -> tr("CONNECTED") to PingGood
+        CardStatus.CONNECTING -> tr("CONNECTING") to PingMedium
+        CardStatus.SELECTED -> tr("SELECTED") to c.accent
     }
     Row(
         modifier = Modifier
@@ -1271,7 +1273,7 @@ private fun LiveChip(c: FoxExtras, live: Boolean, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (live) "LIVE" else "PAUSED",
+            text = if (live) tr("LIVE") else tr("PAUSED"),
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
@@ -1297,7 +1299,7 @@ private fun FastestChip() {
             modifier = Modifier.size(12.dp),
         )
         Text(
-            text = "FASTEST",
+            text = tr("FASTEST"),
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp,
@@ -1345,7 +1347,7 @@ private fun PingBadge(pingMs: Int?, pingState: PingState, c: FoxExtras) {
             }
 
             pingState == PingState.FAILED -> Text(
-                text = "Timeout",
+                text = tr("Timeout"),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = color,
