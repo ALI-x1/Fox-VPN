@@ -19,6 +19,8 @@ import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.MainActivity
 import com.vauth.foxyvpn.data.AppLogger
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import com.vauth.foxyvpn.data.ControlPlaneHttp
 import com.vauth.foxyvpn.data.CountryUtil
 import com.vauth.foxyvpn.data.FxaAuthRepository
@@ -147,7 +149,7 @@ class FoxyVpnService : VpnService() {
 
     @Volatile private var lastUnhealthyRedialAt = 0L
 
-    @Volatile private var statusLabel: String = "Connecting\u2026"
+    @Volatile private var statusLabel: String = tr("Connecting\u2026")
     // کشور واقعیِ خروجی (برای «Recommended» که کدش REC هست)
     @Volatile private var exitCountryCode: String? = null
 
@@ -325,8 +327,16 @@ class FoxyVpnService : VpnService() {
                 AppLogger.i(TAG, "the service was restarted by the system; bringing the tunnel back up")
             }
             _state.value = ConnectionState.CONNECTING
+            runCatching {
+                com.vauth.foxyvpn.data.AppliedConfig.fingerprint =
+                    SettingsStore(applicationContext).connectionFingerprint()
+                if (Build.VERSION.SDK_INT >= 29) {
+                    com.vauth.foxyvpn.data.SystemVpnState.reported =
+                        com.vauth.foxyvpn.data.SystemVpnState.Snapshot(isAlwaysOn, isLockdownEnabled)
+                }
+            }
             _lastError.value = null
-            statusLabel = "Connecting\u2026"
+            statusLabel = tr("Connecting\u2026")
             exitCountryCode = null
             enterForeground(statusLabel)
 
@@ -488,7 +498,7 @@ class FoxyVpnService : VpnService() {
         runCatching {
             AppLogger.i(TAG, "connect: starting")
             val tokenStore = TokenStore(applicationContext)
-            if (tokenStore.loadAuth() == null) error("Not signed in")
+            if (tokenStore.loadAuth() == null) error(tr("Not signed in"))
             val proxyStateStore = ProxyStateStore(applicationContext)
             val settingsStore = SettingsStore(applicationContext)
 
@@ -570,9 +580,9 @@ class FoxyVpnService : VpnService() {
 
             fun connectedLabel(): String = if (proxyOnlyMode) {
                 if (httpProxyEnabled) {
-                    "Proxy active \u2022 SOCKS $socksPort, HTTP $httpProxyPort"
+                    trf("Proxy active \u2022 SOCKS %s, HTTP %s", socksPort, httpProxyPort)
                 } else {
-                    "Proxy active \u2022 $socksBindAddress:$socksPort"
+                    trf("Proxy active \u2022 %s:%s", socksBindAddress, socksPort)
                 }
             } else {
                 val target = activeCandidate()
@@ -584,8 +594,8 @@ class FoxyVpnService : VpnService() {
                 val flag = CountryUtil.flagEmoji(code)
                 val name = CountryUtil.countryName(code)
                     ?: target.countryName.takeIf { it.isNotBlank() && code == null && !it.contains("Recomm", true) }
-                    ?: "Recommended"
-                (if (flag.isEmpty()) "" else "$flag ") + "Connected \u2022 $name"
+                    ?: tr("Recommended")
+                (if (flag.isEmpty()) "" else "$flag ") + trf("Connected \u2022 %s", name)
             }
 
             if (proxyOnlyMode) {
@@ -628,7 +638,7 @@ class FoxyVpnService : VpnService() {
                         "local proxy at $socksBindAddress:$socksPort",
                 )
             } else {
-                val fd = establishTun(excludedApps, customDnsServer) ?: error("Failed to establish TUN interface")
+                val fd = establishTun(excludedApps, customDnsServer) ?: error(tr("Failed to establish TUN interface"))
                 tunFd = fd
                 tunnelInterfaceActive = true
 
@@ -644,14 +654,14 @@ class FoxyVpnService : VpnService() {
                     customDnsServer,
                 )
                 val tunnelStarted = HevSocks5Tunnel.start(tunnelConfigPath, fd.fd)
-                if (!tunnelStarted) error("Failed to start the tun2socks tunnel (hev-socks5-tunnel)")
+                if (!tunnelStarted) error(tr("Failed to start the tun2socks tunnel (hev-socks5-tunnel)"))
                 AppLogger.i(TAG, "connect: TUN interface up, hev-socks5-tunnel started")
                 delay(POST_TUN_SETTLE_MS)
             }
             ensureGenerationCurrent(myGeneration)
 
             suspend fun mintProxyPass(): ProxyPass {
-                var auth = tokenStore.loadAuth() ?: throw TokenInvalidError("Not signed in")
+                var auth = tokenStore.loadAuth() ?: throw TokenInvalidError(tr("Not signed in"))
 
                 if (!tokenStore.hasValidSession()) {
                     val renewed = renewAccessToken(tokenStore)
@@ -769,13 +779,17 @@ class FoxyVpnService : VpnService() {
                     val failure = lastDialFailure
                     if (failure != null) {
                         error(
-                            "Could not reach a VPN server after $dialAttempt attempts across " +
-                                "${candidates.size} server(s). Last error: ${friendlyErrorMessage(failure)}",
+                            trf(
+                                "Could not reach a VPN server after %s attempts across %s server(s). Last error: %s",
+                                dialAttempt, candidates.size, friendlyErrorMessage(failure),
+                            ),
                         )
                     }
                     error(
-                        "The VPN server closed the connection immediately, $dialAttempt times in a row. " +
-                            "Try again shortly or pick a different location.",
+                        trf(
+                            "The VPN server closed the connection immediately, %s times in a row. Try again shortly or pick a different location.",
+                            dialAttempt,
+                        ),
                     )
                 }
 
@@ -856,7 +870,7 @@ class FoxyVpnService : VpnService() {
                         if (!waitingForNetwork) {
                             AppLogger.i(TAG, "no usable network; holding the session and waiting for connectivity")
                             waitingForNetwork = true
-                            statusLabel = "Waiting for network\u2026"
+                            statusLabel = tr("Waiting for network\u2026")
                             updateNotification(statusLabel)
                         }
                         consecutiveFailures = 0
@@ -869,7 +883,7 @@ class FoxyVpnService : VpnService() {
 
                     AppLogger.w(TAG, "upstream tunnel is down; attempting to reconnect")
                     runCatching { current?.close() }
-                    statusLabel = "Reconnecting\u2026"
+                    statusLabel = tr("Reconnecting\u2026")
                     updateNotification(statusLabel)
 
                     val dialResult = try {
@@ -898,7 +912,7 @@ class FoxyVpnService : VpnService() {
 
                         if (consecutiveFailures == RECONNECT_FAILURES_BEFORE_WARNING) {
                             _lastError.value =
-                                "Still trying to reconnect to the VPN server. Tap Disconnect to stop."
+                                tr("Still trying to reconnect to the VPN server. Tap Disconnect to stop.")
                             AppLogger.e(
                                 TAG,
                                 "$consecutiveFailures consecutive reconnect failures; continuing to retry with backoff " +
@@ -934,7 +948,7 @@ class FoxyVpnService : VpnService() {
                 return@onFailure
             }
             val message = if (failure is TimeoutCancellationException) {
-                "Connection timed out. Check your network and try again."
+                tr("Connection timed out. Check your network and try again.")
             } else {
                 friendlyErrorMessage(failure)
             }
@@ -955,7 +969,7 @@ class FoxyVpnService : VpnService() {
         val recommended = ServerListClient.candidatesForCountry(countries, RECOMMENDED_COUNTRY_CODE).randomOrNull()
         val chosen = recommended ?: countries.firstOrNull { it.code.isNotBlank() }?.let { country ->
             ServerListClient.candidatesForCountry(countries, country.code).randomOrNull()
-        } ?: error("No server selected and no servers are available. Choose a location first.")
+        } ?: error(tr("No server selected and no servers are available. Choose a location first."))
         proxyStateStore.save(chosen)
         AppLogger.i(TAG, "connect: auto-selected ${chosen.authority} country=${chosen.countryCode}")
         return chosen
@@ -1001,16 +1015,16 @@ class FoxyVpnService : VpnService() {
     }
 
     private fun friendlyErrorMessage(error: Throwable): String = when (error) {
-        is QuotaExceededError -> "Your VPN quota is exhausted. Try again later."
-        is TokenInvalidError -> "Your session was rejected. Please sign in again."
-        is TimeoutCancellationException -> "the connection timed out"
+        is QuotaExceededError -> tr("Your VPN quota is exhausted. Try again later.")
+        is TokenInvalidError -> tr("Your session was rejected. Please sign in again.")
+        is TimeoutCancellationException -> tr("the connection timed out")
         else -> {
             val untrusted = generateSequence(error) { it.cause }.take(8).any {
                 it is java.security.cert.CertPathValidatorException || it is java.security.cert.CertificateException
             }
-            val base = error.message ?: (error::class.simpleName ?: "Connection failed")
+            val base = error.message ?: (error::class.simpleName ?: tr("Connection failed"))
             if (untrusted) {
-                "$base (this device does not trust the VPN server's certificate; updating Android or the device's date/time may help)"
+                trf("%s (this device does not trust the VPN server's certificate; updating Android or the device's date/time may help)", base)
             } else {
                 base
             }
@@ -1168,7 +1182,7 @@ class FoxyVpnService : VpnService() {
             .setLocalOnly(true)
 
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Disconnect", disconnectIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, tr("Disconnect"), disconnectIntent)
         if (subText != null) {
             builder.setStyle(NotificationCompat.BigTextStyle().bigText("$text\n$subText"))
         }
