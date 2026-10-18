@@ -3,6 +3,8 @@ package com.vauth.foxyvpn.ui.screens
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import android.content.Context
+import java.text.Collator
+import java.util.Locale
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -96,7 +98,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vauth.foxyvpn.data.CityNames
+import com.vauth.foxyvpn.data.CountryUtil
 import com.vauth.foxyvpn.data.ProxyStateStore
+import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.model.ConnectionState
@@ -232,10 +237,36 @@ private suspend fun <T> pickFastest(candidates: List<T>, target: (T) -> Pair<Str
     return if (best != null) pool[best] else pool.random()
 }
 
+/** اسم فارسی کشورهایی که تو CountryUtil نیستن (مثلاً سوئد). */
+private val EXTRA_COUNTRY_FA = mapOf(
+    "SE" to "\u0633\u0648\u0626\u062F",
+)
+
+/** اسم کشور به زبان برنامه (فارسی → «فرانسه»)؛ اگه نبود همون اسم انگلیسی. */
+private fun localCountryName(code: String, fallback: String): String =
+    if (Lang.isFa) {
+        CountryUtil.countryName(code)
+            ?: EXTRA_COUNTRY_FA[code.trim().uppercase(Locale.ROOT)]
+            ?: fallback
+    } else {
+        fallback
+    }
+
+/** اسمِ شهرِ نمایشی یک لوکیشن (همونی که زیر اسم کشور دیده می‌شه). */
+private fun cityDisplayName(entry: CityEntry): String =
+    CityNames.display(entry.country.code, entry.country.name, entry.city.name)
+        .ifBlank { entry.city.name.ifBlank { entry.city.code } }
+
+/** مقایسه‌ی الفبایی مطابق زبان برنامه؛ فارسی با Collator درست مرتب می‌شه (پ، چ، ژ، گ سر جاشون). */
+private fun appCollator(): Collator =
+    Collator.getInstance(if (Lang.isFa) Locale("fa") else Locale.ENGLISH)
+
 /** جستجو روی اسم کشور، اسم/کد شهر و کد کشور. */
 private fun CityEntry.matches(query: String): Boolean =
     country.name.contains(query, ignoreCase = true) ||
+        localCountryName(country.code, country.name).contains(query, ignoreCase = true) ||
         city.name.contains(query, ignoreCase = true) ||
+        CityNames.display(country.code, country.name, city.name).contains(query, ignoreCase = true) ||
         city.code.contains(query, ignoreCase = true) ||
         country.code.equals(query, ignoreCase = true)
 
@@ -441,7 +472,7 @@ fun ServerListScreen(
 
     // ترتیب لیست بر اساس انتخاب کاربر. حالت پینگ: اول کم‌ترین پینگ، بعد در حال سنجش، آخر timeout ها.
     // با هر تغییر پینگ خودکار دوباره محاسبه می‌شه (و animateItem جابه‌جایی رو نرم نشون می‌ده)
-    val sortedCities by remember(cityEntries, sortMode) {
+    val sortedCities by remember(cityEntries, sortMode, Lang.isFa) {
         derivedStateOf {
             when (sortMode) {
                 SortMode.PING -> cityEntries.sortedWith(
@@ -458,15 +489,35 @@ fun ServerListScreen(
                         { it.city.code },
                     ),
                 )
-                SortMode.COUNTRY -> cityEntries.sortedWith(
-                    compareBy<CityEntry>({ e -> e.country.name.lowercase() }, { e -> e.city.code }),
-                )
-                SortMode.CITY -> cityEntries.sortedWith(
-                    compareBy<CityEntry>(
-                        { e -> e.city.name.ifBlank { e.city.code }.lowercase() },
-                        { e -> e.country.name },
-                    ),
-                )
+                SortMode.COUNTRY -> {
+                    val collator = appCollator()
+                    cityEntries.sortedWith(
+                        Comparator { a, b ->
+                            val byCountry = collator.compare(
+                                localCountryName(a.country.code, a.country.name),
+                                localCountryName(b.country.code, b.country.name),
+                            )
+                            if (byCountry != 0) byCountry else a.city.code.compareTo(b.city.code)
+                        },
+                    )
+                }
+                SortMode.CITY -> {
+                    // بر اساس اسم شهرِ سرور (زیر اسم کشور)؛ اگه دو شهر هم‌نام بودن، بر اساس کشور
+                    val collator = appCollator()
+                    cityEntries.sortedWith(
+                        Comparator { a, b ->
+                            val byCity = collator.compare(cityDisplayName(a), cityDisplayName(b))
+                            if (byCity != 0) {
+                                byCity
+                            } else {
+                                collator.compare(
+                                    localCountryName(a.country.code, a.country.name),
+                                    localCountryName(b.country.code, b.country.name),
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -573,8 +624,8 @@ fun ServerListScreen(
             modifier = itemModifier,
             c = c,
             countryCode = entry.country.code,
-            countryName = entry.country.name,
-            cityLabel = entry.city.name.ifBlank { entry.city.code },
+            countryName = localCountryName(entry.country.code, entry.country.name),
+            cityLabel = CityNames.display(entry.country.code, entry.country.name, entry.city.name),
             pingMs = pingResults[entry.key],
             pingState = pingStates[entry.key] ?: PingState.PENDING,
             isFastest = entry.key == fastestKey,
@@ -916,18 +967,21 @@ private fun CityCard(
             Text(
                 text = countryName,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
                 color = c.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = cityLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = c.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (cityLabel.isNotBlank()) {
+                Text(
+                    text = cityLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             // نشان‌ها تو خط جدا می‌آن تا اسم شهر کوتاه نشه (وضعیت اتصال اولویت داره)
             if (status != null || isFastest) {
                 Spacer(Modifier.height(4.dp))
