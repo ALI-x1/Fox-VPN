@@ -17,7 +17,7 @@ object CountryUtil {
     fun countryName(code: String?): String? {
         val cc = code?.trim()?.uppercase(Locale.ROOT).orEmpty()
         if (cc.length != 2 || cc.any { it !in 'A'..'Z' }) return null
-        val name = Locale("", cc).getDisplayCountry(Locale.ENGLISH)
+        val name = Locale("", cc).getDisplayCountry(com.vauth.foxyvpn.i18n.Lang.locale)
         return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
     }
 }
