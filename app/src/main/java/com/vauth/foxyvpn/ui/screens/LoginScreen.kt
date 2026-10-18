@@ -29,11 +29,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,6 +58,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
@@ -77,7 +78,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -98,6 +99,7 @@ import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 // ───────────────────────── رنگ‌ها (از تم برنامه) ─────────────────────────
 
@@ -149,6 +151,28 @@ private fun Modifier.reveal(progress: () -> Float, offsetPx: Float = 40f): Modif
     translationY = (1f - v) * offsetPx
 }
 
+/**
+ * جمع‌شدن نرم (۱ = کامل، ۰ = کاملاً جمع). فقط تو فاز layout/draw اجرا می‌شه؛
+ * پس با هر فریم انیمیشن، صفحه recompose نمی‌شه.
+ */
+private fun Modifier.collapsible(progress: () -> Float): Modifier = this
+    .clipToBounds()
+    .graphicsLayer { alpha = progress().coerceIn(0f, 1f) }
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val p = progress().coerceIn(0f, 1f)
+        val h = (placeable.height * p).roundToInt()
+        layout(placeable.width, h) { placeable.place(0, 0) }
+    }
+
+// قبلاً با Regex ساخته می‌شد که با «هر حرفِ تایپ‌شده» دوباره کامپایل می‌شد و تایپ رو سنگین می‌کرد
+private fun isZeroWidth(ch: Char) = ch in '\u200B'..'\u200D' || ch == '\uFEFF'
+
+private fun String.stripBlankAndZeroWidth(): String =
+    filterNot { it.isWhitespace() || Character.isSpaceChar(it) || it == '\u00A0' || isZeroWidth(it) }
+
+private fun String.stripZeroWidth(): String = filterNot { isZeroWidth(it) }
+
 // ───────────────────────── صفحه ورود ─────────────────────────
 
 @Composable
@@ -166,7 +190,8 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
-    val c = LocalFoxExtras.current.toLoginColors()
+    val extras = LocalFoxExtras.current
+    val c = remember(extras) { extras.toLoginColors() }
 
     // کدوم فیلد فوکوس داره؟ (برای تشخیص «کیبورد واقعاً بازه»)
     var emailFocused by remember { mutableStateOf(false) }
@@ -179,14 +204,18 @@ fun LoginScreen(
         codeFocused = false
     }
 
-    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد پسورد و دکمه پشت کیبورد نمونن.
-    // فقط وقتی «واقعاً» باز باشه: یه فیلد فوکوس داشته باشه و ارتفاع کیبورد معنی‌دار باشه.
-    // (قبلاً فقط به WindowInsets.isImeVisible تکیه می‌شد؛ تو بعضی گوشی‌ها اون مقدار بدون کیبورد هم
-    // true می‌مونه و لوگو و توضیحات برای همیشه مخفی می‌شدن.)
-    val density = LocalDensity.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val imeVisible = (emailFocused || passwordFocused || codeFocused) &&
-        imeBottomPx > with(density) { 120.dp.toPx() }
+    // وقتی یکی از فیلدها فوکوس داره، هدر نرم جمع می‌شه تا فیلدها و دکمه پشت کیبورد نمونن.
+    // قبلاً ارتفاع کیبورد (WindowInsets.ime) داخل composition خونده می‌شد؛ یعنی کل صفحه با هر فریمِ
+    // انیمیشن کیبورد recompose می‌شد و همین لگ می‌انداخت. حالا فقط فوکوس تعیین‌کننده‌ست و
+    // پیشرفت جمع‌شدن فقط تو فاز layout خونده می‌شه (بدون recompose).
+    val anyFieldFocused = emailFocused || passwordFocused || codeFocused
+    val heroExpand by animateFloatAsState(
+        targetValue = if (anyFieldFocused) 0f else 1f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "hero-collapse",
+    )
+    // وقتی هدر جمع شده، انیمیشن بی‌نهایت لوگو متوقف می‌شه
+    val heroVisible by remember { derivedStateOf { heroExpand > 0.02f } }
 
     // انیمیشن ورود پله‌ای (هدر ← کارت ← فوتر)
     var entered by remember { mutableStateOf(false) }
@@ -254,36 +283,32 @@ fun LoginScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 // ───── لوگو + نام (با باز شدن کیبورد نرم جمع می‌شه) ─────
-                AnimatedVisibility(
-                    visible = !imeVisible,
-                    enter = fadeIn(tween(220)) + expandVertically(tween(260)),
-                    exit = fadeOut(tween(120)) + shrinkVertically(tween(200)),
+                Column(
+                    modifier = Modifier
+                        .reveal({ heroP })
+                        .collapsible { heroExpand },
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Column(
-                        modifier = Modifier.reveal({ heroP }),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        LoginLogo()
+                    LoginLogo(animate = heroVisible)
 
-                        Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(14.dp))
 
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
-                                withStyle(SpanStyle(color = c.accent)) { append("VPN") }
-                            },
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Text(
-                            text = tr("Secure & Private"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = c.textSecondary,
-                            letterSpacing = 1.sp,
-                        )
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
+                            withStyle(SpanStyle(color = c.accent)) { append("VPN") }
+                        },
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    Text(
+                        text = tr("Secure & Private"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.textSecondary,
+                        letterSpacing = 1.sp,
+                    )
 
-                        Spacer(Modifier.height(28.dp))
-                    }
+                    Spacer(Modifier.height(28.dp))
                 }
 
                 // ───── کارت فرم ─────
@@ -306,24 +331,18 @@ fun LoginScreen(
                         if (!twoFactor) {
                             Column {
                                 Text(
-                                    tr("Sign in with Firefox"),
+                                    tr("Sign in to FOX-VPN"),
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = c.textPrimary,
                                 )
-                                AnimatedVisibility(
-                                    visible = !imeVisible,
-                                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                                    exit = fadeOut(tween(100)) + shrinkVertically(tween(180)),
-                                ) {
-                                    Column {
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            tr("Fox-VPN runs on the free 50 GB of monthly VPN traffic Mozilla includes with a Firefox account. No subscription is required."),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = c.textSecondary,
-                                        )
-                                    }
+                                Column(modifier = Modifier.collapsible { heroExpand }) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        tr("Fast, simple and private. Connect with one tap and keep your traffic protected."),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = c.textSecondary,
+                                    )
                                 }
                                 Spacer(Modifier.height(20.dp))
 
@@ -331,11 +350,9 @@ fun LoginScreen(
                                     value = email,
                                     onValueChange = {
                                         errorMessage = null
-                                        email = it
-                                            .replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
-                                            .lowercase()
+                                        email = it.stripBlankAndZeroWidth().lowercase()
                                     },
-                                    label = tr("Firefox account email"),
+                                    label = tr("Account email"),
                                     onFocusChange = { emailFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Email,
@@ -354,7 +371,7 @@ fun LoginScreen(
                                     value = password,
                                     onValueChange = {
                                         errorMessage = null
-                                        password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
+                                        password = it.stripZeroWidth()
                                     },
                                     label = tr("Password"),
                                     onFocusChange = { passwordFocused = it },
@@ -418,7 +435,7 @@ fun LoginScreen(
                                     value = code,
                                     onValueChange = {
                                         errorMessage = null
-                                        code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
+                                        code = it.stripBlankAndZeroWidth()
                                     },
                                     label = tr("Confirmation code"),
                                     onFocusChange = { codeFocused = it },
@@ -526,7 +543,7 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        tr("Your credentials are sent only to Mozilla"),
+                        tr("Your sign-in is sent securely"),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.textSecondary,
                     )
@@ -539,22 +556,26 @@ fun LoginScreen(
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
 
 @Composable
-private fun LoginLogo() {
+private fun LoginLogo(animate: Boolean = true) {
     val accent = LocalFoxExtras.current.accent
-    val pulse = rememberInfiniteTransition(label = "login-pulse")
-    val halo by pulse.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "login-halo",
-    )
+    // وقتی هدر جمع شده (کاربر داره تایپ می‌کنه) انیمیشن بی‌نهایت متوقف می‌شه تا فریم‌ها آزاد بمونن
+    val halo: State<Float> = if (animate) {
+        rememberInfiniteTransition(label = "login-pulse").animateFloat(
+            initialValue = 0.96f,
+            targetValue = 1.04f,
+            animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "login-halo",
+        )
+    } else {
+        remember { mutableStateOf(1f) }
+    }
     Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .size(150.dp)
                 .graphicsLayer {
-                    scaleX = halo
-                    scaleY = halo
+                    scaleX = halo.value
+                    scaleY = halo.value
                 }
                 .clip(CircleShape)
                 .background(
