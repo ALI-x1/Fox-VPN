@@ -1,8 +1,0 @@
-<resources>
-    <string name="app_name">Fox-VPN</string>
-    <string name="quick_connect">اتصال سریع</string>
-    <string name="quick_connect_connected">متصل</string>
-    <string name="quick_connect_connecting">در حال اتصال…</string>
-    <string name="quick_connect_disconnected">قطع شده</string>
-    <string name="quick_connect_widget_desc">ویجت اتصال سریع Fox-VPN</string>
-</resources>
