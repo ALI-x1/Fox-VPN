@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -217,7 +218,7 @@ fun LoginScreen(
             isLoading = false
             result.onSuccess { needsVerification ->
                 if (needsVerification) awaitingTwoFactor = true else onSignedIn()
-            }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
+            }.onFailure { errorMessage = it.message ?: tr("Sign-in failed") }
         }
     }
 
@@ -230,7 +231,7 @@ fun LoginScreen(
             val result = authRepository.submitTwoFactorCode(cleanCode)
             isLoading = false
             result.onSuccess { onSignedIn() }
-                .onFailure { errorMessage = it.message ?: "Verification failed" }
+                .onFailure { errorMessage = it.message ?: tr("Verification failed") }
         }
     }
 
@@ -275,7 +276,7 @@ fun LoginScreen(
                             fontWeight = FontWeight.ExtraBold,
                         )
                         Text(
-                            text = "Secure & Private",
+                            text = tr("Secure & Private"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.textSecondary,
                             letterSpacing = 1.sp,
@@ -305,7 +306,7 @@ fun LoginScreen(
                         if (!twoFactor) {
                             Column {
                                 Text(
-                                    "Sign in with Firefox",
+                                    tr("Sign in with Firefox"),
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = c.textPrimary,
@@ -318,7 +319,7 @@ fun LoginScreen(
                                     Column {
                                         Spacer(Modifier.height(6.dp))
                                         Text(
-                                            "Fox-VPN runs on the free 50 GB of monthly VPN traffic Mozilla includes with a Firefox account. No subscription is required.",
+                                            tr("Fox-VPN runs on the free 50 GB of monthly VPN traffic Mozilla includes with a Firefox account. No subscription is required."),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = c.textSecondary,
                                         )
@@ -334,7 +335,7 @@ fun LoginScreen(
                                             .replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
                                             .lowercase()
                                     },
-                                    label = "Firefox account email",
+                                    label = tr("Firefox account email"),
                                     onFocusChange = { emailFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Email,
@@ -355,7 +356,7 @@ fun LoginScreen(
                                         errorMessage = null
                                         password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
                                     },
-                                    label = "Password",
+                                    label = tr("Password"),
                                     onFocusChange = { passwordFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Lock,
@@ -369,7 +370,7 @@ fun LoginScreen(
                                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                             Icon(
                                                 imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                                contentDescription = if (passwordVisible) tr("Hide password") else tr("Show password"),
                                                 tint = c.textSecondary,
                                             )
                                         }
@@ -387,7 +388,7 @@ fun LoginScreen(
                                 )
                                 Spacer(Modifier.height(20.dp))
                                 LoginPrimaryButton(
-                                    text = "Continue",
+                                    text = tr("Continue"),
                                     enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                                     isLoading = isLoading,
                                     colors = c,
@@ -400,14 +401,14 @@ fun LoginScreen(
                         } else {
                             Column {
                                 Text(
-                                    "Verify it's you",
+                                    tr("Verify it's you"),
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = c.textPrimary,
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "Enter the confirmation code sent to your email",
+                                    tr("Enter the confirmation code sent to your email"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                 )
@@ -419,7 +420,7 @@ fun LoginScreen(
                                         errorMessage = null
                                         code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
                                     },
-                                    label = "Confirmation code",
+                                    label = tr("Confirmation code"),
                                     onFocusChange = { codeFocused = it },
                                     enabled = !isLoading,
                                     leadingIcon = Icons.Filled.Lock,
@@ -444,7 +445,7 @@ fun LoginScreen(
                                 )
                                 Spacer(Modifier.height(20.dp))
                                 LoginPrimaryButton(
-                                    text = "Verify",
+                                    text = tr("Verify"),
                                     enabled = !isLoading && code.isNotBlank(),
                                     isLoading = isLoading,
                                     colors = c,
@@ -455,7 +456,7 @@ fun LoginScreen(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    text = "Use a different account",
+                                    text = tr("Use a different account"),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = c.accentText,
@@ -525,7 +526,7 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "Your credentials are sent only to Mozilla",
+                        tr("Your credentials are sent only to Mozilla"),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.textSecondary,
                     )
