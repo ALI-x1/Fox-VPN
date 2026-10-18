@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -83,19 +85,19 @@ fun LogsScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = {
                     Text(
-                        if (visible.size == entries.size) "Logs (${entries.size})"
-                        else "Logs (${visible.size}/${entries.size})",
+                        if (visible.size == entries.size) trf("Logs (%d)", entries.size)
+                        else trf("Logs (%d/%d)", visible.size, entries.size),
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Back"))
                     }
                 },
                 actions = {
                     IconButton(onClick = {
                         if (entries.isEmpty()) {
-                            Toast.makeText(context, "No log entries yet", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, tr("No log entries yet"), Toast.LENGTH_SHORT).show()
                             return@IconButton
                         }
                         scope.launch {
@@ -112,22 +114,22 @@ fun LogsScreen(onBack: () -> Unit) {
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(
-                                Intent.createChooser(shareIntent, "Save or send Fox-VPN logs").apply {
+                                Intent.createChooser(shareIntent, tr("Save or send Fox-VPN logs")).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 },
                             )
                         }
                     }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Save/share logs as a file")
+                        Icon(Icons.Filled.Share, contentDescription = tr("Save/share logs as a file"))
                     }
                     IconButton(onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Fox-VPN logs", AppLogger.exportAsText()))
                     }) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy logs")
+                        Icon(Icons.Filled.ContentCopy, contentDescription = tr("Copy logs"))
                     }
                     IconButton(onClick = { AppLogger.clear() }) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear logs")
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = tr("Clear logs"))
                     }
                 },
             )
@@ -147,7 +149,7 @@ fun LogsScreen(onBack: () -> Unit) {
                         selected = filter == option,
                         onClick = { filter = option },
 
-                        label = { Text("${option.label} ($count)") },
+                        label = { Text("${tr(option.label)} ($count)") },
                     )
                 }
             }
@@ -159,9 +161,9 @@ fun LogsScreen(onBack: () -> Unit) {
                 ) {
                     Text(
                         when {
-                            entries.isEmpty() -> "No log entries yet."
-                            filter == LogFilter.PROBLEMS -> "No warnings or errors. Nothing has gone wrong."
-                            else -> "Nothing matches this filter."
+                            entries.isEmpty() -> tr("No log entries yet.")
+                            filter == LogFilter.PROBLEMS -> tr("No warnings or errors. Nothing has gone wrong.")
+                            else -> tr("Nothing matches this filter.")
                         },
                         modifier = Modifier.padding(24.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
