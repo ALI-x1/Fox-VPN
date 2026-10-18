@@ -219,4 +219,9 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Your credentials are sent only to Mozilla" to "اطلاعات ورود شما فقط برای موزیلا ارسال می‌شود",
     "Your session was rejected. Please sign in again." to "نشست شما رد شد. لطفاً دوباره وارد شوید.",
     "the connection timed out" to "زمان اتصال تمام شد",
+    "Always-on" to "همیشه روشن",
+    "Settings changed" to "تنظیمات تغییر کرد",
+    "Reconnect to apply your changes to the current connection." to "برای اعمال تغییرات روی اتصال فعلی، دوباره وصل شوید.",
+    "Later" to "بعداً",
+    "Reconnect" to "اتصال مجدد",
 )
