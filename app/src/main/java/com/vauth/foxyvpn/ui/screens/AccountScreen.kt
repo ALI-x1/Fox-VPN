@@ -195,13 +195,13 @@ fun AccountScreen(
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            tr("Firefox Account"),
+                            tr("FOX-VPN Account"),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = c.textPrimary,
                         )
                         Text(
-                            tr("Signed in with Mozilla VPN"),
+                            tr("Signed in to FOX-VPN"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.textSecondary,
                         )
