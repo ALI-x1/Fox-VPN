@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -110,12 +112,12 @@ fun AccountScreen(
             val accessToken = authRepository.currentAccessToken()
             if (accessToken == null) {
                 isLoading = false
-                errorMessage = "Not signed in."
+                errorMessage = tr("Not signed in.")
                 return@launch
             }
             runCatching { GuardianClient().fetchUserInfo(GUARDIAN_ENDPOINT_DEFAULT, accessToken) }
                 .onSuccess { entitlement = it }
-                .onFailure { errorMessage = it.message ?: "Failed to load account info" }
+                .onFailure { errorMessage = it.message ?: tr("Failed to load account info") }
             isLoading = false
         }
     }
@@ -145,13 +147,13 @@ fun AccountScreen(
                         AccRoundButton(c, onBack) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
+                                contentDescription = tr("Back"),
                                 tint = c.textPrimary.copy(alpha = 0.75f),
                             )
                         }
                         Spacer(Modifier.width(14.dp))
                         Text(
-                            "Account",
+                            tr("Account"),
                             fontSize = 26.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = c.textPrimary,
@@ -160,7 +162,7 @@ fun AccountScreen(
                     AccRoundButton(c, { if (!isLoading) refresh() }) {
                         Icon(
                             Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = tr("Refresh"),
                             tint = c.textPrimary.copy(alpha = 0.75f),
                         )
                     }
@@ -193,13 +195,13 @@ fun AccountScreen(
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Firefox Account",
+                            tr("Firefox Account"),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = c.textPrimary,
                         )
                         Text(
-                            "Signed in with Mozilla VPN",
+                            tr("Signed in with Mozilla VPN"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.textSecondary,
                         )
@@ -240,7 +242,7 @@ fun AccountScreen(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
-                        AccPrimaryButton("Retry", c, onClick = { refresh() })
+                        AccPrimaryButton(tr("Retry"), c, onClick = { refresh() })
                     }
 
                     entitlement != null -> {
@@ -256,25 +258,25 @@ fun AccountScreen(
                             AccountInfoRow(
                                 c = c,
                                 icon = Icons.Filled.Star,
-                                label = "Subscription",
-                                value = if (info.subscribed) "Active" else "Inactive",
+                                label = tr("Subscription"),
+                                value = if (info.subscribed) tr("Active") else tr("Inactive"),
                                 valueColor = if (info.subscribed) statusColors.connected else c.textSecondary,
                             )
                             AccountInfoRow(
                                 c = c,
                                 icon = Icons.Filled.Person,
-                                label = "Account ID",
+                                label = tr("Account ID"),
                                 value = info.uid.ifBlank { "\u2014" },
                             )
                             AccountInfoRow(
                                 c = c,
                                 icon = Icons.Filled.Public,
-                                label = "Data remaining",
+                                label = tr("Data remaining"),
                                 value = when {
-                                    !info.limitedBandwidth -> "Unlimited"
+                                    !info.limitedBandwidth -> tr("Unlimited")
                                     info.quotaRemaining != null -> formatBytes(info.quotaRemaining)
-                                    info.maxBytes != null -> "Limited to ${formatBytes(info.maxBytes)}"
-                                    else -> "Limited"
+                                    info.maxBytes != null -> trf("Limited to %s", formatBytes(info.maxBytes))
+                                    else -> tr("Limited")
                                 },
                             )
                         }
@@ -282,7 +284,7 @@ fun AccountScreen(
                         Spacer(Modifier.height(20.dp))
 
                         AccPrimaryButton(
-                            text = "Manage subscription",
+                            text = tr("Manage subscription"),
                             c = c,
                             onClick = {
                                 context.startActivity(
