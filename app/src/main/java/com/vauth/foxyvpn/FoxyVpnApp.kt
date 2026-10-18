@@ -13,6 +13,8 @@ import com.vauth.foxyvpn.data.ProxyStateStore
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.TokenStore
+import com.vauth.foxyvpn.i18n.Lang
+import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.upstream.NettyLoggingBridge
 import com.vauth.foxyvpn.vpn.upstream.UpstreamTrust
@@ -31,6 +33,7 @@ class FoxyVpnApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Lang.init(this) // زبان برنامه (برای صفحه‌ها و نوتیفیکیشن)
 
         CrashReporter.install(this)
         CrashReporter.replayLastCrashIfAny(this)
@@ -59,7 +62,7 @@ class FoxyVpnApp : Application() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             VPN_NOTIFICATION_CHANNEL_ID,
-            "VPN status",
+            tr("VPN status"),
             NotificationManager.IMPORTANCE_LOW,
         )
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
