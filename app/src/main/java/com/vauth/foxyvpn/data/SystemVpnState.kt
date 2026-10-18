@@ -23,6 +23,8 @@ object SystemVpnState {
         val lock = runCatching { Settings.Secure.getInt(cr, "always_on_vpn_lockdown", 0) == 1 }.getOrDefault(false)
         val alwaysOn = app == context.packageName
         if (alwaysOn) return Snapshot(alwaysOn = true, lockdown = lock)
+        // وقتی سرویس زنده است، پاسخ خود سیستم (به‌روز و قابل‌اعتماد) را ترجیح می‌دیم
+        FoxyVpnService.liveSystemFlags()?.let { return it }
         val live = reported
         if (live != null && FoxyVpnService.state.value != ConnectionState.DISCONNECTED) return live
         return Snapshot(alwaysOn = false, lockdown = false)
