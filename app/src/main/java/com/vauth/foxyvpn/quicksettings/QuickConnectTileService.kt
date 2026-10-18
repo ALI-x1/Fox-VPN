@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.quicksettings
 
+import com.vauth.foxyvpn.i18n.tr
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
@@ -75,24 +76,24 @@ class QuickConnectTileService : TileService() {
     private fun updateTileState(state: ConnectionState) {
         val tile = qsTile ?: return
         tile.icon = Icon.createWithResource(this, android.R.drawable.ic_lock_lock)
-        tile.label = getString(R.string.quick_connect)
+        tile.label = tr("Quick Connect")
         when (state) {
             ConnectionState.CONNECTED -> {
                 tile.state = Tile.STATE_ACTIVE
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    tile.subtitle = getString(R.string.quick_connect_connected)
+                    tile.subtitle = tr("Connected")
                 }
             }
             ConnectionState.CONNECTING -> {
                 tile.state = Tile.STATE_ACTIVE
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    tile.subtitle = getString(R.string.quick_connect_connecting)
+                    tile.subtitle = tr("Connecting\u2026")
                 }
             }
             ConnectionState.DISCONNECTED -> {
                 tile.state = Tile.STATE_INACTIVE
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    tile.subtitle = getString(R.string.quick_connect_disconnected)
+                    tile.subtitle = tr("Disconnected")
                 }
             }
         }
