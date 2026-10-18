@@ -1,9 +1,10 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -124,7 +125,7 @@ private fun flagEmoji(code: String): String? {
 private fun countryDisplayName(code: String): String? {
     val cc = code.trim().uppercase()
     if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
-    val name = Locale("", cc).getDisplayCountry(Locale.ENGLISH)
+    val name = Locale("", cc).getDisplayCountry(com.vauth.foxyvpn.i18n.Lang.locale)
     return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
 }
 
@@ -401,7 +402,7 @@ fun HomeScreen(
                                     fontWeight = FontWeight.ExtraBold,
                                 )
                                 Text(
-                                    text = "Secure & Private",
+                                    text = tr("Secure & Private"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                     letterSpacing = 1.sp
@@ -419,7 +420,7 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Settings,
-                                contentDescription = "Settings",
+                                contentDescription = tr("Settings"),
                                 tint = c.textPrimary.copy(alpha = 0.75f)
                             )
                         }
@@ -454,9 +455,9 @@ fun HomeScreen(
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = when (state) {
-                                            ConnectionState.CONNECTED -> "CONNECTED"
-                                            ConnectionState.CONNECTING -> "CONNECTING…"
-                                            ConnectionState.DISCONNECTED -> "READY TO CONNECT"
+                                            ConnectionState.CONNECTED -> tr("CONNECTED")
+                                            ConnectionState.CONNECTING -> tr("CONNECTING…")
+                                            ConnectionState.DISCONNECTED -> tr("READY TO CONNECT")
                                         },
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Medium,
@@ -493,10 +494,10 @@ fun HomeScreen(
                             val isIranShown = shownCountry.equals("IR", ignoreCase = true)
                             val flag = flagEmoji(shownCountry)
                             val locationTitle = when {
-                                isIranShown -> "Iran"
+                                isIranShown -> tr("Iran")
                                 countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
-                                state == ConnectionState.CONNECTING -> "Connecting…"
-                                else -> "Location"
+                                state == ConnectionState.CONNECTING -> tr("Connecting…")
+                                else -> tr("Location")
                             }
                             Box(
                                 modifier = Modifier.size(width = 52.dp, height = 32.dp),
@@ -505,14 +506,14 @@ fun HomeScreen(
                                 when {
                                     isIranShown -> Image(
                                         painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                                        contentDescription = "Iran flag",
+                                        contentDescription = tr("Iran flag"),
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                     flag != null -> Text(text = flag, fontSize = 30.sp)
                                     else -> Icon(
                                         imageVector = Icons.Filled.Public,
-                                        contentDescription = "Server location",
+                                        contentDescription = tr("Server location"),
                                         tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
                                         modifier = Modifier.size(30.dp)
                                     )
@@ -521,7 +522,7 @@ fun HomeScreen(
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (state == ConnectionState.DISCONNECTED) "YOUR LOCATION" else "SERVER LOCATION",
+                                    text = if (state == ConnectionState.DISCONNECTED) tr("YOUR LOCATION") else tr("SERVER LOCATION"),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.sp,
@@ -538,7 +539,7 @@ fun HomeScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "IP  $ipAddress",
+                                    text = trf("IP  %s", ipAddress),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = c.textSecondary,
                                     maxLines = 1,
@@ -658,13 +659,13 @@ private fun ConnectButton(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_fox_mono),
-                    contentDescription = if (connected) "Disconnect" else "Connect",
+                    contentDescription = if (connected) tr("Disconnect") else tr("Connect"),
                     tint = logoTint,
                     modifier = Modifier.size(size * 0.256f)
                 )
                 Spacer(Modifier.height(size * 0.056f))
                 Text(
-                    text = if (connected) "DISCONNECT" else "CONNECT",
+                    text = if (connected) tr("DISCONNECT") else tr("CONNECT"),
                     fontSize = (size.value * 0.072f).sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (size.value * 0.016f).sp,
@@ -880,7 +881,7 @@ private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
         TrafficColumn(
             modifier = Modifier.weight(1f),
             c = c,
-            label = "DOWNLOAD",
+            label = tr("DOWNLOAD"),
             icon = Icons.Filled.ArrowDownward,
             tint = c.download,
             speed = formatBytesPerSecond(traffic.downloadSpeed.toLong()),
@@ -895,7 +896,7 @@ private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
         TrafficColumn(
             modifier = Modifier.weight(1f),
             c = c,
-            label = "UPLOAD",
+            label = tr("UPLOAD"),
             icon = Icons.Filled.ArrowUpward,
             tint = c.upload,
             speed = formatBytesPerSecond(traffic.uploadSpeed.toLong()),
@@ -944,7 +945,7 @@ private fun TrafficColumn(
             maxLines = 1
         )
         Text(
-            text = "Total  $total",
+            text = trf("Total  %s", total),
             fontSize = 12.sp,
             color = c.textSecondary,
             maxLines = 1
@@ -967,13 +968,13 @@ private fun ChangeServerButton(c: FoxExtras, onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Filled.SwapHoriz,
-            contentDescription = "Change server",
+            contentDescription = tr("Change server"),
             tint = Color.White,
             modifier = Modifier.size(18.dp)
         )
         Spacer(Modifier.width(5.dp))
         Text(
-            text = "CHANGE",
+            text = tr("CHANGE"),
             fontSize = 11.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 0.8.sp,
@@ -1021,11 +1022,11 @@ private fun DataRemainingCard(
         String.format(Locale.US, "%.1f", totalGb)
     }
     val valueText = if (unlimited) {
-        "Unlimited"
+        tr("Unlimited")
     } else if (remainingGb == null) {
-        "-- of $totalText GB"
+        trf("-- of %s GB", totalText)
     } else {
-        String.format(Locale.US, "%.1f of %s GB", remainingGb, totalText)
+        trf("%.1f of %s GB", remainingGb, totalText)
     }
     val percentText = when {
         unlimited -> "∞"
@@ -1033,7 +1034,7 @@ private fun DataRemainingCard(
         else -> "${(fraction * 100).roundToInt()}%"
     }
     val usedText = if (!unlimited && remainingGb != null) {
-        String.format(Locale.US, "Used %.1f GB", (totalGb - remainingGb).coerceAtLeast(0.0))
+        trf("Used %.1f GB", (totalGb - remainingGb).coerceAtLeast(0.0))
     } else {
         null
     }
@@ -1055,7 +1056,7 @@ private fun DataRemainingCard(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Data remaining",
+                    text = tr("Data remaining"),
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary
                 )
@@ -1115,7 +1116,7 @@ private fun DataRemainingCard(
                     color = c.textSecondary
                 )
                 Text(
-                    text = "Total $totalText GB",
+                    text = trf("Total %s GB", totalText),
                     style = MaterialTheme.typography.labelSmall,
                     color = c.textSecondary
                 )
