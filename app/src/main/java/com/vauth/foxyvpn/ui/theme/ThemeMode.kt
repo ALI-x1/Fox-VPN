@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.vauth.foxyvpn.data.SettingsStore
+import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
 
 enum class ThemeMode {
     SYSTEM,
@@ -22,8 +24,15 @@ private const val HOME_TOGGLE_KEY = "home_toggle"
 class ThemeController(private val settingsStore: SettingsStore, context: Context) {
 
     // پالت در SharedPreferences خودش ذخیره می‌شه؛ نیازی به دست‌زدن به SettingsStore نیست
+    private val appContext = context.applicationContext
+
     private val palettePrefs =
-        context.applicationContext.getSharedPreferences(PALETTE_PREFS, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PALETTE_PREFS, Context.MODE_PRIVATE)
+
+    // ویجت‌ها هم‌رنگ پالت و تم برنامه‌ان؛ با تغییرشون فوراً تازه می‌شن
+    private fun refreshWidget() {
+        runCatching { QuickConnectWidgetProvider.updateAll(appContext, FoxyVpnService.state.value) }
+    }
 
     var mode: ThemeMode by mutableStateOf(settingsStore.themeMode)
         private set
@@ -55,12 +64,14 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
         if (next == paletteState) return
         paletteState = next
         palettePrefs.edit().putString(PALETTE_KEY, next.name).apply()
+        refreshWidget()
     }
 
     fun set(next: ThemeMode) {
         if (next == mode) return
         mode = next
         settingsStore.themeMode = next
+        refreshWidget()
     }
 
     fun toggle(systemInDarkTheme: Boolean) {
