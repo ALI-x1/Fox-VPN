@@ -229,4 +229,16 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     // نسخه‌ی خنثی پیام‌هایی که قبلاً اسم Firefox داشتن (اگه متن انگلیسی داخل کد رو هم عوض کردی)
     "Could not reach the account server" to "دسترسی به سرور حساب ممکن نشد",
     "You'll need to sign in again to use FOX-VPN." to "برای استفاده از FOX-VPN باید دوباره وارد شوید.",
+
+    // ── تم و حالت روشن/تیره
+    "Theme & language" to "تم و زبان",
+    "Mode" to "حالت نمایش",
+    "Light" to "روشن",
+    "Dark" to "تیره",
+    "Themes" to "تم‌ها",
+    "Light & dark themes" to "تم‌های روشن و تیره",
+    "Single-style themes" to "تم‌های تک‌حالته",
+    "This theme has its own colors, so light/dark mode doesn't apply." to "این تم رنگ اختصاصی خودش را دارد، پس حالت روشن/تیره روی آن اثر ندارد.",
+    "Show light/dark button on home" to "نمایش کلید روشن/تیره در صفحه‌ی اصلی",
+    "A quick sun/moon button next to Settings" to "یک کلید سریع خورشید/ماه کنار تنظیمات",
 )
