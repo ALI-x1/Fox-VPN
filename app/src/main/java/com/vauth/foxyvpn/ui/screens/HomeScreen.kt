@@ -4,6 +4,16 @@ import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import com.vauth.foxyvpn.ui.theme.ThemeMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.StartOffsetType
@@ -414,19 +424,34 @@ fun HomeScreen(
                             }
                         }
 
-                        IconButton(
-                            onClick = onOpenSettings,
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(CircleShape)
-                                .background(c.card)
-                                .border(1.dp, c.cardBorder, CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = tr("Settings"),
-                                tint = c.textPrimary.copy(alpha = 0.75f)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // کلید خورشید/ماه: فقط برای تم‌های لایت/دارک‌دار و وقتی از تنظیمات خاموشش نکرده باشن
+                            val systemDark = isSystemInDarkTheme()
+                            if (themeController.showHomeToggle && themeController.palette.supportsLightDark) {
+                                val isDarkNow = themeController.resolveDark(systemDark)
+                                ThemeToggleButton(
+                                    isDark = isDarkNow,
+                                    c = c,
+                                    onClick = {
+                                        themeController.set(if (isDarkNow) ThemeMode.LIGHT else ThemeMode.DARK)
+                                    },
+                                )
+                                Spacer(Modifier.width(10.dp))
+                            }
+                            IconButton(
+                                onClick = onOpenSettings,
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(c.card)
+                                    .border(1.dp, c.cardBorder, CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Settings,
+                                    contentDescription = tr("Settings"),
+                                    tint = c.textPrimary.copy(alpha = 0.75f)
+                                )
+                            }
                         }
                     }
 
@@ -755,6 +780,40 @@ private fun PulseRing(size: Dp, maxScale: Float, color: Color) {
                 }
                 .border(2.dp, color, CircleShape),
         )
+    }
+}
+
+/** کلید لایت/دارک: آیکن خورشید و ماه با چرخش و محو/بزرگ‌شدن عوض می‌شن. */
+@Composable
+private fun ThemeToggleButton(isDark: Boolean, c: FoxExtras, onClick: () -> Unit) {
+    val rotation by animateFloatAsState(
+        targetValue = if (isDark) 360f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "theme-toggle-rotation",
+    )
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(c.card)
+            .border(1.dp, c.cardBorder, CircleShape)
+    ) {
+        AnimatedContent(
+            targetState = isDark,
+            transitionSpec = {
+                (fadeIn(tween(240, delayMillis = 90)) + scaleIn(tween(240, delayMillis = 90), initialScale = 0.3f)) togetherWith
+                    (fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.3f))
+            },
+            label = "theme-toggle-icon",
+        ) { dark ->
+            Icon(
+                imageVector = if (dark) Icons.Filled.DarkMode else Icons.Filled.LightMode,
+                contentDescription = if (dark) tr("Light") else tr("Dark"),
+                tint = c.accentText,
+                modifier = Modifier.graphicsLayer { rotationZ = rotation },
+            )
+        }
     }
 }
 
