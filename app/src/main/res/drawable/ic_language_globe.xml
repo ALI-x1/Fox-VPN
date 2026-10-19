@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- گلوب خطی برای صفحه‌ی انتخاب زبان؛ با Icon(tint = c.accent) رنگ پالت را می‌گیرد -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <!-- دایره‌ی بیرونی -->
+    <path
+        android:pathData="M48,6 a42,42 0 1,0 0,84 a42,42 0 1,0 0,-84"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- نصف‌النهار میانی -->
+    <path
+        android:pathData="M48,6 L48,90"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+
+    <!-- نصف‌النهارهای کناری -->
+    <path
+        android:pathData="M48,6 a32.76,42 0 1,0 0,84 a32.76,42 0 1,0 0,-84"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M48,6 a17.64,42 0 1,0 0,84 a17.64,42 0 1,0 0,-84"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+
+    <!-- خط استوا -->
+    <path
+        android:pathData="M6,48 a42,10.92 0 1,0 84,0 a42,10.92 0 1,0 -84,0"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+
+    <!-- مدارهای بالا و پایین -->
+    <path
+        android:pathData="M12.923,24.9 a35.077,9.12 0 1,0 70.154,0 a35.077,9.12 0 1,0 -70.154,0"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M12.923,71.1 a35.077,9.12 0 1,0 70.154,0 a35.077,9.12 0 1,0 -70.154,0"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+</vector>

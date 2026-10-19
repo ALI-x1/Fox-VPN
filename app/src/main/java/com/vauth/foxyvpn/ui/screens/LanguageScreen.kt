@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -41,10 +40,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.i18n.AppLanguage
 import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.i18n.tr
@@ -95,25 +96,26 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
             ) {
                 Spacer(Modifier.weight(1f))
 
-                // آیکون بزرگ با هاله‌ی نرم
-                Box(contentAlignment = Alignment.Center) {
+                // گلوب «انتخاب زبان» با رنگ اکسنت هم‌رنگ پالت؛ هاله و قاب دقیقاً مثل اسپلش و صفحه‌ی ورود
+                // تا مسیر زبان → اسپلش → ورود یک هویت بصری یکسان داشته باشد.
+                Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
                             .size(150.dp)
                             .clip(CircleShape)
-                            .background(c.accent.copy(alpha = 0.10f))
-                            .border(1.dp, c.accent.copy(alpha = 0.18f), CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(c.accent.copy(alpha = 0.18f), c.accent.copy(alpha = 0.03f)),
+                                ),
+                            )
+                            .border(1.dp, c.accent.copy(alpha = 0.14f), CircleShape)
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(104.dp)
-                            .shadow(14.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Filled.Translate, null, tint = onAccent, modifier = Modifier.size(52.dp))
-                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_language_globe),
+                        contentDescription = null,
+                        tint = c.accent,
+                        modifier = Modifier.size(104.dp),
+                    )
                 }
 
                 Spacer(Modifier.height(28.dp))
