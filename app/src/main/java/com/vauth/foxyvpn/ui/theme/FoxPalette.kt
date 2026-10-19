@@ -20,10 +20,40 @@ enum class ThemePalette(
     val previewBg: Color,
     val previewText: Color,
     val previewSub: Color,
+    // فقط برای تم‌هایی که هم روشن و هم تیره دارن (fixedDark == null): پیش‌نمایش حالت تیره
+    val darkPreviewBg: Color? = null,
+    val darkPreviewText: Color? = null,
+    val darkPreviewSub: Color? = null,
 ) {
     ORANGE_WHITE(
         "نارنجی و سفید", "روشن و مینیمال", null,
-        Color(0xFFF59E0B), Color(0xFFFFF8EE), Color(0xFF2B1D10), Color(0xFF8A7560)
+        Color(0xFFF59E0B), Color(0xFFFFF8EE), Color(0xFF2B1D10), Color(0xFF8A7560),
+        Color(0xFF241B12), Color(0xFFF5EEE6), Color(0xFFB8AB9C)
+    ),
+    OCEAN_BLUE(
+        "آبی اقیانوسی", "عمیق و آرام", null,
+        Color(0xFF0EA5E9), Color(0xFFF0F9FF), Color(0xFF0B2536), Color(0xFF4B6B80),
+        Color(0xFF0A2236), Color(0xFFE6F4FC), Color(0xFF8FB0C6)
+    ),
+    LIME_FRESH(
+        "لیمویی تازه", "شاداب و انرژی‌بخش", null,
+        Color(0xFF84CC16), Color(0xFFF9FDF0), Color(0xFF1A2A0A), Color(0xFF5A6B45),
+        Color(0xFF18260A), Color(0xFFF0F9E0), Color(0xFFA6B88A)
+    ),
+    FUCHSIA_POP(
+        "سرخابی", "پرانرژی و مدرن", null,
+        Color(0xFFD946EF), Color(0xFFFEF5FF), Color(0xFF2D0F33), Color(0xFF7A5A80),
+        Color(0xFF2A0E33), Color(0xFFFDEBFF), Color(0xFFC9A3D0)
+    ),
+    CORAL_SUNSET(
+        "مرجانی غروب", "گرم و پرانرژی", null,
+        Color(0xFFFF6B4A), Color(0xFFFFF7F4), Color(0xFF2E150E), Color(0xFF80574B),
+        Color(0xFF30150E), Color(0xFFFFEEE9), Color(0xFFD0A79B)
+    ),
+    GRAPHITE_MONO(
+        "گرافیتی", "ساده و جدی", null,
+        Color(0xFF64748B), Color(0xFFF8F9FA), Color(0xFF111418), Color(0xFF5F6B7A),
+        Color(0xFF191D22), Color(0xFFEEF1F4), Color(0xFF9AA5B1)
     ),
     BLUE_VIOLET(
         "آبی و بنفش", "گرادیان سرد و مدرن", true,
@@ -69,6 +99,9 @@ enum class ThemePalette(
         "موکا و لاته", "گرم و دنج", true,
         Color(0xFFC8925A), Color(0xFF2A1D16), Color(0xFFFFFFFF), Color(0xFFC9B39A)
     );
+
+    /** آیا این تم هم روشن و هم تیره داره (و کلید لایت/دارک روش اثر می‌ذاره)؟ */
+    val supportsLightDark: Boolean get() = fixedDark == null
 
     companion object {
         fun fromName(name: String?): ThemePalette =
@@ -221,7 +254,7 @@ private val MochaExtras = FoxExtras(
     buttonFillCenter = Color(0xFF5A4130), buttonFillEdge = Color(0xFF2E2018),
 )
 
-private fun buildScheme(
+internal fun buildScheme(
     dark: Boolean,
     primary: Color, onPrimary: Color, primaryContainer: Color, onPrimaryContainer: Color,
     secondary: Color,
@@ -409,6 +442,12 @@ fun ThemePalette.spec(dark: Boolean): FoxThemeSpec = when (this) {
     ThemePalette.ORANGE_WHITE ->
         if (dark) FoxThemeSpec(DarkColors, OrangeDarkExtras, DarkStatusColors)
         else FoxThemeSpec(LightColors, OrangeLightExtras, LightStatusColors)
+
+    ThemePalette.OCEAN_BLUE,
+    ThemePalette.LIME_FRESH,
+    ThemePalette.FUCHSIA_POP,
+    ThemePalette.CORAL_SUNSET,
+    ThemePalette.GRAPHITE_MONO -> dualSpec(this, dark)
 
     ThemePalette.BLUE_VIOLET -> FoxThemeSpec(
         BlueScheme, BlueExtras,

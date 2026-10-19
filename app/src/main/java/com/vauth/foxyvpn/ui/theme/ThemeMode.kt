@@ -17,6 +17,7 @@ enum class ThemeMode {
 
 private const val PALETTE_PREFS = "fox_theme_prefs"
 private const val PALETTE_KEY = "theme_palette"
+private const val HOME_TOGGLE_KEY = "home_toggle"
 
 class ThemeController(private val settingsStore: SettingsStore, context: Context) {
 
@@ -33,6 +34,16 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
     )
 
     val palette: ThemePalette get() = paletteState
+
+    /** کلید خورشید/ماه کنار تنظیمات در صفحه‌ی اصلی؛ از صفحه‌ی «تم» می‌شه خاموشش کرد. */
+    var showHomeToggle: Boolean by mutableStateOf(palettePrefs.getBoolean(HOME_TOGGLE_KEY, true))
+        private set
+
+    fun setShowHomeToggle(value: Boolean) {
+        if (value == showHomeToggle) return
+        showHomeToggle = value
+        palettePrefs.edit().putBoolean(HOME_TOGGLE_KEY, value).apply()
+    }
 
     fun resolveDark(systemInDarkTheme: Boolean): Boolean = palette.fixedDark ?: when (mode) {
         ThemeMode.SYSTEM -> systemInDarkTheme

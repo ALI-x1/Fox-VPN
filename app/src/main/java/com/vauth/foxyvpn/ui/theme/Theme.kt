@@ -3,6 +3,15 @@ package com.vauth.foxyvpn.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
@@ -111,7 +120,9 @@ fun FoxyVpnTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val spec = remember(palette, darkTheme) { palette.spec(darkTheme) }
+    val targetSpec = remember(palette, darkTheme) { palette.spec(darkTheme) }
+    // تغییر تم/حالت: رنگ‌ها نرم از قبلی به جدید می‌رن (به‌جای پرش ناگهانی)
+    val spec = rememberAnimatedSpec(targetSpec, key = palette to darkTheme)
 
     val context = LocalContext.current
     // رنگ داینامیک فقط وقتی کاربر خودش روشنش کنه و پالت پیش‌فرض باشه
@@ -146,3 +157,78 @@ fun FoxyVpnTheme(
         )
     }
 }
+
+// ───────────────────────── انیمیشن تغییر تم ─────────────────────────
+
+private const val THEME_FADE_MS = 520
+
+@Composable
+private fun rememberAnimatedSpec(target: FoxThemeSpec, key: Any): FoxThemeSpec {
+    var from by remember { mutableStateOf(target) }
+    var to by remember { mutableStateOf(target) }
+    val progress = remember { Animatable(1f) }
+    var lastKey by remember { mutableStateOf(key) }
+
+    LaunchedEffect(key) {
+        if (key == lastKey) return@LaunchedEffect
+        lastKey = key
+        // اگه وسط انیمیشن قبلی هستیم، از رنگ فعلی شروع کن
+        from = lerpSpec(from, to, progress.value)
+        to = target
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(THEME_FADE_MS, easing = FastOutSlowInEasing))
+    }
+    val t = progress.value
+    return if (t >= 1f) to else lerpSpec(from, to, t)
+}
+
+private fun lerpSpec(a: FoxThemeSpec, b: FoxThemeSpec, t: Float): FoxThemeSpec {
+    if (t <= 0f) return a
+    if (t >= 1f) return b
+    return FoxThemeSpec(
+        scheme = lerpScheme(a.scheme, b.scheme, t),
+        extras = lerpExtras(a.extras, b.extras, t),
+        status = FoxyStatusColors(
+            connected = lerp(a.status.connected, b.status.connected, t),
+            connecting = lerp(a.status.connecting, b.status.connecting, t),
+            disconnected = lerp(a.status.disconnected, b.status.disconnected, t),
+        ),
+    )
+}
+
+private fun lerpExtras(a: FoxExtras, b: FoxExtras, t: Float) = FoxExtras(
+    bgTop = lerp(a.bgTop, b.bgTop, t), bgBottom = lerp(a.bgBottom, b.bgBottom, t),
+    card = lerp(a.card, b.card, t), cardBorder = lerp(a.cardBorder, b.cardBorder, t),
+    innerCard = lerp(a.innerCard, b.innerCard, t),
+    textPrimary = lerp(a.textPrimary, b.textPrimary, t), textSecondary = lerp(a.textSecondary, b.textSecondary, t),
+    accent = lerp(a.accent, b.accent, t), accentLight = lerp(a.accentLight, b.accentLight, t),
+    accentText = lerp(a.accentText, b.accentText, t),
+    upload = lerp(a.upload, b.upload, t), download = lerp(a.download, b.download, t),
+    buttonFillCenter = lerp(a.buttonFillCenter, b.buttonFillCenter, t),
+    buttonFillEdge = lerp(a.buttonFillEdge, b.buttonFillEdge, t),
+)
+
+private fun lerpScheme(a: ColorScheme, b: ColorScheme, t: Float): ColorScheme = b.copy(
+    primary = lerp(a.primary, b.primary, t), onPrimary = lerp(a.onPrimary, b.onPrimary, t),
+    primaryContainer = lerp(a.primaryContainer, b.primaryContainer, t),
+    onPrimaryContainer = lerp(a.onPrimaryContainer, b.onPrimaryContainer, t),
+    inversePrimary = lerp(a.inversePrimary, b.inversePrimary, t),
+    secondary = lerp(a.secondary, b.secondary, t), onSecondary = lerp(a.onSecondary, b.onSecondary, t),
+    secondaryContainer = lerp(a.secondaryContainer, b.secondaryContainer, t),
+    onSecondaryContainer = lerp(a.onSecondaryContainer, b.onSecondaryContainer, t),
+    tertiary = lerp(a.tertiary, b.tertiary, t),
+    background = lerp(a.background, b.background, t), onBackground = lerp(a.onBackground, b.onBackground, t),
+    surface = lerp(a.surface, b.surface, t), onSurface = lerp(a.onSurface, b.onSurface, t),
+    surfaceVariant = lerp(a.surfaceVariant, b.surfaceVariant, t),
+    onSurfaceVariant = lerp(a.onSurfaceVariant, b.onSurfaceVariant, t),
+    surfaceTint = lerp(a.surfaceTint, b.surfaceTint, t),
+    inverseSurface = lerp(a.inverseSurface, b.inverseSurface, t),
+    inverseOnSurface = lerp(a.inverseOnSurface, b.inverseOnSurface, t),
+    outline = lerp(a.outline, b.outline, t), outlineVariant = lerp(a.outlineVariant, b.outlineVariant, t),
+    surfaceBright = lerp(a.surfaceBright, b.surfaceBright, t), surfaceDim = lerp(a.surfaceDim, b.surfaceDim, t),
+    surfaceContainerLowest = lerp(a.surfaceContainerLowest, b.surfaceContainerLowest, t),
+    surfaceContainerLow = lerp(a.surfaceContainerLow, b.surfaceContainerLow, t),
+    surfaceContainer = lerp(a.surfaceContainer, b.surfaceContainer, t),
+    surfaceContainerHigh = lerp(a.surfaceContainerHigh, b.surfaceContainerHigh, t),
+    surfaceContainerHighest = lerp(a.surfaceContainerHighest, b.surfaceContainerHighest, t),
+)
