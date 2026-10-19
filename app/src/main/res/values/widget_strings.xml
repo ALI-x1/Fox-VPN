@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_label_slim">Fox-VPN card</string>
+    <string name="widget_label_large">Fox-VPN large card</string>
+    <string name="quick_connect_slim_widget_desc">Compact card with VPN status, location and a connect button.</string>
+    <string name="quick_connect_large_widget_desc">Large card with status, location, remaining data and quick actions.</string>
+</resources>
