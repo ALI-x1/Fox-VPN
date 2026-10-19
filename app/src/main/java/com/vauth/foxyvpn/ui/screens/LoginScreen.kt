@@ -32,7 +32,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -64,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -180,11 +182,12 @@ fun LoginScreen(
     authRepository: FxaAuthRepository,
     onSignedIn: () -> Unit,
 ) {
-    var email by remember { mutableStateOf("") }
+    // ایمیل و مرحله‌ی کد تأیید با چرخش صفحه / تغییر حالت تیره-روشن سیستم نمی‌پرن (رمز و کد عمداً ذخیره نمی‌شن)
+    var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var awaitingTwoFactor by remember { mutableStateOf(false) }
+    var awaitingTwoFactor by rememberSaveable { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -214,16 +217,6 @@ fun LoginScreen(
         animationSpec = tween(240, easing = FastOutSlowInEasing),
         label = "hero-collapse",
     )
-    // وقتی هدر جمع شده، انیمیشن بی‌نهایت لوگو متوقف می‌شه
-    val heroVisible by remember { derivedStateOf { heroExpand > 0.02f } }
-
-    // انیمیشن ورود پله‌ای (هدر ← کارت ← فوتر)
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-    val heroP by animateFloatAsState(if (entered) 1f else 0f, tween(520, easing = FastOutSlowInEasing), label = "hero-in")
-    val cardP by animateFloatAsState(if (entered) 1f else 0f, tween(520, delayMillis = 110, easing = FastOutSlowInEasing), label = "card-in")
-    val footerP by animateFloatAsState(if (entered) 1f else 0f, tween(520, delayMillis = 220, easing = FastOutSlowInEasing), label = "footer-in")
-
     // لرزش کوتاه کارت وقتی خطا میاد
     val shake = remember { Animatable(0f) }
     var lastError by remember { mutableStateOf("") }
@@ -264,7 +257,9 @@ fun LoginScreen(
         }
     }
 
-    Scaffold(containerColor = Color.Transparent) { padding ->
+    // Scaffold اینست‌ها رو نمی‌گیره؛ خود ستون با safeDrawingPadding (نوار وضعیت + ناوبری + کیبورد) فاصله می‌گیره
+    // تا ارتفاع نوار ناوبری با کیبورد دوبار حساب نشه.
+    Scaffold(containerColor = Color.Transparent, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -275,8 +270,7 @@ fun LoginScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .imePadding()
+                    .safeDrawingPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -285,11 +279,10 @@ fun LoginScreen(
                 // ───── لوگو + نام (با باز شدن کیبورد نرم جمع می‌شه) ─────
                 Column(
                     modifier = Modifier
-                        .reveal({ heroP })
                         .collapsible { heroExpand },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    LoginLogo(animate = heroVisible)
+                    LoginLogo()
 
                     Spacer(Modifier.height(14.dp))
 
@@ -315,7 +308,6 @@ fun LoginScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .reveal({ cardP })
                         .graphicsLayer { translationX = shake.value }
                         .loginCard(c, 28.dp)
                         .padding(20.dp),
@@ -532,7 +524,6 @@ fun LoginScreen(
 
                 // ───── فوتر ─────
                 Row(
-                    modifier = Modifier.reveal({ footerP }, 24f),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -556,27 +547,13 @@ fun LoginScreen(
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
 
 @Composable
-private fun LoginLogo(animate: Boolean = true) {
+private fun LoginLogo() {
     val accent = LocalFoxExtras.current.accent
-    // وقتی هدر جمع شده (کاربر داره تایپ می‌کنه) انیمیشن بی‌نهایت متوقف می‌شه تا فریم‌ها آزاد بمونن
-    val halo: State<Float> = if (animate) {
-        rememberInfiniteTransition(label = "login-pulse").animateFloat(
-            initialValue = 0.96f,
-            targetValue = 1.04f,
-            animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "login-halo",
-        )
-    } else {
-        remember { mutableStateOf(1f) }
-    }
+    // لوگوی ثابت؛ بدون انیمیشن بی‌نهایت (باتری و فریم‌ها آزاد می‌مونن)
     Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .size(150.dp)
-                .graphicsLayer {
-                    scaleX = halo.value
-                    scaleY = halo.value
-                }
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
