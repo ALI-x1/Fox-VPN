@@ -2,6 +2,7 @@ package com.vauth.foxyvpn
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
@@ -15,6 +16,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
@@ -32,6 +36,9 @@ class MainActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(Lang.wrap(newBase))
     }
+
+    // true وقتی ویجت «Change server» رو زده؛ NavGraph بعد از رسیدن به Home لیست سرورها رو باز می‌کنه
+    private var openServersRequest by mutableStateOf(false)
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -93,6 +100,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.auto(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
         )
         PingUtil.init(applicationContext)
+        openServersRequest = intent?.getBooleanExtra(EXTRA_OPEN_SERVERS, false) == true
         val app = application as FoxyVpnApp
         setContent {
 
@@ -110,9 +118,26 @@ class MainActivity : ComponentActivity() {
                         onRequestConnect = { requestConnect() },
                         onDisconnect = { FoxyVpnService.stop(this) },
                         onHomeShown = { requestNotificationPermissionOnce() },
+                        openServersRequest = openServersRequest,
+                        onOpenServersHandled = {
+                            openServersRequest = false
+                            intent?.removeExtra(EXTRA_OPEN_SERVERS)
+                        },
                     )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_SERVERS, false)) {
+            openServersRequest = true
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_SERVERS = "com.vauth.foxyvpn.extra.OPEN_SERVERS"
     }
 }
