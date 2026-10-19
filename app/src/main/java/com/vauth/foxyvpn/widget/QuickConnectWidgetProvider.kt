@@ -1,132 +1,115 @@
 package com.vauth.foxyvpn.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.net.VpnService
+import android.graphics.Color
+import android.view.View
 import android.widget.RemoteViews
-import com.vauth.foxyvpn.FoxyVpnApp
-import com.vauth.foxyvpn.MainActivity
+import androidx.core.graphics.ColorUtils
 import com.vauth.foxyvpn.R
-import com.vauth.foxyvpn.data.SettingsStore
-import com.vauth.foxyvpn.data.TokenStore
 import com.vauth.foxyvpn.data.model.ConnectionState
-import com.vauth.foxyvpn.ui.theme.ThemeMode
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 
+/**
+ * ویجت دایره‌ای اتصال سریع. فقط وقتی وضعیت VPN، تم یا پالت عوض بشه آپدیت می‌شه (بدون تایمر)،
+ * رنگ‌ها از پالت فعال برنامه می‌آن و فقط چند تغییر رنگ روی همون چهار تصویر ثابت اعمال می‌شه.
+ * [updateAll] همزمان ویجت کارت باریک و کارت بزرگ رو هم تازه می‌کنه؛ پس سرویس VPN و ThemeController
+ * فقط همین یک تابع رو صدا می‌زنن.
+ */
 class QuickConnectWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        for (appWidgetId in appWidgetIds) {
-            updateWidget(context, appWidgetManager, appWidgetId, FoxyVpnService.state.value)
-        }
+        render(context, appWidgetManager, appWidgetIds, FoxyVpnService.state.value, force = true)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_TOGGLE_VPN) {
-            handleToggle(context)
+            FoxWidgetSupport.toggle(context)
         }
     }
 
-    private fun handleToggle(context: Context) {
-        when (FoxyVpnService.state.value) {
-            ConnectionState.CONNECTED, ConnectionState.CONNECTING -> {
-                FoxyVpnService.stop(context)
-            }
-            ConnectionState.DISCONNECTED -> {
-                val app = context.applicationContext as? FoxyVpnApp
-                val tokenStore = app?.tokenStore ?: TokenStore(context)
-                if (!tokenStore.hasStoredSession()) {
-                    launchMainActivity(context)
-                    return
-                }
-
-                val settingsStore = app?.settingsStore ?: SettingsStore(context)
-                if (settingsStore.proxyOnlyMode) {
-                    FoxyVpnService.start(context)
-                    return
-                }
-
-                val prepareIntent = VpnService.prepare(context)
-                if (prepareIntent != null) {
-                    launchMainActivity(context)
-                } else {
-                    FoxyVpnService.start(context)
-                }
-            }
-        }
-    }
-
-    private fun launchMainActivity(context: Context) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        context.startActivity(intent)
-    }
+    /** ظاهر ویجت برای یک وضعیت؛ data class تا مقایسه‌ی «چیزی عوض شده؟» ارزون باشه. */
+    private data class Look(
+        val fill: Int,
+        val ring: Int,
+        val icon: Int,
+        val gloss: Boolean,
+        val label: String,
+    )
 
     companion object {
         const val ACTION_TOGGLE_VPN = "com.vauth.foxyvpn.action.TOGGLE_VPN"
 
+        /** آخرین ظاهری که روی ویجت‌ها اعمال شد؛ اگه تغییری نکرده باشه، آپدیت اضافه نمی‌فرستیم. */
+        @Volatile
+        private var lastLook: Look? = null
+
         fun updateAll(context: Context, state: ConnectionState) {
             val appWidgetManager = AppWidgetManager.getInstance(context) ?: return
             val componentName = ComponentName(context, QuickConnectWidgetProvider::class.java)
-            val appWidgetIds = runCatching { appWidgetManager.getAppWidgetIds(componentName) }.getOrNull() ?: return
-            if (appWidgetIds.isEmpty()) return
-            for (appWidgetId in appWidgetIds) {
-                updateWidget(context, appWidgetManager, appWidgetId, state)
+            val appWidgetIds = runCatching { appWidgetManager.getAppWidgetIds(componentName) }.getOrNull()
+            if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+                render(context, appWidgetManager, appWidgetIds, state, force = false)
             }
+            QuickConnectSlimWidgetProvider.updateAll(context, state)
+            QuickConnectLargeWidgetProvider.updateAll(context, state)
         }
 
-        private fun updateWidget(
+        private fun render(
             context: Context,
             appWidgetManager: AppWidgetManager,
-            appWidgetId: Int,
+            appWidgetIds: IntArray,
             state: ConnectionState,
+            force: Boolean,
         ) {
+            if (appWidgetIds.isEmpty()) return
+            val look = resolveLook(context, state)
+            if (!force && look == lastLook) return
+            lastLook = look
+
             val views = RemoteViews(context.packageName, R.layout.widget_quick_connect)
+            views.setOnClickPendingIntent(R.id.widget_root, FoxWidgetSupport.togglePendingIntent(context))
+            views.setInt(R.id.widget_background, "setColorFilter", look.fill)
+            views.setInt(R.id.widget_ring, "setColorFilter", look.ring)
+            views.setInt(R.id.widget_button, "setColorFilter", look.icon)
+            views.setViewVisibility(R.id.widget_gloss, if (look.gloss) View.VISIBLE else View.GONE)
+            views.setContentDescription(R.id.widget_root, "Fox-VPN, ${look.label}")
 
-            val toggleIntent = Intent(context, QuickConnectWidgetProvider::class.java).apply {
-                action = ACTION_TOGGLE_VPN
-            }
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                0,
-                toggleIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-            views.setOnClickPendingIntent(R.id.widget_button, pendingIntent)
-
-            val settingsStore = (context.applicationContext as? FoxyVpnApp)?.settingsStore ?: SettingsStore(context)
-            val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-            val isDark = when (settingsStore.themeMode) {
-                ThemeMode.SYSTEM -> systemDark
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-            }
-
-            val bgRes = when (state) {
-                ConnectionState.CONNECTED -> if (isDark) R.drawable.widget_bg_connected_dark else R.drawable.widget_bg_connected_light
-                ConnectionState.CONNECTING -> if (isDark) R.drawable.widget_bg_connecting_dark else R.drawable.widget_bg_connecting_light
-                ConnectionState.DISCONNECTED -> if (isDark) R.drawable.widget_bg_disconnected_dark else R.drawable.widget_bg_disconnected_light
-            }
-
-            val iconColor = when (state) {
-                ConnectionState.CONNECTED -> 0xFFFFFFFF.toInt()
-                ConnectionState.CONNECTING -> if (isDark) 0xFFFFC46B.toInt() else 0xFF8A5A00.toInt()
-                ConnectionState.DISCONNECTED -> if (isDark) 0xFFE9E0E4.toInt() else 0xFF1E1A1D.toInt()
-            }
-
-            views.setImageViewResource(R.id.widget_background, bgRes)
-            views.setImageViewResource(R.id.widget_button, android.R.drawable.ic_lock_lock)
-            views.setInt(R.id.widget_button, "setColorFilter", iconColor)
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+            // یک تماس برای همه‌ی ویجت‌های دایره‌ای روی صفحه
+            appWidgetManager.updateAppWidget(appWidgetIds, views)
         }
+
+        private fun resolveLook(context: Context, state: ConnectionState): Look {
+            val c = FoxWidgetSupport.colors(context)
+            val label = FoxWidgetSupport.statusLabel(state)
+            return when (state) {
+                ConnectionState.CONNECTED -> Look(
+                    fill = c.accent,
+                    ring = ColorUtils.setAlphaComponent(c.accent, 115),
+                    icon = Color.WHITE,
+                    gloss = true,
+                    label = label,
+                )
+                ConnectionState.CONNECTING -> Look(
+                    fill = c.innerCard,
+                    ring = c.connecting,
+                    icon = c.connecting,
+                    gloss = false,
+                    label = label,
+                )
+                ConnectionState.DISCONNECTED -> Look(
+                    fill = c.innerCard,
+                    ring = c.cardBorder,
+                    icon = c.textSecondary,
+                    gloss = false,
+                    label = label,
+                )
+            }
+        }
+
     }
 }
