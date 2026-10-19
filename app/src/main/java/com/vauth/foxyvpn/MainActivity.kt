@@ -26,6 +26,7 @@ import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.ui.navigation.FoxyNavGraph
 import com.vauth.foxyvpn.ui.theme.FoxyVpnTheme
+import com.vauth.foxyvpn.ui.theme.AppIconManager
 import com.vauth.foxyvpn.ui.theme.rememberThemeController
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.PingUtil
@@ -127,6 +128,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // آیکون انتخاب‌شده فقط وقتی اعمال می‌شه که کاربر از برنامه بیرون رفته (تا برنامه جلوی چشمش بسته نشه)
+        if (!isChangingConfigurations) AppIconManager.applyPending(this)
     }
 
     override fun onNewIntent(intent: Intent) {
