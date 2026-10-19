@@ -2,9 +2,15 @@ package com.vauth.foxyvpn.ui.screens
 
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
+import android.os.Build
 import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -45,6 +51,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -67,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
@@ -77,6 +86,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -170,6 +180,8 @@ private object AutoConnectGate {
 private val PingGood = Color(0xFF22B573)
 private val PingMedium = Color(0xFFF2A81D)
 private val PingBad = Color(0xFFEF5350)
+// در حال اتصال: نارنجی، هم‌رنگ نقطه‌ی وضعیت
+private val PingConnecting = Color(0xFFFF9F1C)
 private const val EXIT_CHECK_ATTEMPTS = 3
 private const val EXIT_CHECK_RETRY_MS = 2_000L
 
@@ -321,13 +333,20 @@ fun HomeScreen(
     // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
     // سنجش TCP مستقیم به سرور انتخابی از شبکه‌ی واقعی گوشی انجام می‌شه (نه از دل تونل)؛ PingUtil.init لازمه.
     var pingMs by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port, isForeground) {
-        if (state != ConnectionState.CONNECTED) pingMs = null
+    // با ضربه روی قرص پینگ زیاد می‌شه تا سنجش فوراً از نو شروع بشه؛ pingBusy تا رسیدن جواب قرص رو کم‌رنگ نگه می‌داره
+    var pingRefreshTick by remember { mutableStateOf(0) }
+    var pingBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port, isForeground, pingRefreshTick) {
+        if (state != ConnectionState.CONNECTED) {
+            pingMs = null
+            pingBusy = false
+        }
         if (state != ConnectionState.CONNECTED || !isForeground) return@LaunchedEffect
         val proxy = selectedProxy ?: return@LaunchedEffect
         var misses = 0
         while (true) {
             val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port, samples = 3)
+            pingBusy = false
             if (ms != null) {
                 pingMs = ms
                 misses = 0
@@ -356,7 +375,22 @@ fun HomeScreen(
         3 -> PingGood
         2 -> PingMedium
         1 -> PingBad
-        else -> c.textSecondary
+        // قبل از اتصال خاکستری؛ وقتی در حال اتصال هست نارنجی
+        else -> if (state == ConnectionState.CONNECTING) PingConnecting else c.textSecondary
+    }
+    val view = LocalView.current
+
+    // لرزش ریز موقع وصل شدنِ موفق (فقط وقتی از «در حال اتصال» به «وصل» می‌ره، نه موقع باز شدن برنامه)
+    var previousState by remember { mutableStateOf(state) }
+    LaunchedEffect(state) {
+        if (previousState == ConnectionState.CONNECTING && state == ConnectionState.CONNECTED) hapticSuccess(view)
+        previousState = state
+    }
+    // دلیل خطا: با ✕ بسته می‌شه؛ خطای جدید (متن متفاوت) دوباره نشون داده می‌شه
+    var dismissedError by remember { mutableStateOf<String?>(null) }
+    val visibleError = lastError?.takeIf { it.isNotBlank() && it != dismissedError }
+    LaunchedEffect(lastError) {
+        if (!lastError.isNullOrBlank()) hapticError(view)
     }
     val targetRingColor = when (state) {
         ConnectionState.CONNECTED -> statusColors.connected
@@ -490,30 +524,51 @@ fun HomeScreen(
                                             )
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = when (state) {
-                                            ConnectionState.CONNECTED -> tr("CONNECTED")
-                                            ConnectionState.CONNECTING -> tr("CONNECTING…")
-                                            ConnectionState.DISCONNECTED -> tr("READY TO CONNECT")
-                                        },
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Medium,
-                                        letterSpacing = 1.sp,
-                                        color = c.textSecondary
-                                    )
+                                    Crossfade(targetState = state, animationSpec = tween(300), label = "status-label") { st ->
+                                        Text(
+                                            text = when (st) {
+                                                ConnectionState.CONNECTED -> tr("CONNECTED")
+                                                ConnectionState.CONNECTING -> tr("CONNECTING…")
+                                                ConnectionState.DISCONNECTED -> tr("READY TO CONNECT")
+                                            },
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            letterSpacing = 1.sp,
+                                            color = c.textSecondary
+                                        )
+                                    }
                                 }
                                 Spacer(Modifier.height(2.dp))
                                 // تایمر بزرگ
+                                // وقتی وصل نیست کم‌رنگ می‌شه و موقع اتصال نرم پررنگ می‌شه
+                                val timerColor by animateColorAsState(
+                                    targetValue = if (state == ConnectionState.CONNECTED) c.textPrimary
+                                    else c.textPrimary.copy(alpha = 0.45f),
+                                    animationSpec = tween(450),
+                                    label = "timer-color",
+                                )
                                 Text(
                                     text = formatElapsed(elapsedSeconds),
                                     fontSize = 40.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = c.textPrimary
+                                    color = timerColor
                                 )
                             }
 
                             // پینگ (بعد از اتصال اندازه‌گیری می‌شه؛ قبلش خاکستری "---")
-                            PingPill(pingMs = ping, color = pingColor)
+                            PingPill(
+                                pingMs = ping,
+                                color = pingColor,
+                                busy = pingBusy,
+                                // فقط وقتی وصله: لرزش ریز + سنجش دوباره‌ی پینگ
+                                onClick = if (state == ConnectionState.CONNECTED && !pingBusy) {
+                                    {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        pingBusy = true
+                                        pingRefreshTick++
+                                    }
+                                } else null,
+                            )
                         }
 
                         // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
@@ -529,7 +584,6 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val isIranShown = shownCountry.equals("IR", ignoreCase = true)
-                            val flag = flagEmoji(shownCountry)
                             val locationTitle = when {
                                 isIranShown -> tr("Iran")
                                 countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
@@ -540,20 +594,25 @@ fun HomeScreen(
                                 modifier = Modifier.size(width = 52.dp, height = 32.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                when {
-                                    isIranShown -> Image(
-                                        painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                                        contentDescription = tr("Iran flag"),
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    flag != null -> Text(text = flag, fontSize = 30.sp)
-                                    else -> Icon(
-                                        imageVector = Icons.Filled.Public,
-                                        contentDescription = tr("Server location"),
-                                        tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
-                                        modifier = Modifier.size(30.dp)
-                                    )
+                                // با عوض شدن کشور، پرچم نرم جایگزین می‌شه (به‌جای پرش ناگهانی)
+                                Crossfade(targetState = shownCountry, animationSpec = tween(350), label = "flag") { code ->
+                                    val isIran = code.equals("IR", ignoreCase = true)
+                                    val emoji = flagEmoji(code)
+                                    when {
+                                        isIran -> Image(
+                                            painter = painterResource(id = R.drawable.ic_flag_lion_sun),
+                                            contentDescription = tr("Iran flag"),
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                        emoji != null -> Text(text = emoji, fontSize = 30.sp)
+                                        else -> Icon(
+                                            imageVector = Icons.Filled.Public,
+                                            contentDescription = tr("Server location"),
+                                            tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                    }
                                 }
                             }
                             Spacer(Modifier.width(12.dp))
@@ -567,24 +626,43 @@ fun HomeScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    text = locationTitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = c.textPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = trf("IP  %s", ipAddress),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = c.textSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Crossfade(targetState = locationTitle, animationSpec = tween(350), label = "location-title") { title ->
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = c.textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Crossfade(targetState = ipAddress, animationSpec = tween(350), label = "ip-address") { ip ->
+                                    Text(
+                                        text = trf("IP  %s", ip),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = c.textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                             Spacer(Modifier.width(8.dp))
                             ChangeServerButton(c = c, onClick = onOpenServers)
+                        }
+                    }
+
+                    // ───── دلیل خطا / هشدار اتصال (فقط وقتی هست) ─────
+                    AnimatedVisibility(
+                        visible = visibleError != null,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        // آخرین متن رو نگه می‌داریم تا موقع محو شدن، متن نپره
+                        var shown by remember { mutableStateOf("") }
+                        if (visibleError != null) shown = visibleError
+                        Column {
+                            Spacer(Modifier.height(10.dp))
+                            ErrorBanner(message = shown, onDismiss = { dismissedError = lastError })
                         }
                     }
                 }
@@ -605,6 +683,7 @@ fun HomeScreen(
                         labelColor = if (state == ConnectionState.DISCONNECTED) c.accentText else ringColor,
                         c = c,
                         onClick = {
+                            hapticPress(view)
                             if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
                         },
                         connecting = state == ConnectionState.CONNECTING,
@@ -671,8 +750,16 @@ private fun ConnectButton(
 
         // انیمیشن‌های ریز: فقط وقتی لازمه و برنامه جلوی چشمه ساخته می‌شن (مصرف باتری ~صفر در حالت قطع)
         if (animate && connecting) {
-            ConnectingArc(size = size * 0.868f, color = ringColor)
+            // در حال اتصال: ضربان تندتر و کوتاه‌تر (دوره‌ی ۱ ثانیه، دامنه‌ی کم)
+            PulseRing(
+                size = buttonSize,
+                maxScale = 1.12f * size.value / buttonSize.value,
+                color = ringColor,
+                period = 1000,
+                peakAlpha = 0.6f,
+            )
         } else if (animate && connected) {
+            // وصل: ضربان نرم و آروم و پخش‌تر
             PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
         }
 
@@ -696,13 +783,22 @@ private fun ConnectButton(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_fox_mono),
-                    contentDescription = if (connected) tr("Disconnect") else tr("Connect"),
+                    contentDescription = when {
+                        connecting -> tr("Connecting…")
+                        connected -> tr("Disconnect")
+                        else -> tr("Connect")
+                    },
                     tint = logoTint,
                     modifier = Modifier.size(size * 0.256f)
                 )
                 Spacer(Modifier.height(size * 0.056f))
                 Text(
-                    text = if (connected) tr("DISCONNECT") else tr("CONNECT"),
+                    text = when {
+                        connecting -> tr("CONNECTING…")
+                        connected -> tr("DISCONNECT")
+                        else -> tr("CONNECT")
+                    },
+                    maxLines = 1,
                     fontSize = (size.value * 0.072f).sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (size.value * 0.016f).sp,
@@ -713,47 +809,13 @@ private fun ConnectButton(
     }
 }
 
-/** قوس چرخان دور دکمه وقتی در حال اتصال است. */
-@Composable
-private fun ConnectingArc(size: Dp, color: Color) {
-    val transition = rememberInfiniteTransition(label = "connecting-arc")
-    val angle = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
-        label = "arc-angle",
-    )
-    Canvas(
-        modifier = Modifier
-            .size(size)
-            // خوندن angle فقط تو فاز رسم؛ بدون recompose
-            .graphicsLayer { rotationZ = angle.value },
-    ) {
-        val stroke = 4.dp.toPx()
-        drawArc(
-            brush = Brush.sweepGradient(
-                0f to Color.Transparent,
-                0.75f to color,
-                1f to color,
-            ),
-            startAngle = 0f,
-            sweepAngle = 270f,
-            useCenter = false,
-            topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
-            size = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke),
-            style = Stroke(width = stroke, cap = StrokeCap.Round),
-        )
-    }
-}
-
 /**
  * موج‌های ضربان: از لبه‌ی دکمه شروع می‌شن، از هاله‌ی بیرونی هم رد می‌شن و آروم محو می‌شن.
  * دو موج با فاصله‌ی نیم‌دوره پشت هم می‌آن تا پیوسته و پخش‌تر دیده بشه.
  */
 @Composable
-private fun PulseRing(size: Dp, maxScale: Float, color: Color) {
+private fun PulseRing(size: Dp, maxScale: Float, color: Color, period: Int = 3200, peakAlpha: Float = 0.5f) {
     val transition = rememberInfiniteTransition(label = "pulse-ring")
-    val period = 3200
     val first = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -779,7 +841,7 @@ private fun PulseRing(size: Dp, maxScale: Float, color: Color) {
                     val sc = 1f + (maxScale - 1f) * t
                     scaleX = sc
                     scaleY = sc
-                    alpha = 0.5f * (1f - t) * (1f - t * 0.3f)
+                    alpha = peakAlpha * (1f - t) * (1f - t * 0.3f)
                 }
                 .border(2.dp, color, CircleShape),
         )
@@ -909,17 +971,74 @@ private fun SignalBars(
     }
 }
 
+/** لرزش‌های ریز: فشردن دکمه / اتصال موفق / خطا. اگه کاربر لرزش لمسی سیستم رو خاموش کرده باشه، اتفاقی نمی‌افته. */
+private fun hapticPress(view: android.view.View) {
+    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+}
+
+private fun hapticSuccess(view: android.view.View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CLOCK_TICK,
+    )
+}
+
+private fun hapticError(view: android.view.View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS,
+    )
+}
+
+/** نوار دلیل خطا / هشدار اتصال زیر کارت اصلی؛ با ضربه روی ✕ بسته می‌شه. */
+@Composable
+private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val tone = MaterialTheme.colorScheme.error
+    val shape = RoundedCornerShape(16.dp)
+    val c = LocalFoxExtras.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(tone.copy(alpha = 0.12f))
+            .border(1.dp, tone.copy(alpha = 0.35f), shape)
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Warning, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textPrimary,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = tr("Dismiss"), tint = c.textSecondary, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
 /** قرص پینگ: عدد + میله‌های سیگنال؛ رنگ مثل لیست سرورها (سبز / نارنجی / قرمز). بدون عدد: خاکستری و "---". */
 @Composable
-private fun PingPill(pingMs: Int?, color: Color, modifier: Modifier = Modifier) {
+private fun PingPill(
+    pingMs: Int?,
+    color: Color,
+    modifier: Modifier = Modifier,
+    busy: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
     val shape = RoundedCornerShape(16.dp)
     val level = pingMs?.let { PingUtil.level(it) } ?: 0
+    val contentAlpha by animateFloatAsState(targetValue = if (busy) 0.5f else 1f, label = "ping-busy")
     Row(
         modifier = modifier
             .widthIn(min = 104.dp)
+            .alpha(contentAlpha)
             .clip(shape)
             .background(color.copy(alpha = 0.13f))
             .border(1.dp, color.copy(alpha = 0.35f), shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
