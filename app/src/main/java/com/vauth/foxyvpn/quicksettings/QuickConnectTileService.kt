@@ -27,6 +27,9 @@ class QuickConnectTileService : TileService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var listenJob: Job? = null
 
+    // آیکن یک بار ساخته می‌شه (همون لوگوی ویجت)؛ سیستم خودش رنگش رو با حالت کاشی هماهنگ می‌کنه
+    private val tileIcon: Icon by lazy { Icon.createWithResource(this, R.drawable.ic_widget_fox) }
+
     override fun onStartListening() {
         super.onStartListening()
         listenJob?.cancel()
@@ -75,7 +78,7 @@ class QuickConnectTileService : TileService() {
 
     private fun updateTileState(state: ConnectionState) {
         val tile = qsTile ?: return
-        tile.icon = Icon.createWithResource(this, android.R.drawable.ic_lock_lock)
+        tile.icon = tileIcon
         tile.label = tr("Quick Connect")
         when (state) {
             ConnectionState.CONNECTED -> {
