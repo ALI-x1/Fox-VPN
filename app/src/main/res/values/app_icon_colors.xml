@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="icbg_blue">#00041B</color>
+    <color name="icbg_gold">#110A01</color>
+    <color name="icbg_silver">#0A0A0B</color>
+    <color name="icbg_purple">#07001D</color>
+    <color name="icbg_cyan">#001114</color>
+    <color name="icbg_red">#110101</color>
+    <color name="icbg_aurora">#000323</color>
+    <color name="icbg_onyx">#060503</color>
+    <color name="icbg_frost">#000324</color>
+    <color name="icbg_indigo">#000000</color>
+    <color name="icbg_crystal">#FFFFFF</color>
+    <color name="icbg_ember">#000000</color>
+</resources>
