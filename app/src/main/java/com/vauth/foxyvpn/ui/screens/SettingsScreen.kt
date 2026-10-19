@@ -139,6 +139,7 @@ import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import com.vauth.foxyvpn.ui.theme.ThemeController
+import com.vauth.foxyvpn.ui.theme.ThemeModeSelector
 import com.vauth.foxyvpn.ui.theme.ThemePickerSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -534,6 +535,23 @@ fun SettingsScreen(
                                     TelegramCard(c = c, onClick = { openTelegram(context) })
                                 }
                                 Spacer(Modifier.height(16.dp))
+                                SettingsSection(c, tr("Theme & language")) {
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Palette,
+                                        title = tr("Appearance"),
+                                        subtitle = tr("Theme and colors"),
+                                        divider = false,
+                                        onClick = { page = SettingsPage.APPEARANCE },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Language,
+                                        title = tr("Language"),
+                                        subtitle = languageLabel(languageChoice),
+                                        onClick = { showLanguageSheet = true },
+                                    )
+                                }
 
                                 // ───── سه ابزار سریع کنار هم ─────
                                 Row(
@@ -582,27 +600,13 @@ fun SettingsScreen(
                                 Spacer(Modifier.height(20.dp))
 
                                 // ───── گروه‌ها؛ هرکدام وارد صفحه‌ی خودش می‌شه ─────
-                                SettingsSection(c, tr("Preferences")) {
-                                    SettingRow(
-                                        c = c,
-                                        icon = Icons.Filled.Palette,
-                                        title = tr("Appearance"),
-                                        subtitle = tr("Theme and colors"),
-                                        divider = false,
-                                        onClick = { page = SettingsPage.APPEARANCE },
-                                    )
-                                    SettingRow(
-                                        c = c,
-                                        icon = Icons.Filled.Language,
-                                        title = tr("Language"),
-                                        subtitle = languageLabel(languageChoice),
-                                        onClick = { showLanguageSheet = true },
-                                    )
+                                SettingsSection(c, tr("Connection")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.VerifiedUser,
                                         title = tr("Connection"),
                                         subtitle = if (exitCheckEnabled) tr("Exit location check on") else tr("Exit location check off"),
+                                        divider = false,
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
@@ -666,7 +670,22 @@ fun SettingsScreen(
                             }
 
                             SettingsPage.APPEARANCE -> {
-                                SettingsSection(c, tr("Theme")) {
+                                SettingsSection(c, tr("Mode")) {
+                                    Box(modifier = Modifier.padding(12.dp)) {
+                                        ThemeModeSelector(themeController = themeController)
+                                    }
+                                    if (themeController.palette.supportsLightDark) {
+                                        SettingSwitchRow(
+                                            c = c,
+                                            icon = Icons.Filled.Palette,
+                                            title = tr("Show light/dark button on home"),
+                                            subtitle = tr("A quick sun/moon button next to Settings"),
+                                            checked = themeController.showHomeToggle,
+                                            onCheckedChange = { themeController.setShowHomeToggle(it) },
+                                        )
+                                    }
+                                }
+                                SettingsSection(c, tr("Themes")) {
                                     Box(modifier = Modifier.padding(12.dp)) {
                                         ThemePickerSection(
                                             themeController = themeController,
