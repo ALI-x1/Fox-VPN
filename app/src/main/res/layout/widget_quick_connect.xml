@@ -3,24 +3,38 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/transparent">
+    android:padding="2dp">
+
+    <ImageView
+        android:id="@+id/widget_ring"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:src="@drawable/widget_ring" />
 
     <ImageView
         android:id="@+id/widget_background"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="center"
+        android:importantForAccessibility="no"
         android:scaleType="fitCenter"
-        android:src="@drawable/widget_bg_disconnected_dark" />
+        android:src="@drawable/widget_oval" />
+
+    <ImageView
+        android:id="@+id/widget_gloss"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:src="@drawable/widget_gloss"
+        android:visibility="gone" />
 
     <ImageView
         android:id="@+id/widget_button"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="center"
+        android:importantForAccessibility="no"
         android:scaleType="fitCenter"
-        android:padding="16dp"
-        android:src="@android:drawable/ic_lock_lock"
-        android:contentDescription="@string/quick_connect" />
-
+        android:src="@drawable/widget_fox_icon" />
 </FrameLayout>
