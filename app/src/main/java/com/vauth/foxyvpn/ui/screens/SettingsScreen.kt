@@ -136,6 +136,7 @@ import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.BuildConfig
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.SettingsStore
+import com.vauth.foxyvpn.ui.theme.AppIconPickerSection
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import com.vauth.foxyvpn.ui.theme.ThemeController
@@ -691,6 +692,11 @@ fun SettingsScreen(
                                             themeController = themeController,
                                             showTitle = false,
                                         )
+                                    }
+                                }
+                                SettingsSection(c, tr("App icon")) {
+                                    Box(modifier = Modifier.padding(12.dp)) {
+                                        AppIconPickerSection()
                                     }
                                 }
                             }
