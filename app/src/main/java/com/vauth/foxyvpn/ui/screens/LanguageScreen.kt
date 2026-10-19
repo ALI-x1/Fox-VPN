@@ -112,7 +112,7 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                             .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Filled.Translate, null, tint = onAccent, modifier = Modifier.size(52.dp))
+                        LanguageGlyph(onAccent = onAccent, accent = c.accent)
                     }
                 }
 
@@ -278,6 +278,36 @@ private fun LanguageOptionCard(
             contentAlignment = Alignment.Center,
         ) {
             if (selected) Icon(Icons.Filled.Check, null, tint = onAccent, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+/** نماد زبان: دو کاشی هم‌پوشان با «A» و «آ» (انگلیسی و فارسی). */
+@Composable
+private fun LanguageGlyph(onAccent: Color, accent: Color) {
+    Box(modifier = Modifier.size(60.dp)) {
+        // کاشی پر: A
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .align(Alignment.TopStart)
+                .clip(RoundedCornerShape(11.dp))
+                .background(onAccent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("A", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+        }
+        // کاشی خطی: آ
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .align(Alignment.BottomEnd)
+                .clip(RoundedCornerShape(11.dp))
+                .background(onAccent.copy(alpha = 0.16f))
+                .border(1.5.dp, onAccent.copy(alpha = 0.75f), RoundedCornerShape(11.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("آ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = onAccent)
         }
     }
 }
