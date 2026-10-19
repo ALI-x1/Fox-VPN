@@ -3,7 +3,6 @@ package com.vauth.foxyvpn.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -97,8 +96,8 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
             ) {
                 Spacer(Modifier.weight(1f))
 
-                // نشان برند به‌جای آیکون عمومی «ترجمه»؛ دقیقاً هم‌شکل اسپلش و صفحه‌ی ورود
-                // تا سه صفحه‌ی اول (زبان → اسپلش → ورود) یک هویت بصری یکسان داشته باشند.
+                // گلوب «انتخاب زبان» با رنگ اکسنت هم‌رنگ پالت؛ هاله و قاب دقیقاً مثل اسپلش و صفحه‌ی ورود
+                // تا مسیر زبان → اسپلش → ورود یک هویت بصری یکسان داشته باشد.
                 Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
@@ -111,17 +110,11 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                             )
                             .border(1.dp, c.accent.copy(alpha = 0.14f), CircleShape)
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(116.dp)
-                            .clip(CircleShape)
-                            .background(c.accent.copy(alpha = 0.08f))
-                            .border(1.dp, c.accent.copy(alpha = 0.20f), CircleShape)
-                    )
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_fox_logo),
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_language_globe),
                         contentDescription = null,
-                        modifier = Modifier.size(86.dp),
+                        tint = c.accent,
+                        modifier = Modifier.size(104.dp),
                     )
                 }
 
