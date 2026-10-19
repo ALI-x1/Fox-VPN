@@ -49,7 +49,7 @@
 
         <service
             android:name=".quicksettings.QuickConnectTileService"
-            android:icon="@android:drawable/ic_lock_lock"
+            android:icon="@drawable/ic_widget_fox"
             android:label="@string/quick_connect"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
@@ -61,7 +61,7 @@
         <receiver
             android:name=".widget.QuickConnectWidgetProvider"
             android:label="@string/quick_connect"
-            android:icon="@drawable/widget_preview"
+            android:icon="@drawable/widget_preview_circle"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -72,6 +72,32 @@
                 android:resource="@xml/quick_connect_widget_info" />
         </receiver>
         
+        <receiver
+            android:name=".widget.QuickConnectSlimWidgetProvider"
+            android:label="@string/widget_label_slim"
+            android:icon="@drawable/widget_preview_slim"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_connect_slim_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.QuickConnectLargeWidgetProvider"
+            android:label="@string/widget_label_large"
+            android:icon="@drawable/widget_preview_large"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_connect_large_widget_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
