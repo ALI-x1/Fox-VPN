@@ -256,4 +256,5 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Crystal" to "کریستالی",
     "Ember" to "آتشین",
     "The icon changes when you leave the app, so Fox-VPN stays open while you choose." to "آیکون هنگام خروج از برنامه عوض می‌شود؛ پس تا وقتی داخل برنامه‌اید بسته نمی‌شود.",
+    "Dismiss" to "بستن",
 )
