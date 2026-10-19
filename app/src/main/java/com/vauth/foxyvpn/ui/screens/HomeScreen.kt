@@ -112,6 +112,7 @@ import com.vauth.foxyvpn.vpn.ExitCheck
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.IpInfo
 import com.vauth.foxyvpn.vpn.PingUtil
+import com.vauth.foxyvpn.widget.WidgetQuotaCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -300,6 +301,8 @@ fun HomeScreen(
                 val token = authRepository.currentAccessToken()
                 if (token != null) {
                     entitlement = GuardianClient().fetchUserInfo(GUARDIAN_ENDPOINT_DEFAULT, token)
+                    // آخرین حجم باقی‌مانده برای ویجت بزرگ (بدون درخواست شبکه‌ی جدا)
+                    WidgetQuotaCache.save(app, entitlement)
                 }
             } catch (e: CancellationException) {
                 throw e
