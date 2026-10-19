@@ -45,12 +45,13 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
     val palette: ThemePalette get() = paletteState
 
     /** کلید خورشید/ماه کنار تنظیمات در صفحه‌ی اصلی؛ از صفحه‌ی «تم» می‌شه خاموشش کرد. */
-    var showHomeToggle: Boolean by mutableStateOf(palettePrefs.getBoolean(HOME_TOGGLE_KEY, true))
-        private set
+    private var homeToggleState: Boolean by mutableStateOf(palettePrefs.getBoolean(HOME_TOGGLE_KEY, true))
+
+    val showHomeToggle: Boolean get() = homeToggleState
 
     fun setShowHomeToggle(value: Boolean) {
-        if (value == showHomeToggle) return
-        showHomeToggle = value
+        if (value == homeToggleState) return
+        homeToggleState = value
         palettePrefs.edit().putBoolean(HOME_TOGGLE_KEY, value).apply()
     }
 
