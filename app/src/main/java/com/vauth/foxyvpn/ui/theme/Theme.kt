@@ -141,6 +141,10 @@ fun FoxyVpnTheme(
                 isAppearanceLightStatusBars = !darkTheme
                 isAppearanceLightNavigationBars = !darkTheme
             }
+            // بدون این، اندروید روی نوار ناوبری یه پوشش نیمه‌شفاف سفید/مشکی می‌ندازه (تو حالت روشن، پایین صفحه سفید می‌شد)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isNavigationBarContrastEnforced = false
+            }
         }
     }
 
