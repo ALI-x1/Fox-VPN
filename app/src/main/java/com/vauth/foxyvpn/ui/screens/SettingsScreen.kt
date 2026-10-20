@@ -1,6 +1,14 @@
 package com.vauth.foxyvpn.ui.screens
 
 import android.content.Context
+import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.ui.platform.LocalUriHandler
+import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.data.RedeemClient
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -193,6 +201,9 @@ fun SettingsScreen(
     var autoConnect by remember { mutableStateOf(settingsStore.autoConnect) }
     var showKillSwitchDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
+    val redeemClient = remember { RedeemClient(context.applicationContext) }
+    val isAdmin = remember { redeemClient.adminMode }
+    val uriHandler = LocalUriHandler.current
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
@@ -542,8 +553,35 @@ fun SettingsScreen(
                                         title = "Version",
                                         subtitle = BuildConfig.VERSION_NAME,
                                     )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.SupportAgent,
+                                        title = "Support",
+                                        subtitle = "Message us on Telegram",
+                                        onClick = { runCatching { uriHandler.openUri(RedeemClient.SUPPORT_URL) } },
+                                    )
+                                    if (isAdmin) {
+                                        SettingRow(
+                                            c = c,
+                                            icon = Icons.Filled.VpnKey,
+                                            title = "Copy access key (admin)",
+                                            subtitle = "For creating redeem codes. Keep it private.",
+                                            onClick = {
+                                                val key = (context.applicationContext as? FoxyVpnApp)
+                                                    ?.authRepository?.currentRefreshToken()
+                                                if (key.isNullOrBlank()) {
+                                                    Toast.makeText(context, "No access key found. Sign in again.", Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    clipboard.setPrimaryClip(ClipData.newPlainText("fox-access-key", key))
+                                                    Toast.makeText(context, "Access key copied", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                        )
+                                    }
                                 }
 
+                                if (isAdmin) {
                                 val signOutShape = RoundedCornerShape(20.dp)
                                 Button(
                                     onClick = { showSignOutDialog = true },
@@ -561,6 +599,7 @@ fun SettingsScreen(
                                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
                                     Text("Sign out", fontWeight = FontWeight.SemiBold)
+                                }
                                 }
                             }
 
