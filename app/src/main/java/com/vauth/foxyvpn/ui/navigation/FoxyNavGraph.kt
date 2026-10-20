@@ -10,11 +10,15 @@ import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.vpn.FoxyVpnService
+import com.vauth.foxyvpn.data.LicenseState
+import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.screens.AccountScreen
+import com.vauth.foxyvpn.ui.screens.AdminLoginScreen
 import com.vauth.foxyvpn.ui.screens.HomeScreen
 import com.vauth.foxyvpn.ui.screens.LoginScreen
 import com.vauth.foxyvpn.ui.screens.LogsScreen
 import com.vauth.foxyvpn.ui.screens.ServerListScreen
+import com.vauth.foxyvpn.ui.screens.PlansScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
 import com.vauth.foxyvpn.ui.theme.ThemeController
@@ -26,10 +30,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 object FoxyRoutes {
     const val SPLASH = "splash"
     const val LOGIN = "login"
+    const val ADMIN_LOGIN = "admin_login"
     const val HOME = "home"
     const val SERVERS = "servers"
     const val SETTINGS = "settings"
     const val ACCOUNT = "account"
+    const val PLANS = "plans"
     const val LOGS = "logs"
 }
 
@@ -63,6 +69,16 @@ fun FoxyNavGraph(
                 onSignedIn = {
                     navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
                 },
+                onOpenAdmin = { navController.navigate(FoxyRoutes.ADMIN_LOGIN) },
+            )
+        }
+        composable(FoxyRoutes.ADMIN_LOGIN) {
+            AdminLoginScreen(
+                authRepository = app.authRepository,
+                onSignedIn = {
+                    RedeemClient(app).adminMode = true
+                    navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.SPLASH) { inclusive = true } }
+                },
             )
         }
         composable(FoxyRoutes.HOME) {
@@ -83,6 +99,20 @@ fun FoxyNavGraph(
                 onDisconnect = onDisconnect,
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
                 onOpenSettings = { navController.navigate(FoxyRoutes.SETTINGS) },
+                onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
+            )
+        }
+        composable(FoxyRoutes.PLANS) {
+            PlansScreen(
+                onBack = { navController.popBackStack() },
+                // کد منقضی/لغو/تموم‌شده: دوباره می‌شه کد جدید وارد کرد
+                onEnterNewCode = {
+                    onDisconnect()
+                    app.tokenStore.clear()
+                    RedeemClient(app).apply { adminMode = false; activeCode = null }
+                    LicenseState.clear(app)
+                    navController.navigate(FoxyRoutes.LOGIN) { popUpTo(0) { inclusive = true } }
+                },
             )
         }
         composable(FoxyRoutes.SERVERS) {
@@ -115,6 +145,8 @@ fun FoxyNavGraph(
                 onSignOut = {
                     onDisconnect()
                     app.tokenStore.clear()
+                    RedeemClient(app).apply { adminMode = false; activeCode = null }
+                    LicenseState.clear(app)
                     navController.navigate(FoxyRoutes.LOGIN) { popUpTo(0) { inclusive = true } }
                 },
                 onBack = { navController.popBackStack() },
