@@ -252,7 +252,7 @@ class RedeemClient(context: Context) {
          * آدرس Worker (بعد از نصب مرحله‌ی ۲ اینجا گذاشته می‌شه)، بدون «/» آخر.
          * مثال: "https://fox-redeem.your-name.workers.dev"
          */
-        const val BASE_URL = "https://fox-redeem.javidnamaan.workers.dev/"
+        const val BASE_URL = "https://fox-redeem.javidnamaan.workers.dev"
 
         /** پیام به پشتیبانی. */
         const val SUPPORT_URL = "https://t.me/Ali_jahangirr"
