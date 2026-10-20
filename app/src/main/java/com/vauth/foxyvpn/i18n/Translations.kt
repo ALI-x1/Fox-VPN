@@ -257,4 +257,8 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Ember" to "آتشین",
     "Tap an icon to apply it. Fox-VPN moves to the background and keeps running." to "با لمس هر آیکون، همان لحظه اعمال می‌شود. برنامه به پس‌زمینه می‌رود و بسته نمی‌شود.",
     "Dismiss" to "بستن",
+    "Reset connection settings" to "بازنشانی تنظیمات اتصال",
+    "Reset connection settings?" to "تنظیمات اتصال بازنشانی شود؟",
+    "Reset" to "بازنشانی",
+    "DNS, local proxy, advanced and split tunnel settings go back to their defaults. Theme, language and your account stay as they are." to "تنظیمات DNS، پروکسی محلی، پیشرفته و تونل تفکیکی به حالت پیش‌فرض برمی‌گردد. تم، زبان و حساب شما تغییری نمی‌کند.",
 )
