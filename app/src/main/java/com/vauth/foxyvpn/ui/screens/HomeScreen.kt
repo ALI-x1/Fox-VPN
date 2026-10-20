@@ -213,7 +213,7 @@ fun HomeScreen(
     val lastError by FoxyVpnService.lastError.collectAsState()
 
     // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) حلقه‌های تکراری زیر متوقف می‌شن تا باتری هدر نره.
-    val lifecycleOwner = LocalContext.current as? LifecycleOwner
+    val lifecycleOwner = LocalContext.current.findActivity() as? LifecycleOwner
     var isForeground by remember { mutableStateOf(true) }
     DisposableEffect(lifecycleOwner) {
         val lifecycle = lifecycleOwner?.lifecycle
@@ -389,8 +389,14 @@ fun HomeScreen(
     // دلیل خطا: با ✕ بسته می‌شه؛ خطای جدید (متن متفاوت) دوباره نشون داده می‌شه
     var dismissedError by remember { mutableStateOf<String?>(null) }
     val visibleError = lastError?.takeIf { it.isNotBlank() && it != dismissedError }
+    // لرزش خطا فقط برای خطای تازه؛ نه هر بار که صفحه از نو ساخته می‌شه و خطای قدیمی هنوز تو سرویس مونده
+    val initialError = remember { lastError }
     LaunchedEffect(lastError) {
-        if (!lastError.isNullOrBlank()) hapticError(view)
+        if (!lastError.isNullOrBlank() && lastError != initialError) hapticError(view)
+    }
+    // با شروع اتصال تازه، خطای قبلی (حتی با همون متن) دوباره می‌تونه نشون داده بشه
+    LaunchedEffect(state) {
+        if (state == ConnectionState.CONNECTING) dismissedError = null
     }
     val targetRingColor = when (state) {
         ConnectionState.CONNECTED -> statusColors.connected
@@ -584,9 +590,10 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val isIranShown = shownCountry.equals("IR", ignoreCase = true)
+                            val shownCountryName = remember(shownCountry) { countryDisplayName(shownCountry) }
                             val locationTitle = when {
                                 isIranShown -> tr("Iran")
-                                countryDisplayName(shownCountry) != null -> countryDisplayName(shownCountry).orEmpty()
+                                shownCountryName != null -> shownCountryName
                                 state == ConnectionState.CONNECTING -> tr("Connecting…")
                                 else -> tr("Location")
                             }
