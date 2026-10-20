@@ -142,6 +142,39 @@ class SettingsStore(context: Context) {
         excludedApps.sorted(),
     ).hashCode()
 
+    /** آیا همه‌ی تنظیمات اتصال روی پیش‌فرضه؟ (تم، زبان و وصل‌شدن خودکار حساب نمی‌شن) */
+    fun isConnectionDefault(): Boolean =
+        exitCheckEnabled && dohProvider == DohProvider.AUTOMATIC &&
+            !customDnsEnabled && customDnsServer == DEFAULT_CUSTOM_DNS_SERVER &&
+            socksBindAddress == DEFAULT_SOCKS_BIND_ADDRESS && socksPort == DEFAULT_SOCKS_PORT &&
+            !httpProxyEnabled && httpProxyPort == DEFAULT_HTTP_PROXY_PORT && !proxyOnlyMode &&
+            customEdgeAddress.isEmpty() && !upstreamProxyEnabled &&
+            upstreamProxyType == UpstreamProxyType.SOCKS5 && upstreamProxyHost.isEmpty() &&
+            upstreamProxyPort == DEFAULT_UPSTREAM_PROXY_PORT &&
+            upstreamProxyUsername.isEmpty() && upstreamProxyPassword.isEmpty() &&
+            excludedApps.isEmpty()
+
+    /** برگردوندن تنظیمات اتصال به پیش‌فرض (تم، زبان، وصل‌شدن خودکار و حساب دست نمی‌خورن). */
+    fun resetConnectionDefaults() {
+        exitCheckEnabled = true
+        dohProvider = DohProvider.AUTOMATIC
+        customDnsEnabled = false
+        customDnsServer = DEFAULT_CUSTOM_DNS_SERVER
+        socksBindAddress = DEFAULT_SOCKS_BIND_ADDRESS
+        socksPort = DEFAULT_SOCKS_PORT
+        httpProxyEnabled = false
+        httpProxyPort = DEFAULT_HTTP_PROXY_PORT
+        proxyOnlyMode = false
+        customEdgeAddress = ""
+        upstreamProxyEnabled = false
+        upstreamProxyType = UpstreamProxyType.SOCKS5
+        upstreamProxyHost = ""
+        upstreamProxyPort = DEFAULT_UPSTREAM_PROXY_PORT
+        upstreamProxyUsername = ""
+        upstreamProxyPassword = ""
+        excludedApps = emptySet()
+    }
+
     enum class UpstreamProxyType { SOCKS5, HTTP }
 
     enum class DohProvider(val label: String) {
