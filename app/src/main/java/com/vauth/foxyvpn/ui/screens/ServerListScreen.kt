@@ -663,12 +663,15 @@ fun ServerListScreen(
         }
     }
     val currentEntryState = rememberUpdatedState(currentEntry)
+    // sortedCities با عوض شدن cityEntries / sortMode «State جدید» می‌سازه؛ اگه derivedStateOf پایین مستقیم
+    // اون رو بگیره، همیشه نسخه‌ی اول (لیست خالی قبل از لود) رو می‌خونه و هیچ لوکیشنی نشون داده نمی‌شه.
+    val sortedCitiesState = rememberUpdatedState(sortedCities)
 
     // ───── بخش‌های لیست ─────
     // فقط وقتی ترتیب، جستجو، علاقه‌مندی‌ها، اخیراً‌ها یا لوکیشن فعلی عوض بشن دوباره ساخته می‌شه
     // (نه با هر recompose، و نه با هر نتیجه‌ی پینگ که ترتیب رو عوض نمی‌کنه)
     val sections by remember {
-        derivedStateOf { buildSections(sortedCities, searchQuery, favorites, recents, currentEntryState.value) }
+        derivedStateOf { buildSections(sortedCitiesState.value, searchQuery, favorites, recents, currentEntryState.value) }
     }
     val query = sections.query
     val searching = sections.searching
