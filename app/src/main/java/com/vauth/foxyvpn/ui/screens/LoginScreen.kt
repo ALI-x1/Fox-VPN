@@ -44,10 +44,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -76,16 +75,18 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -94,6 +95,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.FxaAuthRepository
+import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
@@ -154,38 +156,30 @@ private fun Modifier.reveal(progress: () -> Float, offsetPx: Float = 40f): Modif
 fun LoginScreen(
     authRepository: FxaAuthRepository,
     onSignedIn: () -> Unit,
+    onOpenAdmin: () -> Unit = {},
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    // کد فعال‌سازی (قالب FOX-XXXX-XXXX-XXXX)
     var code by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var awaitingTwoFactor by remember { mutableStateOf(false) }
+    // ۵ بار ضربه‌ی پشت‌سرهم روی لوگو: ورود ادمین (فقط برای صاحب برنامه)
+    var logoTaps by remember { mutableStateOf(0) }
+    var lastLogoTap by remember { mutableStateOf(0L) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val redeemClient = remember { RedeemClient(context.applicationContext) }
 
     val c = LocalFoxExtras.current.toLoginColors()
 
-    // کدوم فیلد فوکوس داره؟ (برای تشخیص «کیبورد واقعاً بازه»)
-    var emailFocused by remember { mutableStateOf(false) }
-    var passwordFocused by remember { mutableStateOf(false) }
     var codeFocused by remember { mutableStateOf(false) }
-    // با رفتن بین مرحله‌ی ورود و کد تأیید، فوکوس قبلی پاک می‌شه
-    LaunchedEffect(awaitingTwoFactor) {
-        emailFocused = false
-        passwordFocused = false
-        codeFocused = false
-    }
 
-    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد پسورد و دکمه پشت کیبورد نمونن.
-    // فقط وقتی «واقعاً» باز باشه: یه فیلد فوکوس داشته باشه و ارتفاع کیبورد معنی‌دار باشه.
-    // (قبلاً فقط به WindowInsets.isImeVisible تکیه می‌شد؛ تو بعضی گوشی‌ها اون مقدار بدون کیبورد هم
-    // true می‌مونه و لوگو و توضیحات برای همیشه مخفی می‌شدن.)
+    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد و دکمه پشت کیبورد نمونن.
+    // فقط وقتی «واقعاً» باز باشه: فیلد فوکوس داشته باشه و ارتفاع کیبورد معنی‌دار باشه.
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val imeVisible = (emailFocused || passwordFocused || codeFocused) &&
-        imeBottomPx > with(density) { 120.dp.toPx() }
+    val imeVisible = codeFocused && imeBottomPx > with(density) { 120.dp.toPx() }
 
     // انیمیشن ورود پله‌ای (هدر ← کارت ← فوتر)
     var entered by remember { mutableStateOf(false) }
@@ -207,30 +201,43 @@ fun LoginScreen(
         shake.animateTo(0f, tween(45))
     }
 
-    fun doSubmitLogin() {
-        val cleanEmail = FxaAuthRepository.normalizeEmail(email)
-        if (cleanEmail.isBlank() || password.isBlank() || isLoading) return
+    fun openSupport() {
+        runCatching { uriHandler.openUri(RedeemClient.SUPPORT_URL) }
+    }
+
+    fun doRedeem(value: String = code) {
+        if (!RedeemClient.isComplete(value) || isLoading) return
         errorMessage = null
         isLoading = true
         scope.launch {
-            val result = authRepository.startLogin(cleanEmail, password)
+            val grant = redeemClient.redeem(value).getOrElse {
+                isLoading = false
+                errorMessage = it.message ?: "Could not verify the code"
+                return@launch
+            }
+            val result = authRepository.loginWithRefreshToken(grant.refreshToken)
             isLoading = false
-            result.onSuccess { needsVerification ->
-                if (needsVerification) awaitingTwoFactor = true else onSignedIn()
-            }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
+            result.onSuccess { onSignedIn() }
+                .onFailure {
+                    redeemClient.activeCode = null
+                    errorMessage = "This code can't sign in right now. Please contact support."
+                }
         }
     }
 
-    fun doSubmitTwoFactor() {
-        val cleanCode = FxaAuthRepository.sanitizeCode(code)
-        if (cleanCode.isBlank() || isLoading) return
+    // «ادامه با حساب رایگان»: سرور یه کد Free می‌ده و خودکار وارد می‌شیم
+    fun doFree() {
+        if (isLoading) return
         errorMessage = null
         isLoading = true
         scope.launch {
-            val result = authRepository.submitTwoFactorCode(cleanCode)
+            val free = redeemClient.requestFreeCode().getOrElse {
+                isLoading = false
+                errorMessage = it.message ?: "Could not create a free account"
+                return@launch
+            }
             isLoading = false
-            result.onSuccess { onSignedIn() }
-                .onFailure { errorMessage = it.message ?: "Verification failed" }
+            doRedeem(free)
         }
     }
 
@@ -262,7 +269,19 @@ fun LoginScreen(
                         modifier = Modifier.reveal({ heroP }),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        LoginLogo()
+                        Box(
+                            modifier = Modifier.pointerInput(Unit) {
+                                detectTapGestures(onTap = {
+                                    val now = System.currentTimeMillis()
+                                    logoTaps = if (now - lastLogoTap < 1_500L) logoTaps + 1 else 1
+                                    lastLogoTap = now
+                                    if (logoTaps >= 5) {
+                                        logoTaps = 0
+                                        onOpenAdmin()
+                                    }
+                                })
+                            },
+                        ) { LoginLogo() }
 
                         Spacer(Modifier.height(14.dp))
 
@@ -294,184 +313,86 @@ fun LoginScreen(
                         .loginCard(c, 28.dp)
                         .padding(20.dp),
                 ) {
-                    AnimatedContent(
-                        targetState = awaitingTwoFactor,
-                        transitionSpec = {
-                            (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 12 }) togetherWith
-                                fadeOut(tween(120))
-                        },
-                        label = "login-step",
-                    ) { twoFactor ->
-                        if (!twoFactor) {
+                    Column {
+                        Text(
+                            "Enter your code",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = c.textPrimary,
+                        )
+                        AnimatedVisibility(
+                            visible = !imeVisible,
+                            enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                            exit = fadeOut(tween(100)) + shrinkVertically(tween(180)),
+                        ) {
                             Column {
-                                Text(
-                                    "Sign in with Firefox",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = c.textPrimary,
-                                )
-                                AnimatedVisibility(
-                                    visible = !imeVisible,
-                                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                                    exit = fadeOut(tween(100)) + shrinkVertically(tween(180)),
-                                ) {
-                                    Column {
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            "Fox-VPN runs on the free 50 GB of monthly VPN traffic Mozilla includes with a Firefox account. No subscription is required.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = c.textSecondary,
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(20.dp))
-
-                                LoginField(
-                                    value = email,
-                                    onValueChange = {
-                                        errorMessage = null
-                                        email = it
-                                            .replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
-                                            .lowercase()
-                                    },
-                                    label = "Firefox account email",
-                                    onFocusChange = { emailFocused = it },
-                                    enabled = !isLoading,
-                                    leadingIcon = Icons.Filled.Email,
-                                    colors = c,
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Email,
-                                        imeAction = ImeAction.Next,
-                                        autoCorrectEnabled = false,
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                                    ),
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                LoginField(
-                                    value = password,
-                                    onValueChange = {
-                                        errorMessage = null
-                                        password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
-                                    },
-                                    label = "Password",
-                                    onFocusChange = { passwordFocused = it },
-                                    enabled = !isLoading,
-                                    leadingIcon = Icons.Filled.Lock,
-                                    colors = c,
-                                    visualTransformation = if (passwordVisible) {
-                                        VisualTransformation.None
-                                    } else {
-                                        PasswordVisualTransformation()
-                                    },
-                                    trailing = {
-                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                            Icon(
-                                                imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                                                tint = c.textSecondary,
-                                            )
-                                        }
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Password,
-                                        imeAction = ImeAction.Done,
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onDone = {
-                                            focusManager.clearFocus()
-                                            doSubmitLogin()
-                                        }
-                                    ),
-                                )
-                                Spacer(Modifier.height(20.dp))
-                                LoginPrimaryButton(
-                                    text = "Continue",
-                                    enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
-                                    isLoading = isLoading,
-                                    colors = c,
-                                    onClick = {
-                                        focusManager.clearFocus()
-                                        doSubmitLogin()
-                                    },
-                                )
-                            }
-                        } else {
-                            Column {
-                                Text(
-                                    "Verify it's you",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = c.textPrimary,
-                                )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "Enter the confirmation code sent to your email",
+                                    "Type the access code you received to start using Fox-VPN.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                 )
-                                Spacer(Modifier.height(20.dp))
-
-                                LoginField(
-                                    value = code,
-                                    onValueChange = {
-                                        errorMessage = null
-                                        code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
-                                    },
-                                    label = "Confirmation code",
-                                    onFocusChange = { codeFocused = it },
-                                    enabled = !isLoading,
-                                    leadingIcon = Icons.Filled.Lock,
-                                    colors = c,
-                                    textStyle = TextStyle(
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 6.sp,
-                                        textAlign = TextAlign.Center,
-                                        color = c.textPrimary,
-                                    ),
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.NumberPassword,
-                                        imeAction = ImeAction.Done,
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onDone = {
-                                            focusManager.clearFocus()
-                                            doSubmitTwoFactor()
-                                        }
-                                    ),
-                                )
-                                Spacer(Modifier.height(20.dp))
-                                LoginPrimaryButton(
-                                    text = "Verify",
-                                    enabled = !isLoading && code.isNotBlank(),
-                                    isLoading = isLoading,
-                                    colors = c,
-                                    onClick = {
-                                        focusManager.clearFocus()
-                                        doSubmitTwoFactor()
-                                    },
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    text = "Use a different account",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Medium,
-                                    color = c.accentText,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable(enabled = !isLoading) {
-                                            awaitingTwoFactor = false
-                                            code = ""
-                                            errorMessage = null
-                                        }
-                                        .padding(vertical = 10.dp),
-                                )
                             }
                         }
+                        Spacer(Modifier.height(20.dp))
+
+                        LoginField(
+                            value = code,
+                            onValueChange = {
+                                errorMessage = null
+                                code = RedeemClient.formatCode(it)
+                            },
+                            label = "Redeem code",
+                            onFocusChange = { codeFocused = it },
+                            enabled = !isLoading,
+                            leadingIcon = Icons.Filled.VpnKey,
+                            colors = c,
+                            textStyle = TextStyle(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                                color = c.textPrimary,
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Ascii,
+                                capitalization = KeyboardCapitalization.Characters,
+                                imeAction = ImeAction.Done,
+                                autoCorrectEnabled = false,
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    focusManager.clearFocus()
+                                    doRedeem()
+                                }
+                            ),
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        LoginPrimaryButton(
+                            text = "Redeem",
+                            enabled = !isLoading && RedeemClient.isComplete(code),
+                            isLoading = isLoading,
+                            colors = c,
+                            onClick = {
+                                focusManager.clearFocus()
+                                doRedeem()
+                            },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        LoginSecondaryButton(
+                            text = "Continue with free account",
+                            enabled = !isLoading,
+                            colors = c,
+                            onClick = {
+                                focusManager.clearFocus()
+                                doFree()
+                            },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        SupportLink(
+                            text = "Need more data? Message support",
+                            colors = c,
+                            onClick = ::openSupport,
+                        )
                     }
 
                     // ───── پیام خطا ─────
@@ -525,7 +446,7 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "Your credentials are sent only to Mozilla",
+                        "Your code is checked securely",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.textSecondary,
                     )
@@ -574,6 +495,33 @@ private fun LoginLogo() {
             painter = painterResource(id = R.drawable.ic_fox_logo),
             contentDescription = null,
             modifier = Modifier.size(76.dp),
+        )
+    }
+}
+
+@Composable
+private fun SupportLink(text: String, colors: LoginColors, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.SupportAgent,
+            contentDescription = null,
+            tint = colors.accentText,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium,
+            color = colors.accentText,
         )
     }
 }
@@ -690,5 +638,33 @@ private fun LoginPrimaryButton(
                 color = if (enabled) colors.onAccent else colors.textSecondary,
             )
         }
+    }
+}
+
+/** دکمه‌ی دوم (حاشیه‌دار): «ادامه با حساب رایگان». */
+@Composable
+private fun LoginSecondaryButton(
+    text: String,
+    enabled: Boolean,
+    colors: LoginColors,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(shape)
+            .background(colors.field)
+            .border(1.dp, colors.accent.copy(alpha = 0.55f), shape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (enabled) colors.accentText else colors.textSecondary,
+        )
     }
 }
