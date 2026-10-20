@@ -80,6 +80,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
@@ -214,8 +215,9 @@ fun SettingsScreen(
     var upstreamProxyPassword by remember { mutableStateOf(settingsStore.upstreamProxyPassword) }
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
     var autoConnect by remember { mutableStateOf(settingsStore.autoConnect) }
-    var showKillSwitchDialog by remember { mutableStateOf(false) }
-    var showSignOutDialog by remember { mutableStateOf(false) }
+    var showKillSwitchDialog by rememberSaveable { mutableStateOf(false) }
+    var showSignOutDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
     // زبان برنامه: کشوی انتخاب (سیستم / فارسی / English)
     var languageChoice by remember { mutableStateOf(Lang.choice(context)) }
     var showLanguageSheet by remember { mutableStateOf(false) }
@@ -223,16 +225,16 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
     BackHandler(enabled = page != SettingsPage.MAIN) { page = SettingsPage.MAIN }
-    var showDohProviderDialog by remember { mutableStateOf(false) }
-    var showCustomDnsDialog by remember { mutableStateOf(false) }
-    var showSocksBindDialog by remember { mutableStateOf(false) }
-    var showSocksPortDialog by remember { mutableStateOf(false) }
-    var showHttpPortDialog by remember { mutableStateOf(false) }
-    var showEdgeAddressDialog by remember { mutableStateOf(false) }
-    var showUpstreamProxyTypeDialog by remember { mutableStateOf(false) }
-    var showUpstreamProxyAddressDialog by remember { mutableStateOf(false) }
-    var showUpstreamProxyCredentialsDialog by remember { mutableStateOf(false) }
-    var showSplitTunnelDialog by remember { mutableStateOf(false) }
+    var showDohProviderDialog by rememberSaveable { mutableStateOf(false) }
+    var showCustomDnsDialog by rememberSaveable { mutableStateOf(false) }
+    var showSocksBindDialog by rememberSaveable { mutableStateOf(false) }
+    var showSocksPortDialog by rememberSaveable { mutableStateOf(false) }
+    var showHttpPortDialog by rememberSaveable { mutableStateOf(false) }
+    var showEdgeAddressDialog by rememberSaveable { mutableStateOf(false) }
+    var showUpstreamProxyTypeDialog by rememberSaveable { mutableStateOf(false) }
+    var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
+    var showUpstreamProxyCredentialsDialog by rememberSaveable { mutableStateOf(false) }
+    var showSplitTunnelDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showDohProviderDialog) {
         DohProviderPickerDialog(
@@ -268,7 +270,8 @@ fun SettingsScreen(
         )
     }
     if (showSocksPortDialog) {
-        SocksPortPickerDialog(
+        PortPickerDialog(
+            title = tr("Local port"),
             current = socksPort,
             onDismiss = { showSocksPortDialog = false },
             onConfirm = {
@@ -279,7 +282,8 @@ fun SettingsScreen(
         )
     }
     if (showHttpPortDialog) {
-        HttpPortPickerDialog(
+        PortPickerDialog(
+            title = tr("HTTP port"),
             current = httpProxyPort,
             onDismiss = { showHttpPortDialog = false },
             onConfirm = {
@@ -367,6 +371,41 @@ fun SettingsScreen(
         )
     }
 
+    if (showResetDialog) {
+        FoxDialog(
+            title = tr("Reset connection settings?"),
+            onDismiss = { showResetDialog = false },
+            onConfirm = {
+                showResetDialog = false
+                settingsStore.resetConnectionDefaults()
+                exitCheckEnabled = settingsStore.exitCheckEnabled
+                dohProvider = settingsStore.dohProvider
+                customDnsEnabled = settingsStore.customDnsEnabled
+                customDnsServer = settingsStore.customDnsServer
+                socksBindAddress = settingsStore.socksBindAddress
+                socksPort = settingsStore.socksPort
+                httpProxyEnabled = settingsStore.httpProxyEnabled
+                httpProxyPort = settingsStore.httpProxyPort
+                proxyOnlyMode = settingsStore.proxyOnlyMode
+                customEdgeAddress = settingsStore.customEdgeAddress
+                upstreamProxyEnabled = settingsStore.upstreamProxyEnabled
+                upstreamProxyType = settingsStore.upstreamProxyType
+                upstreamProxyHost = settingsStore.upstreamProxyHost
+                upstreamProxyPort = settingsStore.upstreamProxyPort
+                upstreamProxyUsername = settingsStore.upstreamProxyUsername
+                upstreamProxyPassword = settingsStore.upstreamProxyPassword
+                excludedApps = settingsStore.excludedApps
+            },
+            confirmLabel = tr("Reset"),
+        ) {
+            Text(
+                text = tr("DNS, local proxy, advanced and split tunnel settings go back to their defaults. Theme, language and your account stay as they are."),
+                color = c.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+
     if (showSignOutDialog) {
         SignOutConfirmDialog(
             onDismiss = { showSignOutDialog = false },
@@ -408,7 +447,7 @@ fun SettingsScreen(
 
     // ── وضعیت واقعی کیل‌سوییچ اندروید (با برگشتن از تنظیمات سیستم تازه می‌شه) ──
     var sysVpn by remember { mutableStateOf(SystemVpnState.read(context)) }
-    val lifecycleOwner = LocalContext.current as? LifecycleOwner
+    val lifecycleOwner = context.findActivity() as? LifecycleOwner
     DisposableEffect(lifecycleOwner) {
         val lifecycle = lifecycleOwner?.lifecycle
         val observer = LifecycleEventObserver { _, event ->
@@ -426,7 +465,8 @@ fun SettingsScreen(
         upstreamProxyType, upstreamProxyHost, upstreamProxyPort, upstreamProxyUsername,
         upstreamProxyPassword, excludedApps,
     ) { settingsStore.connectionFingerprint() }
-    var dismissedFingerprint by remember { mutableStateOf<Int?>(null) }
+    val connectionChanged = remember(settingsFingerprint, exitCheckEnabled) { !settingsStore.isConnectionDefault() }
+    var dismissedFingerprint by rememberSaveable { mutableStateOf<Int?>(null) }
     val needsReconnect = vpnState == ConnectionState.CONNECTED &&
         AppliedConfig.fingerprint != null &&
         settingsFingerprint != AppliedConfig.fingerprint &&
@@ -650,6 +690,21 @@ fun SettingsScreen(
                                     )
                                 }
 
+                                AnimatedVisibility(visible = connectionChanged) {
+                                    Column {
+                                        TextButton(
+                                            onClick = { showResetDialog = true },
+                                            colors = foxTextButtonColors(c),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(tr("Reset connection settings"), fontWeight = FontWeight.SemiBold)
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+                                }
+
                                 val signOutShape = RoundedCornerShape(20.dp)
                                 Button(
                                     onClick = { showSignOutDialog = true },
@@ -695,7 +750,7 @@ fun SettingsScreen(
                                     }
                                 }
                                 SettingsSection(c, tr("App icon")) {
-                                    Box(modifier = Modifier.padding(12.dp)) {
+                                    Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
                                         AppIconPickerSection()
                                     }
                                 }
@@ -1523,7 +1578,8 @@ private fun SocksBindAddressPickerDialog(
 }
 
 @Composable
-private fun SocksPortPickerDialog(
+private fun PortPickerDialog(
+    title: String,
     current: Int,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
@@ -1534,37 +1590,7 @@ private fun SocksPortPickerDialog(
     val isValid = parsedPort != null && parsedPort in 1..65_535
 
     FoxDialog(
-        title = tr("Local port"),
-        onDismiss = onDismiss,
-        onConfirm = { parsedPort?.let { onConfirm(it) } },
-        confirmEnabled = isValid,
-    ) {
-        OutlinedTextField(
-            value = portText,
-            onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-            label = { Text(tr("Port (1\u201365535)")) },
-            singleLine = true,
-            isError = portText.isNotBlank() && !isValid,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            shape = RoundedCornerShape(16.dp),
-            colors = foxFieldColors(c),
-        )
-    }
-}
-
-@Composable
-private fun HttpPortPickerDialog(
-    current: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
-) {
-    val c = LocalFoxExtras.current
-    var portText by remember { mutableStateOf(current.toString()) }
-    val parsedPort = portText.toIntOrNull()
-    val isValid = parsedPort != null && parsedPort in 1..65_535
-
-    FoxDialog(
-        title = tr("HTTP port"),
+        title = title,
         onDismiss = onDismiss,
         onConfirm = { parsedPort?.let { onConfirm(it) } },
         confirmEnabled = isValid,
@@ -1693,7 +1719,9 @@ private fun UpstreamProxyCredentialsDialog(
     }
 }
 
-private data class InstalledAppEntry(val packageName: String, val label: String)
+private class InstalledAppEntry(val packageName: String, val label: String) {
+    val labelLower: String = label.lowercase()
+}
 
 /** کش کوچک آیکون برنامه‌ها تا اسکرول لیست روان بماند. */
 private object AppIconCache {
@@ -1703,7 +1731,7 @@ private object AppIconCache {
 }
 
 @Composable
-private fun AppIcon(packageName: String, c: FoxExtras, size: Dp = 42.dp) {
+private fun InstalledAppIcon(packageName: String, c: FoxExtras, size: Dp = 42.dp) {
     val context = LocalContext.current
     val bitmap by produceState<ImageBitmap?>(initialValue = AppIconCache.get(packageName), packageName) {
         if (value == null) {
@@ -1749,7 +1777,7 @@ private fun SplitTunnelDialog(
     val installedApps by produceState<List<InstalledAppEntry>?>(initialValue = null) {
         value = withContext(Dispatchers.IO) {
             val packageManager = context.packageManager
-            packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+            packageManager.getInstalledApplications(0)
                 .asSequence()
                 .filter { it.packageName != context.packageName }
                 .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
@@ -1759,7 +1787,7 @@ private fun SplitTunnelDialog(
                 // برنامه‌هایی که از قبل انتخاب شده بالا می‌آیند، بقیه الفبایی
                 .sortedWith(
                     compareByDescending<InstalledAppEntry> { it.packageName in initiallySelected }
-                        .thenBy { it.label.lowercase() }
+                        .thenBy { it.labelLower }
                 )
                 .toList()
         }
@@ -1768,8 +1796,8 @@ private fun SplitTunnelDialog(
         val all = installedApps.orEmpty()
         if (searchQuery.isBlank()) all
         else all.filter {
-            it.label.contains(searchQuery, ignoreCase = true) ||
-                it.packageName.contains(searchQuery, ignoreCase = true)
+            val q = searchQuery.trim()
+            it.labelLower.contains(q.lowercase()) || it.packageName.contains(q, ignoreCase = true)
         }
     }
 
@@ -1859,7 +1887,7 @@ private fun SplitTunnelDialog(
                             }
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                     ) {
-                        AppIcon(packageName = app.packageName, c = c)
+                        InstalledAppIcon(packageName = app.packageName, c = c)
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
