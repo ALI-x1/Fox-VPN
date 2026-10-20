@@ -3,6 +3,7 @@ package com.vauth.foxyvpn.ui.screens
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import android.content.Context
+import android.widget.Toast
 import java.text.Collator
 import java.util.Locale
 import androidx.compose.animation.animateColorAsState
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,7 +65,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -73,6 +77,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -98,6 +104,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.vauth.foxyvpn.data.CityNames
 import com.vauth.foxyvpn.data.CountryUtil
 import com.vauth.foxyvpn.data.ProxyStateStore
@@ -335,6 +344,48 @@ private fun pingColor(ms: Int): Color = when {
 
 private fun pingLevel(ms: Int): Int = PingUtil.level(ms)
 
+/** بخش‌های لیست (کلاس معمولی، نه data class؛ تا مقایسه‌ی عمیق لیست‌ها انجام نشه). */
+private class ListSections(
+    val searching: Boolean,
+    val query: String,
+    val visible: List<CityEntry>,
+    val current: List<CityEntry>,
+    val favorites: List<CityEntry>,
+    val recent: List<CityEntry>,
+    val others: List<CityEntry>,
+) {
+    val hasSections: Boolean get() = current.isNotEmpty() || favorites.isNotEmpty() || recent.isNotEmpty()
+}
+
+/** هر لوکیشن فقط یک جا میاد: Current > Favorites > Recent > All. */
+private fun buildSections(
+    sorted: List<CityEntry>,
+    rawQuery: String,
+    favorites: Set<String>,
+    recents: List<String>,
+    currentEntry: CityEntry?,
+): ListSections {
+    val query = rawQuery.trim()
+    val searching = query.isNotEmpty()
+    val visible = if (searching) sorted.filter { it.matches(query) } else sorted
+    val current = if (!searching && currentEntry != null) listOf(currentEntry) else emptyList()
+    val currentKey = current.firstOrNull()?.key
+    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key != currentKey }
+    val byKey = if (searching) emptyMap() else visible.associateBy { it.key }
+    val recent = if (searching) {
+        emptyList()
+    } else {
+        recents.mapNotNull { byKey[it] }.filter { it.key !in favorites && it.key != currentKey }
+    }
+    val pinned = HashSet<String>().apply {
+        currentKey?.let { add(it) }
+        favs.forEach { add(it.key) }
+        recent.forEach { add(it.key) }
+    }
+    val others = if (searching) visible else visible.filter { it.key !in pinned }
+    return ListSections(searching, query, visible, current, favs, recent, others)
+}
+
 // ───────────────────────── صفحه ─────────────────────────
 
 @Composable
@@ -353,9 +404,32 @@ fun ServerListScreen(
 
     // پینگ از شبکه‌ی مستقیم گوشی (نه تونل VPN) گرفته بشه
     val context = LocalContext.current
-    PingUtil.init(context)
+    // یک بار (نه با هر recompose)
+    remember { PingUtil.init(context) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+
+    // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) پینگ‌های زنده متوقف می‌شن تا باتری و دیتا هدر نره
+    val lifecycleOwner = LocalContext.current as? LifecycleOwner
+    var isForeground by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val lifecycle = lifecycleOwner?.lifecycle
+        if (lifecycle == null) {
+            onDispose { }
+        } else {
+            isForeground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> isForeground = true
+                    Lifecycle.Event.ON_STOP -> isForeground = false
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
+    }
+    val listState = rememberLazyListState()
 
     // علاقه‌مندی‌ها (ستاره)، اخیراً استفاده‌شده‌ها، ترتیب لیست و متن جستجو
     var favorites by remember { mutableStateOf<Set<String>>(ServerListPrefs.loadFavorites(context)) }
@@ -383,11 +457,24 @@ fun ServerListScreen(
         label = "refresh-rotation",
     )
 
-    LaunchedEffect(Unit) {
+    // با هر بار «تلاش مجدد» یکی زیاد می‌شه و لیست دوباره گرفته می‌شه
+    var loadTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(loadTick) {
+        isLoading = true
+        errorMessage = null
         runCatching { serverListClient.fetchCountries() }
             .onSuccess { countries = it }
             .onFailure { errorMessage = it.message ?: tr("Failed to load server list") }
         isLoading = false
+    }
+
+    // خطای انتخاب سرور (مثلاً «سروری در دسترس نیست») تا حالا وقتی لیست پر بود هیچ‌جا نشون داده نمی‌شد
+    LaunchedEffect(errorMessage, countries) {
+        val msg = errorMessage
+        if (msg != null && countries.isNotEmpty()) {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            errorMessage = null
+        }
     }
 
     val recommended = remember(countries) { countries.firstOrNull { it.code == RECOMMENDED_COUNTRY_CODE } }
@@ -414,14 +501,43 @@ fun ServerListScreen(
     }
 
     // ───── حلقه‌ی زنده‌ی پینگ برای «همه‌ی» لوکیشن‌ها (نه فقط ردیف‌های دیده‌شده) ─────
+    // نتیجه‌ها اول تو نقشه‌های محلی جمع می‌شن و دسته‌ای (حداکثر هر ~۰٫۵ ثانیه، در یک snapshot) تو state نوشته می‌شن؛
+    // قبلاً هر نتیجه جدا لیست رو دوباره مرتب می‌کرد. وسط اسکرول هم نوشته نمی‌شه تا لیست زیر انگشت جابه‌جا نشه.
     LaunchedEffect(cityTargets, refreshTick) {
-        cityEntries.forEach { if (it.key !in cityTargets) pingStates[it.key] = PingState.FAILED }
+        val localResults = HashMap<String, Int>(pingResults)
+        val localStates = HashMap<String, PingState>(pingStates)
+        val dirty = HashSet<String>()
+        var lastFlush = 0L
+
+        fun flush() {
+            if (dirty.isEmpty()) return
+            Snapshot.withMutableSnapshot {
+                for (k in dirty) {
+                    val r = localResults[k]
+                    if (r != null) pingResults[k] = r else pingResults.remove(k)
+                    localStates[k]?.let { pingStates[k] = it }
+                }
+            }
+            dirty.clear()
+            lastFlush = System.currentTimeMillis()
+        }
+
+        cityEntries.forEach {
+            if (it.key !in cityTargets) {
+                localStates[it.key] = PingState.FAILED
+                dirty += it.key
+            }
+        }
+        flush()
 
         val semaphore = Semaphore(PING_PARALLELISM)
         // بهترین پینگِ هر لوکیشن تو چند دور اخیر
         val history = HashMap<String, ArrayDeque<Int>>()
         var round = 0
         while (true) {
+            // پاز: برنامه تو پس‌زمینه‌ست یا «Live» خاموشه
+            snapshotFlow { isLive && isForeground }.first { it }
+
             // بهترین پینگ هر لوکیشن تو همین دور (همه‌ی کدها روی ترد اصلی اجرا می‌شن؛ نیازی به قفل نیست)
             val roundBest = HashMap<String, Int>()
             coroutineScope {
@@ -434,8 +550,10 @@ fun ServerListScreen(
                                     val best = minOf(roundBest[key] ?: ms, ms)
                                     roundBest[key] = best
                                     val past = history[key]?.minOrNull()
-                                    pingResults[key] = if (past == null) best else minOf(past, best)
-                                    pingStates[key] = PingState.DONE
+                                    localResults[key] = if (past == null) best else minOf(past, best)
+                                    localStates[key] = PingState.DONE
+                                    dirty += key
+                                    if (System.currentTimeMillis() - lastFlush >= 500L && !listState.isScrollInProgress) flush()
                                 }
                             }
                         }
@@ -455,18 +573,20 @@ fun ServerListScreen(
                     // یه دور بدون جواب نباید لوکیشن خوب رو بندازه ته لیست؛ دو دور پشت‌سرهم یعنی در دسترس نیست
                     val fails = (failCounts[key] ?: 0) + 1
                     failCounts[key] = fails
-                    if (pingResults[key] == null || fails >= 2) {
-                        pingResults.remove(key)
-                        pingStates[key] = PingState.FAILED
+                    if (localResults[key] == null || fails >= 2) {
+                        localResults.remove(key)
+                        localStates[key] = PingState.FAILED
+                        dirty += key
                         history.remove(key)
                     }
                 }
             }
+            // اگه کاربر داره اسکرول می‌کنه صبر می‌کنیم تا ول کنه، بعد همه‌ی تغییرها یک‌جا اعمال می‌شن
+            snapshotFlow { listState.isScrollInProgress }.first { !it }
+            flush()
 
             round++
             delay(LIVE_INTERVAL_MS)
-            // اگه پاز شده باشه همین‌جا منتظر می‌مونه تا دوباره LIVE بشه
-            snapshotFlow { isLive }.first { it }
         }
     }
 
@@ -542,33 +662,22 @@ fun ServerListScreen(
             cityEntries.firstOrNull { it.country.code == sel.countryCode && it.city.code == sel.cityCode }
         }
     }
+    val currentEntryState = rememberUpdatedState(currentEntry)
 
-    // ───── بخش‌های لیست؛ هر لوکیشن فقط یک جا میاد (Current > Favorites > Recent > All) ─────
-    val query = searchQuery.trim()
-    val searching = query.isNotEmpty()
-    val visibleCities = if (searching) sortedCities.filter { it.matches(query) } else sortedCities
-
-    val currentCities = if (!searching && currentEntry != null) listOf(currentEntry) else emptyList()
-    val currentKey = currentCities.firstOrNull()?.key
-    val favoriteCities = if (searching) {
-        emptyList()
-    } else {
-        visibleCities.filter { it.key in favorites && it.key != currentKey }
+    // ───── بخش‌های لیست ─────
+    // فقط وقتی ترتیب، جستجو، علاقه‌مندی‌ها، اخیراً‌ها یا لوکیشن فعلی عوض بشن دوباره ساخته می‌شه
+    // (نه با هر recompose، و نه با هر نتیجه‌ی پینگ که ترتیب رو عوض نمی‌کنه)
+    val sections by remember {
+        derivedStateOf { buildSections(sortedCities, searchQuery, favorites, recents, currentEntryState.value) }
     }
-    val recentCities = if (searching) {
-        emptyList()
-    } else {
-        recents
-            .mapNotNull { k -> visibleCities.firstOrNull { it.key == k } }
-            .filter { it.key !in favorites && it.key != currentKey }
-    }
-    val pinnedKeys = HashSet<String>().apply {
-        currentKey?.let { add(it) }
-        favoriteCities.forEach { add(it.key) }
-        recentCities.forEach { add(it.key) }
-    }
-    val otherCities = if (searching) visibleCities else visibleCities.filter { it.key !in pinnedKeys }
-    val hasSections = currentCities.isNotEmpty() || favoriteCities.isNotEmpty() || recentCities.isNotEmpty()
+    val query = sections.query
+    val searching = sections.searching
+    val visibleCities = sections.visible
+    val currentCities = sections.current
+    val favoriteCities = sections.favorites
+    val recentCities = sections.recent
+    val otherCities = sections.others
+    val hasSections = sections.hasSections
 
     // ───── اکشن‌ها ─────
     val toggleFavorite: (String) -> Unit = { key ->
@@ -737,12 +846,21 @@ fun ServerListScreen(
                             modifier = Modifier.align(Alignment.Center),
                             color = c.accent,
                         )
-                        errorMessage != null && countries.isEmpty() -> Text(
-                            errorMessage.orEmpty(),
-                            color = c.textSecondary,
+                        errorMessage != null && countries.isEmpty() -> Column(
                             modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                errorMessage.orEmpty(),
+                                color = c.textSecondary,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = { loadTick++ }) {
+                                Text(tr("Retry"), color = c.accent, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                         else -> LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
