@@ -87,6 +87,26 @@ class FxaAuthRepository(
         false
     }
 
+    /**
+     * ورود با «کلید دسترسی» (refresh token) که از Redeem code گرفته شده؛ هیچ لاگین جدیدی به Mozilla فرستاده نمی‌شه.
+     * مقدار اولیه‌ی access token فقط جاگذاره و بلافاصله با refresh تازه می‌شه.
+     */
+    suspend fun loginWithRefreshToken(refreshToken: String): Result<Unit> = runCatching {
+        tokenStore.saveAuth(RuntimeAuth(accessToken = "pending", refreshToken = refreshToken, expiresAtEpochSeconds = 0L))
+        try {
+            ensureFreshAccessToken(force = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runCatching { tokenStore.clear() }
+            throw e
+        }
+        Unit
+    }
+
+    /** کلید دسترسی فعلی (فقط برای حالت ادمین: ساخت کد Redeem). */
+    fun currentRefreshToken(): String? = tokenStore.loadAuth()?.refreshToken
+
     suspend fun restoreSession(): SessionStatus {
         val stored = runCatching { tokenStore.loadAuth() }.getOrNull()
             ?: return SessionStatus.NEEDS_LOGIN
