@@ -39,6 +39,8 @@ import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.RuntimeAuth
 import com.vauth.foxyvpn.vpn.socks.LocalHttpProxyServer
 import com.vauth.foxyvpn.vpn.socks.LocalSocks5Server
+import com.vauth.foxyvpn.data.LicenseState
+import com.vauth.foxyvpn.data.UsageReporter
 import com.vauth.foxyvpn.vpn.tun.HevSocks5Tunnel
 import com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig
 import com.vauth.foxyvpn.vpn.upstream.EdgeAddressResolver
@@ -272,6 +274,7 @@ class FoxyVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        UsageReporter.finish(this)
         if (instance === this) instance = null
         runCatching { getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID) }
         ControlPlaneHttp.socketProtector = null
@@ -329,6 +332,15 @@ class FoxyVpnService : VpnService() {
             if (intent == null) {
                 AppLogger.i(TAG, "the service was restarted by the system; bringing the tunnel back up")
             }
+            // سقف روزانه/کل پر شده یا کد منقضی/لغو شده: وصل نمی‌شیم
+            LicenseState.blockNow(this)?.let { block ->
+                AppLogger.i(TAG, "connect refused: ${block.name}")
+                _lastError.value = block.message
+                enterForeground(block.message) // startForegroundService باید startForeground بزنه، وگرنه کرش می‌کنه
+                exitForeground()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             _state.value = ConnectionState.CONNECTING
             runCatching {
                 com.vauth.foxyvpn.data.AppliedConfig.fingerprint =
@@ -363,6 +375,7 @@ class FoxyVpnService : VpnService() {
             return
         }
         AppLogger.i(TAG, "disconnect: $reason")
+        UsageReporter.finish(this)
 
         val endedGeneration = ++connectionGeneration
         _state.value = ConnectionState.DISCONNECTED
@@ -835,6 +848,7 @@ class FoxyVpnService : VpnService() {
 
             if (!proxyOnlyMode) {
                 startSpeedUpdates()
+                UsageReporter.start(this@FoxyVpnService)
             }
 
             watchdogJob = scope.launch {
@@ -843,6 +857,7 @@ class FoxyVpnService : VpnService() {
 
                 suspend fun stopWithFatalError(message: String) {
                     AppLogger.e(TAG, "unrecoverable upstream failure; disconnecting: $message")
+                    UsageReporter.finish(this@FoxyVpnService)
                     _lastError.value = message
                     connectionGeneration++
                     watchdogJob = null
@@ -1248,6 +1263,12 @@ class FoxyVpnService : VpnService() {
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FoxyVpnService::class.java).setAction(ACTION_CONNECT))
+        }
+
+        /** قطع اتصال با پیام قابل‌نمایش (مثلاً وقتی سقف حجم پر شد). */
+        fun disconnectWithMessage(context: Context, message: String) {
+            _lastError.value = message
+            stop(context)
         }
 
         fun stop(context: Context) {
