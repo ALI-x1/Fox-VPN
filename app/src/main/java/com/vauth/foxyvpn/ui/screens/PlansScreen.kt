@@ -1,5 +1,8 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -151,8 +154,8 @@ fun PlansScreen(
                     }
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text("Plans", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
-                        Text("Pick what fits you", style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                        Text(tr("Plans"), fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
+                        Text(tr("Pick what fits you"), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
                     }
                 }
 
@@ -173,8 +176,8 @@ fun PlansScreen(
                         }
                         if (block.needsNewCode) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                PlanButton("Contact support", c, outlined = true, modifier = Modifier.weight(1f)) { contact() }
-                                PlanButton("Enter new code", c, outlined = true, modifier = Modifier.weight(1f)) { onEnterNewCode() }
+                                PlanButton(tr("Contact support"), c, outlined = true, modifier = Modifier.weight(1f)) { contact() }
+                                PlanButton(tr("Enter new code"), c, outlined = true, modifier = Modifier.weight(1f)) { onEnterNewCode() }
                             }
                         }
                     }
@@ -192,13 +195,13 @@ fun PlansScreen(
                 }
 
                 Text(
-                    "Payment and activation are handled in Telegram. Your new code works right after it's sent to you.",
+                    tr("Payment and activation are handled in Telegram. Your new code works right after it's sent to you."),
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 )
-                PlanButton("Contact support", c, outlined = true, modifier = Modifier.fillMaxWidth()) { contact() }
+                PlanButton(tr("Contact support"), c, outlined = true, modifier = Modifier.fillMaxWidth()) { contact() }
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -249,8 +252,8 @@ private fun PlanCard(
             ) { Icon(plan.icon, null, tint = onAccent, modifier = Modifier.size(26.dp)) }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(plan.title, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
-                Text(plan.tagline, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                Text(tr(plan.title), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
+                Text(tr(plan.tagline), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
             }
             val badge = if (active) "CURRENT" else plan.badge
             if (badge != null) {
@@ -260,14 +263,14 @@ private fun PlanCard(
                         .background(c.accent.copy(alpha = 0.16f))
                         .border(1.dp, c.accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
-                ) { Text(badge, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = c.accentText) }
+                ) { Text(tr(badge), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = c.accentText) }
             }
         }
 
         plan.groups.forEach { (group, items) ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    group.uppercase(),
+                    tr(group).uppercase(),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,
@@ -277,7 +280,7 @@ private fun PlanCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Check, null, tint = c.accent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text(item, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                        Text(tr(item), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
                     }
                 }
             }
@@ -285,10 +288,10 @@ private fun PlanCard(
 
         // دکمه‌ی پایین کارت
         when {
-            active -> PlanButton("${plan.title} · Active", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            lowerThanCurrent -> PlanButton("Included in your plan", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            plan.key == "free" -> PlanButton("Free", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            else -> PlanButton(if (hasPlan) "Upgrade to ${plan.title}" else "Buy ${plan.title}", c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
+            active -> PlanButton("${tr(plan.title)} · ${tr("Active")}", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            lowerThanCurrent -> PlanButton(tr("Included in your plan"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            plan.key == "free" -> PlanButton(tr("Free"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            else -> PlanButton(if (hasPlan) trf("Upgrade to %s", tr(plan.title)) else trf("Buy %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
         }
     }
 }
