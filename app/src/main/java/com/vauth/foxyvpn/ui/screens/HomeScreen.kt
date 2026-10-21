@@ -69,6 +69,12 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
@@ -108,6 +114,9 @@ import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
+import com.vauth.foxyvpn.data.LicenseState
+import com.vauth.foxyvpn.data.RedeemClient
+import androidx.compose.material.icons.filled.Star
 import com.vauth.foxyvpn.data.TrafficMonitor
 import com.vauth.foxyvpn.data.TrafficState
 import com.vauth.foxyvpn.data.formatBytes
@@ -207,10 +216,19 @@ fun HomeScreen(
     onOpenServers: () -> Unit,
     onOpenSettings: () -> Unit,
     authRepository: FxaAuthRepository? = null,
+    onOpenPlans: () -> Unit = {},
 ) {
     val state by FoxyVpnService.state.collectAsState()
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
     val lastError by FoxyVpnService.lastError.collectAsState()
+
+    // وضعیت کد (Redeem): مصرف، سقف روزانه، اعتبار؛ ادمین (ورود با ایمیل) محدودیتی نداره
+    val redeemClient = remember { RedeemClient(app) }
+    val isAdmin = remember { redeemClient.adminMode }
+    LaunchedEffect(Unit) { LicenseState.load(app) }
+    val license by LicenseState.status.collectAsState()
+    val useLicense = !isAdmin && license != null
+    val block = if (isAdmin) null else LicenseState.blockOf(license)
 
     // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) حلقه‌های تکراری زیر متوقف می‌شن تا باتری هدر نره.
     val lifecycleOwner = LocalContext.current.findActivity() as? LifecycleOwner
@@ -230,6 +248,15 @@ fun HomeScreen(
             }
             lifecycle.addObserver(observer)
             onDispose { lifecycle.removeObserver(observer) }
+        }
+    }
+
+    // وضعیت کد رو هر یک دقیقه از سرور می‌گیره (وقتی وصله، خود UsageReporter این کار رو می‌کنه)
+    LaunchedEffect(isForeground, state, isAdmin) {
+        if (isAdmin || !isForeground || redeemClient.activeCode == null) return@LaunchedEffect
+        while (true) {
+            if (state != ConnectionState.CONNECTED) redeemClient.reportUsage(0)
+            delay(60_000)
         }
     }
 
@@ -307,7 +334,7 @@ fun HomeScreen(
     // دیتای اکانت (همون منبع صفحه‌ی Account)؛ بعد از هر تغییر وضعیت اتصال و هر یک دقیقه رفرش می‌شه
     var entitlement by remember { mutableStateOf<Entitlement?>(null) }
     LaunchedEffect(authRepository, state, isForeground) {
-        if (authRepository == null || !isForeground) return@LaunchedEffect
+        if (authRepository == null || !isForeground || useLicense) return@LaunchedEffect
         while (true) {
             try {
                 val token = authRepository.currentAccessToken()
@@ -325,9 +352,31 @@ fun HomeScreen(
         }
     }
     val ent = entitlement
-    val dataUnlimited = ent != null && !ent.limitedBandwidth
-    val dataTotalGb = ent?.maxBytes?.let { it.toDouble() / BYTES_PER_GB }?.takeIf { it > 0.0 } ?: 50.0
-    val dataRemainingGb = ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
+    val lic = license
+    val dataUnlimited = if (useLicense) lic?.totalBytes == null else (ent != null && !ent.limitedBandwidth)
+    val dataTotalGb = if (useLicense) {
+        (lic?.totalBytes ?: 0L) / BYTES_PER_GB
+    } else {
+        ent?.maxBytes?.let { it.toDouble() / BYTES_PER_GB }?.takeIf { it > 0.0 } ?: 50.0
+    }
+    val dataRemainingGb = if (useLicense) {
+        lic?.let { l -> l.totalBytes?.let { (it - l.usedBytes).coerceAtLeast(0L) / BYTES_PER_GB } }
+    } else {
+        ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
+    }
+    val planName = if (useLicense) lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
+        ?.replaceFirstChar { it.uppercase() } else null
+    val licenseNote: String? = if (useLicense && lic != null) {
+        val parts = mutableListOf<String>()
+        lic.dailyBytes?.let {
+            parts += trf("Today %.1f / %.1f GB", lic.dailyUsed / BYTES_PER_GB, it / BYTES_PER_GB)
+        }
+        lic.expiresAt?.let {
+            val days = kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong().coerceAtLeast(0)
+            parts += if (days == 1L) tr("1 day left") else trf("%d days left", days)
+        }
+        parts.joinToString(" · ").ifBlank { null }
+    } else null
 
     // پینگ فقط «بعد از اتصال» اندازه‌گیری می‌شه؛ قبل از اتصال (و تو حالت CONNECTING) null می‌مونه
     // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
@@ -401,7 +450,7 @@ fun HomeScreen(
     val targetRingColor = when (state) {
         ConnectionState.CONNECTED -> statusColors.connected
         ConnectionState.CONNECTING -> statusColors.connecting
-        ConnectionState.DISCONNECTED -> c.accent
+        ConnectionState.DISCONNECTED -> if (block != null) MaterialTheme.colorScheme.error else c.accent
     }
     val ringColor by animateColorAsState(targetValue = targetRingColor, label = "connect-ring-color")
     val scale by animateFloatAsState(
@@ -468,6 +517,35 @@ fun HomeScreen(
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            // دکمه‌ی پلن: Free / Pro / Max (برای ادمین: Plans)
+                            val planLabel = if (isAdmin) tr("Plans")
+                            else lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
+                                ?.replaceFirstChar { it.uppercase() } ?: tr("Plans")
+                            Row(
+                                modifier = Modifier
+                                    .height(46.dp)
+                                    .clip(CircleShape)
+                                    .background(c.card)
+                                    .border(1.dp, c.cardBorder, CircleShape)
+                                    .clickable(onClick = onOpenPlans)
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = c.accent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = planLabel,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = c.accentText,
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
                             // کلید خورشید/ماه: فقط برای تم‌های لایت/دارک‌دار و وقتی از تنظیمات خاموشش نکرده باشن
                             val systemDark = isSystemInDarkTheme()
                             if (themeController.showHomeToggle && themeController.palette.supportsLightDark) {
@@ -535,7 +613,7 @@ fun HomeScreen(
                                             text = when (st) {
                                                 ConnectionState.CONNECTED -> tr("CONNECTED")
                                                 ConnectionState.CONNECTING -> tr("CONNECTING…")
-                                                ConnectionState.DISCONNECTED -> tr("READY TO CONNECT")
+                                                ConnectionState.DISCONNECTED -> if (block != null) tr("LOCKED") else tr("READY TO CONNECT")
                                             },
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Medium,
@@ -687,11 +765,15 @@ fun HomeScreen(
                         ringColor = ringColor,
                         scale = scale,
                         connected = state != ConnectionState.DISCONNECTED,
-                        labelColor = if (state == ConnectionState.DISCONNECTED) c.accentText else ringColor,
+                        labelColor = if (state == ConnectionState.DISCONNECTED && block == null) c.accentText else ringColor,
                         c = c,
                         onClick = {
                             hapticPress(view)
-                            if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
+                            if (state == ConnectionState.DISCONNECTED) {
+                                if (block != null) onOpenPlans() else onRequestConnect()
+                            } else {
+                                onDisconnect()
+                            }
                         },
                         connecting = state == ConnectionState.CONNECTING,
                         animate = isForeground,
@@ -703,6 +785,8 @@ fun HomeScreen(
                     remainingGb = dataRemainingGb,
                     totalGb = dataTotalGb,
                     unlimited = dataUnlimited,
+                    title = if (planName != null) "${tr("Data remaining")} · $planName" else tr("Data remaining"),
+                    note = licenseNote,
                     c = c,
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
@@ -1207,6 +1291,8 @@ private fun DataRemainingCard(
     remainingGb: Double?,
     totalGb: Double,
     unlimited: Boolean = false,
+    title: String = "Data remaining",
+    note: String? = null,
     c: FoxExtras,
     lowColor: Color,
     criticalColor: Color,
@@ -1269,7 +1355,7 @@ private fun DataRemainingCard(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = tr("Data remaining"),
+                    text = title,
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary
                 )
@@ -1334,6 +1420,14 @@ private fun DataRemainingCard(
                     color = c.textSecondary
                 )
             }
+        }
+
+        if (note != null) {
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelMedium,
+                color = c.textSecondary,
+            )
         }
     }
 }
