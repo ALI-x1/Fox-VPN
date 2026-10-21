@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -217,7 +219,7 @@ fun AdminLoginScreen(
             isLoading = false
             result.onSuccess { needsVerification ->
                 if (needsVerification) awaitingTwoFactor = true else onSignedIn()
-            }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
+            }.onFailure { errorMessage = it.message ?: tr("Sign-in failed") }
         }
     }
 
@@ -230,7 +232,7 @@ fun AdminLoginScreen(
             val result = authRepository.submitTwoFactorCode(cleanCode)
             isLoading = false
             result.onSuccess { onSignedIn() }
-                .onFailure { errorMessage = it.message ?: "Verification failed" }
+                .onFailure { errorMessage = it.message ?: tr("Verification failed") }
         }
     }
 
@@ -275,7 +277,7 @@ fun AdminLoginScreen(
                             fontWeight = FontWeight.ExtraBold,
                         )
                         Text(
-                            text = "Secure & Private",
+                            text = tr("Secure & Private"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.textSecondary,
                             letterSpacing = 1.sp,
@@ -305,7 +307,7 @@ fun AdminLoginScreen(
                         if (!twoFactor) {
                             Column {
                                 Text(
-                                    "Admin sign-in",
+                                    tr("Admin sign-in"),
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = c.textPrimary,
@@ -318,7 +320,7 @@ fun AdminLoginScreen(
                                     Column {
                                         Spacer(Modifier.height(6.dp))
                                         Text(
-                                            "Owner mode: sign in once with the Firefox account that will back your redeem codes.",
+                                            tr("Owner mode: sign in once with the Firefox account that will back your redeem codes."),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = c.textSecondary,
                                         )
@@ -369,7 +371,7 @@ fun AdminLoginScreen(
                                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                             Icon(
                                                 imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                                contentDescription = if (passwordVisible) tr("Hide password") else tr("Show password"),
                                                 tint = c.textSecondary,
                                             )
                                         }
@@ -387,7 +389,7 @@ fun AdminLoginScreen(
                                 )
                                 Spacer(Modifier.height(20.dp))
                                 LoginPrimaryButton(
-                                    text = "Continue",
+                                    text = tr("Continue"),
                                     enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                                     isLoading = isLoading,
                                     colors = c,
@@ -400,14 +402,14 @@ fun AdminLoginScreen(
                         } else {
                             Column {
                                 Text(
-                                    "Verify it's you",
+                                    tr("Verify it's you"),
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = c.textPrimary,
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "Enter the confirmation code sent to your email",
+                                    tr("Enter the confirmation code sent to your email"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                 )
@@ -444,7 +446,7 @@ fun AdminLoginScreen(
                                 )
                                 Spacer(Modifier.height(20.dp))
                                 LoginPrimaryButton(
-                                    text = "Verify",
+                                    text = tr("Verify"),
                                     enabled = !isLoading && code.isNotBlank(),
                                     isLoading = isLoading,
                                     colors = c,
@@ -455,7 +457,7 @@ fun AdminLoginScreen(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    text = "Use a different account",
+                                    text = tr("Use a different account"),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = c.accentText,
@@ -525,7 +527,7 @@ fun AdminLoginScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "Your credentials are sent only to Mozilla",
+                        tr("Your credentials are sent only to Mozilla"),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.textSecondary,
                     )
