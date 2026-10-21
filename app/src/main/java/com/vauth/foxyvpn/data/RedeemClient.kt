@@ -1,5 +1,8 @@
 package com.vauth.foxyvpn.data
 
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
+
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,12 +62,14 @@ data class LicenseStatus(
 }
 
 /** دلیل قفل بودن دکمه‌ی اتصال (همراه با پیام قابل‌نمایش). */
-enum class LicenseBlock(val message: String, val needsNewCode: Boolean) {
+enum class LicenseBlock(private val en: String, val needsNewCode: Boolean) {
     DAILY("You've reached today's data limit. It resets at midnight (Tehran time).", false),
     TOTAL("Your data allowance is used up.", true),
     EXPIRED("Your plan has expired.", true),
     REVOKED("This code has been disabled.", true),
-    DEVICE("This device was removed from the code.", true),
+    DEVICE("This device was removed from the code.", true);
+
+    val message: String get() = tr(en)
 }
 
 /** آخرین وضعیت لایسنس؛ بین صفحه‌ی اصلی و سرویس VPN مشترکه و روی دستگاه ذخیره می‌شه. */
@@ -156,7 +161,7 @@ class RedeemClient(context: Context) {
 
     suspend fun redeem(code: String): Result<RedeemGrant> = withContext(Dispatchers.IO) {
         runCatching {
-            if (BASE_URL.isBlank()) throw RedeemException("Service is not configured yet. Contact support.")
+            if (BASE_URL.isBlank()) throw RedeemException(tr("Service is not configured yet. Contact support."))
 
             val body = JSONObject()
                 .put("code", code)
@@ -173,30 +178,55 @@ class RedeemClient(context: Context) {
                             val json = JSONObject(text)
                             val refreshToken = json.optString("refreshToken")
                             if (refreshToken.isBlank()) {
-                                throw RedeemException("Unexpected response. Contact support.")
+                                throw RedeemException(tr("Unexpected response. Contact support."))
                             }
                             activeCode = code
                             LicenseState.set(appContext, LicenseStatus.fromJson(json))
                             RedeemGrant(refreshToken = refreshToken)
                         }
-                        404 -> throw RedeemException("This code is not valid. Check it and try again.")
-                        403 -> throw RedeemException("This code has expired or was disabled. Contact support.")
-                        409 -> throw RedeemException("This code is already used on another device.")
-                        429 -> throw RedeemException("Too many attempts. Please try again later.")
-                        503 -> throw RedeemException("All servers are busy right now. Please try again later or contact support.")
-                        else -> throw RedeemException("Server error (${response.code}). Try again later.")
+                        404 -> throw RedeemException(tr("This code is not valid. Check it and try again."))
+                        403 -> throw RedeemException(tr("This code has expired or was disabled. Contact support."))
+                        409 -> throw RedeemException(tr("This code is already used on another device."))
+                        429 -> throw RedeemException(tr("Too many attempts. Please try again later."))
+                        503 -> throw RedeemException(tr("All servers are busy right now. Please try again later or contact support."))
+                        else -> throw RedeemException(trf("Server error (%s). Try again later.", response.code))
                     }
                 }
             } catch (e: IOException) {
-                throw RedeemException("No connection. Check your internet and try again.")
+                throw RedeemException(tr("No connection. Check your internet and try again."))
             }
         }
     }
 
+    /** (ادمین) کلید دسترسی رو مستقیم به استخر حساب‌های سرور اضافه می‌کنه؛ خروجی: شناسه‌ی حساب. */
+    suspend fun addAccountToServer(adminKey: String, label: String, refreshToken: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                if (BASE_URL.isBlank()) throw RedeemException(tr("Service is not configured yet."))
+                val body = JSONObject().put("label", label).put("refreshToken", refreshToken)
+                    .toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder().url("$BASE_URL/admin/accounts")
+                    .header("Authorization", "Bearer $adminKey").post(body).build()
+                try {
+                    http.newCall(request).execute().use { response ->
+                        val text = response.body?.string().orEmpty()
+                        when (response.code) {
+                            200 -> JSONObject(text).optString("id").ifBlank { throw RedeemException(tr("Unexpected response.")) }
+                            401 -> throw RedeemException(tr("The admin key is wrong."))
+                            422 -> throw RedeemException(tr("Mozilla rejected this key. Sign in again and retry."))
+                            else -> throw RedeemException(trf("Server error (%s).", response.code))
+                        }
+                    }
+                } catch (e: IOException) {
+                    throw RedeemException(tr("No connection. Check your internet and try again."))
+                }
+            }
+        }
+
     /** از سرور یه کد پلن Free می‌گیره (هر دستگاه یه بار؛ دفعه‌ی بعد همون کد برمی‌گرده). */
     suspend fun requestFreeCode(): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            if (BASE_URL.isBlank()) throw RedeemException("Service is not configured yet. Contact support.")
+            if (BASE_URL.isBlank()) throw RedeemException(tr("Service is not configured yet. Contact support."))
             val body = JSONObject().put("deviceId", deviceId).toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder().url("$BASE_URL/v1/free").post(body).build()
             try {
@@ -204,15 +234,15 @@ class RedeemClient(context: Context) {
                     val text = response.body?.string().orEmpty()
                     when (response.code) {
                         200 -> JSONObject(text).optString("code").takeIf { it.isNotBlank() }
-                            ?: throw RedeemException("Unexpected response. Contact support.")
-                        403 -> throw RedeemException("Free accounts are not available right now. Contact support.")
-                        429 -> throw RedeemException("Free accounts are full for today. Try again tomorrow or contact support.")
-                        503 -> throw RedeemException("All servers are busy right now. Please try again later or contact support.")
-                        else -> throw RedeemException("Server error (${response.code}). Try again later.")
+                            ?: throw RedeemException(tr("Unexpected response. Contact support."))
+                        403 -> throw RedeemException(tr("Free accounts are not available right now. Contact support."))
+                        429 -> throw RedeemException(tr("Free accounts are full for today. Try again tomorrow or contact support."))
+                        503 -> throw RedeemException(tr("All servers are busy right now. Please try again later or contact support."))
+                        else -> throw RedeemException(trf("Server error (%s). Try again later.", response.code))
                     }
                 }
             } catch (e: IOException) {
-                throw RedeemException("No connection. Check your internet and try again.")
+                throw RedeemException(tr("No connection. Check your internet and try again."))
             }
         }
     }
@@ -223,8 +253,8 @@ class RedeemClient(context: Context) {
      */
     suspend fun reportUsage(bytes: Long): Result<LicenseStatus> = withContext(Dispatchers.IO) {
         runCatching {
-            val code = activeCode ?: throw RedeemException("No active code")
-            if (BASE_URL.isBlank()) throw RedeemException("Service is not configured yet.")
+            val code = activeCode ?: throw RedeemException(tr("No active code"))
+            if (BASE_URL.isBlank()) throw RedeemException(tr("Service is not configured yet."))
             val body = JSONObject().put("code", code).put("deviceId", deviceId).put("bytes", bytes.coerceAtLeast(0))
                 .toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder().url("$BASE_URL/v1/usage").post(body).build()
@@ -238,11 +268,11 @@ class RedeemClient(context: Context) {
                             val old = LicenseState.status.value ?: LicenseStatus("revoked", null, null, null, 0, null, 0, 0)
                             old.copy(state = "revoked").also { LicenseState.set(appContext, it) }
                         }
-                        else -> throw RedeemException("Server error (${response.code})")
+                        else -> throw RedeemException(trf("Server error (%s)", response.code))
                     }
                 }
             } catch (e: IOException) {
-                throw RedeemException("No connection")
+                throw RedeemException(tr("No connection"))
             }
         }
     }
