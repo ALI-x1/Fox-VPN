@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.i18n.tr
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -28,12 +29,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,14 +58,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
@@ -77,6 +81,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -99,6 +104,7 @@ import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 // ───────────────────────── رنگ‌ها (از تم برنامه) ─────────────────────────
 
@@ -150,6 +156,28 @@ private fun Modifier.reveal(progress: () -> Float, offsetPx: Float = 40f): Modif
     translationY = (1f - v) * offsetPx
 }
 
+/**
+ * جمع‌شدن نرم (۱ = کامل، ۰ = کاملاً جمع). فقط تو فاز layout/draw اجرا می‌شه؛
+ * پس با هر فریم انیمیشن، صفحه recompose نمی‌شه.
+ */
+private fun Modifier.collapsible(progress: () -> Float): Modifier = this
+    .clipToBounds()
+    .graphicsLayer { alpha = progress().coerceIn(0f, 1f) }
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val p = progress().coerceIn(0f, 1f)
+        val h = (placeable.height * p).roundToInt()
+        layout(placeable.width, h) { placeable.place(0, 0) }
+    }
+
+// قبلاً با Regex ساخته می‌شد که با «هر حرفِ تایپ‌شده» دوباره کامپایل می‌شد و تایپ رو سنگین می‌کرد
+private fun isZeroWidth(ch: Char) = ch in '\u200B'..'\u200D' || ch == '\uFEFF'
+
+private fun String.stripBlankAndZeroWidth(): String =
+    filterNot { it.isWhitespace() || Character.isSpaceChar(it) || it == '\u00A0' || isZeroWidth(it) }
+
+private fun String.stripZeroWidth(): String = filterNot { isZeroWidth(it) }
+
 // ───────────────────────── صفحه ورود ─────────────────────────
 
 @Composable
@@ -171,23 +199,21 @@ fun LoginScreen(
     val uriHandler = LocalUriHandler.current
     val redeemClient = remember { RedeemClient(context.applicationContext) }
 
-    val c = LocalFoxExtras.current.toLoginColors()
+    val extras = LocalFoxExtras.current
+    val c = remember(extras) { extras.toLoginColors() }
 
     var codeFocused by remember { mutableStateOf(false) }
 
-    // کیبورد که باز شد، هدر جمع می‌شه تا فیلد و دکمه پشت کیبورد نمونن.
-    // فقط وقتی «واقعاً» باز باشه: فیلد فوکوس داشته باشه و ارتفاع کیبورد معنی‌دار باشه.
-    val density = LocalDensity.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val imeVisible = codeFocused && imeBottomPx > with(density) { 120.dp.toPx() }
-
-    // انیمیشن ورود پله‌ای (هدر ← کارت ← فوتر)
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-    val heroP by animateFloatAsState(if (entered) 1f else 0f, tween(520, easing = FastOutSlowInEasing), label = "hero-in")
-    val cardP by animateFloatAsState(if (entered) 1f else 0f, tween(520, delayMillis = 110, easing = FastOutSlowInEasing), label = "card-in")
-    val footerP by animateFloatAsState(if (entered) 1f else 0f, tween(520, delayMillis = 220, easing = FastOutSlowInEasing), label = "footer-in")
-
+    // وقتی یکی از فیلدها فوکوس داره، هدر نرم جمع می‌شه تا فیلدها و دکمه پشت کیبورد نمونن.
+    // قبلاً ارتفاع کیبورد (WindowInsets.ime) داخل composition خونده می‌شد؛ یعنی کل صفحه با هر فریمِ
+    // انیمیشن کیبورد recompose می‌شد و همین لگ می‌انداخت. حالا فقط فوکوس تعیین‌کننده‌ست و
+    // پیشرفت جمع‌شدن فقط تو فاز layout خونده می‌شه (بدون recompose).
+    val anyFieldFocused = codeFocused
+    val heroExpand by animateFloatAsState(
+        targetValue = if (anyFieldFocused) 0f else 1f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "hero-collapse",
+    )
     // لرزش کوتاه کارت وقتی خطا میاد
     val shake = remember { Animatable(0f) }
     var lastError by remember { mutableStateOf("") }
@@ -212,7 +238,7 @@ fun LoginScreen(
         scope.launch {
             val grant = redeemClient.redeem(value).getOrElse {
                 isLoading = false
-                errorMessage = it.message ?: "Could not verify the code"
+                errorMessage = it.message ?: tr("Could not verify the code")
                 return@launch
             }
             val result = authRepository.loginWithRefreshToken(grant.refreshToken)
@@ -220,7 +246,7 @@ fun LoginScreen(
             result.onSuccess { onSignedIn() }
                 .onFailure {
                     redeemClient.activeCode = null
-                    errorMessage = "This code can't sign in right now. Please contact support."
+                    errorMessage = tr("This code can't sign in right now. Please contact support.")
                 }
         }
     }
@@ -233,7 +259,7 @@ fun LoginScreen(
         scope.launch {
             val free = redeemClient.requestFreeCode().getOrElse {
                 isLoading = false
-                errorMessage = it.message ?: "Could not create a free account"
+                errorMessage = it.message ?: tr("Could not create a free account")
                 return@launch
             }
             isLoading = false
@@ -241,7 +267,9 @@ fun LoginScreen(
         }
     }
 
-    Scaffold(containerColor = Color.Transparent) { padding ->
+    // Scaffold اینست‌ها رو نمی‌گیره؛ خود ستون با safeDrawingPadding (نوار وضعیت + ناوبری + کیبورد) فاصله می‌گیره
+    // تا ارتفاع نوار ناوبری با کیبورد دوبار حساب نشه.
+    Scaffold(containerColor = Color.Transparent, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -252,87 +280,74 @@ fun LoginScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .imePadding()
+                    .safeDrawingPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 // ───── لوگو + نام (با باز شدن کیبورد نرم جمع می‌شه) ─────
-                AnimatedVisibility(
-                    visible = !imeVisible,
-                    enter = fadeIn(tween(220)) + expandVertically(tween(260)),
-                    exit = fadeOut(tween(120)) + shrinkVertically(tween(200)),
+                Column(
+                    modifier = Modifier
+                        .collapsible { heroExpand },
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Column(
-                        modifier = Modifier.reveal({ heroP }),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            modifier = Modifier.pointerInput(Unit) {
-                                detectTapGestures(onTap = {
-                                    val now = System.currentTimeMillis()
-                                    logoTaps = if (now - lastLogoTap < 1_500L) logoTaps + 1 else 1
-                                    lastLogoTap = now
-                                    if (logoTaps >= 5) {
-                                        logoTaps = 0
-                                        onOpenAdmin()
-                                    }
-                                })
-                            },
-                        ) { LoginLogo() }
+                    Box(
+                        modifier = Modifier.pointerInput(Unit) {
+                            detectTapGestures(onTap = {
+                                val now = System.currentTimeMillis()
+                                logoTaps = if (now - lastLogoTap < 1_500L) logoTaps + 1 else 1
+                                lastLogoTap = now
+                                if (logoTaps >= 5) {
+                                    logoTaps = 0
+                                    onOpenAdmin()
+                                }
+                            })
+                        },
+                    ) { LoginLogo() }
 
-                        Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(14.dp))
 
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
-                                withStyle(SpanStyle(color = c.accent)) { append("VPN") }
-                            },
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Text(
-                            text = "Secure & Private",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = c.textSecondary,
-                            letterSpacing = 1.sp,
-                        )
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
+                            withStyle(SpanStyle(color = c.accent)) { append("VPN") }
+                        },
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    Text(
+                        text = tr("Secure & Private"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.textSecondary,
+                        letterSpacing = 1.sp,
+                    )
 
-                        Spacer(Modifier.height(28.dp))
-                    }
+                    Spacer(Modifier.height(28.dp))
                 }
 
                 // ───── کارت فرم ─────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .reveal({ cardP })
                         .graphicsLayer { translationX = shake.value }
                         .loginCard(c, 28.dp)
                         .padding(20.dp),
                 ) {
                     Column {
                         Text(
-                            "Enter your code",
+                            tr("Enter your code"),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = c.textPrimary,
                         )
-                        AnimatedVisibility(
-                            visible = !imeVisible,
-                            enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                            exit = fadeOut(tween(100)) + shrinkVertically(tween(180)),
-                        ) {
-                            Column {
+                        Column(modifier = Modifier.collapsible { heroExpand }) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "Type the access code you received to start using Fox-VPN.",
+                                    tr("Type the access code you received to start using Fox-VPN."),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
                                 )
-                            }
                         }
                         Spacer(Modifier.height(20.dp))
 
@@ -368,7 +383,7 @@ fun LoginScreen(
                         )
                         Spacer(Modifier.height(20.dp))
                         LoginPrimaryButton(
-                            text = "Redeem",
+                            text = tr("Redeem"),
                             enabled = !isLoading && RedeemClient.isComplete(code),
                             isLoading = isLoading,
                             colors = c,
@@ -379,7 +394,7 @@ fun LoginScreen(
                         )
                         Spacer(Modifier.height(12.dp))
                         LoginSecondaryButton(
-                            text = "Continue with free account",
+                            text = tr("Continue with free account"),
                             enabled = !isLoading,
                             colors = c,
                             onClick = {
@@ -389,7 +404,7 @@ fun LoginScreen(
                         )
                         Spacer(Modifier.height(12.dp))
                         SupportLink(
-                            text = "Need more data? Message support",
+                            text = tr("Need more data? Message support"),
                             colors = c,
                             onClick = ::openSupport,
                         )
@@ -435,7 +450,6 @@ fun LoginScreen(
 
                 // ───── فوتر ─────
                 Row(
-                    modifier = Modifier.reveal({ footerP }, 24f),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -446,7 +460,7 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "Your code is checked securely",
+                        tr("Your code is checked securely"),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.textSecondary,
                     )
@@ -461,21 +475,11 @@ fun LoginScreen(
 @Composable
 private fun LoginLogo() {
     val accent = LocalFoxExtras.current.accent
-    val pulse = rememberInfiniteTransition(label = "login-pulse")
-    val halo by pulse.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "login-halo",
-    )
+    // لوگوی ثابت؛ بدون انیمیشن بی‌نهایت (باتری و فریم‌ها آزاد می‌مونن)
     Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .size(150.dp)
-                .graphicsLayer {
-                    scaleX = halo
-                    scaleY = halo
-                }
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
