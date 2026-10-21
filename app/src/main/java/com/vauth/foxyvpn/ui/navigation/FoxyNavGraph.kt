@@ -1,11 +1,15 @@
 package com.vauth.foxyvpn.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.data.model.ConnectionState
@@ -14,7 +18,11 @@ import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.screens.AccountScreen
 import com.vauth.foxyvpn.ui.screens.AdminLoginScreen
+import com.vauth.foxyvpn.i18n.AppLanguage
+import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.ui.screens.HomeScreen
+import com.vauth.foxyvpn.ui.screens.LanguageScreen
+import com.vauth.foxyvpn.ui.screens.findActivity
 import com.vauth.foxyvpn.ui.screens.LoginScreen
 import com.vauth.foxyvpn.ui.screens.LogsScreen
 import com.vauth.foxyvpn.ui.screens.ServerListScreen
@@ -28,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 object FoxyRoutes {
+    const val LANGUAGE = "language"
     const val SPLASH = "splash"
     const val LOGIN = "login"
     const val ADMIN_LOGIN = "admin_login"
@@ -47,11 +56,44 @@ fun FoxyNavGraph(
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onHomeShown: () -> Unit = {},
+    // درخواست باز شدن لیست سرورها (از دکمه‌ی «Change server» ویجت بزرگ)
+    openServersRequest: Boolean = false,
+    onOpenServersHandled: () -> Unit = {},
 ) {
     // scope سطح NavGraph؛ بعد از برگشت از صفحه‌ی سرورها هم زنده می‌مونه (scope خود صفحه لغو می‌شد)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // اولین اجرا: اول انتخاب زبان، بعد بقیه‌ی مسیر
+    val startDestination = remember { if (Lang.hasChosen(context)) FoxyRoutes.SPLASH else FoxyRoutes.LANGUAGE }
 
-    NavHost(navController = navController, startDestination = FoxyRoutes.SPLASH) {
+    // لیست سرورها بعد از Splash باز می‌شه؛ اگه هنوز وارد نشده‌اید (Login) درخواست نادیده گرفته می‌شه
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    LaunchedEffect(openServersRequest, currentRoute) {
+        if (!openServersRequest || currentRoute == null || currentRoute == FoxyRoutes.SPLASH) return@LaunchedEffect
+        if (currentRoute != FoxyRoutes.LOGIN && currentRoute != FoxyRoutes.SERVERS && currentRoute != FoxyRoutes.LANGUAGE) {
+            navController.navigate(FoxyRoutes.SERVERS) { popUpTo(FoxyRoutes.HOME) }
+        }
+        onOpenServersHandled()
+    }
+
+    NavHost(navController = navController, startDestination = startDestination) {
+        composable(FoxyRoutes.LANGUAGE) {
+            LanguageScreen(
+                onConfirm = { choice ->
+                    Lang.setChoice(context, choice)
+                    Lang.markChosen(context)
+                    navController.navigate(FoxyRoutes.SPLASH) { popUpTo(FoxyRoutes.LANGUAGE) { inclusive = true } }
+                    // با زبان/جهت جدید دوباره ساخته می‌شه (بعد از رفتن به مسیر بعدی، تا وضعیت ذخیره‌شده درست باشه)
+                    if (choice != AppLanguage.SYSTEM) {
+                        scope.launch {
+                            delay(150)
+                            context.findActivity()?.recreate()
+                        }
+                    }
+                },
+            )
+        }
         composable(FoxyRoutes.SPLASH) {
             SplashScreen(
                 authRepository = app.authRepository,
