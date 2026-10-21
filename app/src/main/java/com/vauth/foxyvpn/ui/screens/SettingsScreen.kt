@@ -4,6 +4,14 @@ import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import com.vauth.foxyvpn.i18n.Lang
 import android.content.Context
+import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.ui.platform.LocalUriHandler
+import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.data.RedeemClient
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -221,6 +229,11 @@ fun SettingsScreen(
     // زبان برنامه: کشوی انتخاب (سیستم / فارسی / English)
     var languageChoice by remember { mutableStateOf(Lang.choice(context)) }
     var showLanguageSheet by remember { mutableStateOf(false) }
+    val redeemClient = remember { RedeemClient(context.applicationContext) }
+    val isAdmin = remember { redeemClient.adminMode }
+    val uriHandler = LocalUriHandler.current
+    var showAddAccountDialog by rememberSaveable { mutableStateOf(false) }
+    val adminScope = rememberCoroutineScope()
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
@@ -406,6 +419,24 @@ fun SettingsScreen(
         }
     }
 
+    if (showAddAccountDialog) {
+        AddAccountToServerDialog(
+            onDismiss = { showAddAccountDialog = false },
+            onSubmit = { label, adminKey, server ->
+                val key = (context.applicationContext as? FoxyVpnApp)?.authRepository?.currentRefreshToken()
+                showAddAccountDialog = false
+                if (key.isNullOrBlank()) {
+                    Toast.makeText(context, tr("No access key found. Sign in again."), Toast.LENGTH_LONG).show()
+                } else {
+                    adminScope.launch {
+                        RedeemClient(context.applicationContext).addAccountToServer(adminKey, label, key, server)
+                            .onSuccess { Toast.makeText(context, trf("Added to server: %s", it), Toast.LENGTH_LONG).show() }
+                            .onFailure { Toast.makeText(context, it.message ?: tr("Failed"), Toast.LENGTH_LONG).show() }
+                    }
+                }
+            },
+        )
+    }
     if (showSignOutDialog) {
         SignOutConfirmDialog(
             onDismiss = { showSignOutDialog = false },
@@ -688,6 +719,39 @@ fun SettingsScreen(
                                         title = tr("Version"),
                                         subtitle = BuildConfig.VERSION_NAME,
                                     )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.SupportAgent,
+                                        title = tr("Support"),
+                                        subtitle = tr("Message us on Telegram"),
+                                        onClick = { runCatching { uriHandler.openUri(RedeemClient.SUPPORT_URL) } },
+                                    )
+                                    if (isAdmin) {
+                                        SettingRow(
+                                            c = c,
+                                            icon = Icons.Filled.VpnKey,
+                                            title = tr("Copy access key (admin)"),
+                                            subtitle = tr("For creating redeem codes. Keep it private."),
+                                            onClick = {
+                                                val key = (context.applicationContext as? FoxyVpnApp)
+                                                    ?.authRepository?.currentRefreshToken()
+                                                if (key.isNullOrBlank()) {
+                                                    Toast.makeText(context, tr("No access key found. Sign in again."), Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    clipboard.setPrimaryClip(ClipData.newPlainText("fox-access-key", key))
+                                                    Toast.makeText(context, tr("Access key copied"), Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                        )
+                                        SettingRow(
+                                            c = c,
+                                            icon = Icons.Filled.VpnKey,
+                                            title = tr("Add this account to server (admin)"),
+                                            subtitle = tr("Sends the access key straight to the bot's pool"),
+                                            onClick = { showAddAccountDialog = true },
+                                        )
+                                    }
                                 }
 
                                 AnimatedVisibility(visible = connectionChanged) {
@@ -705,6 +769,7 @@ fun SettingsScreen(
                                     }
                                 }
 
+                                if (isAdmin) {
                                 val signOutShape = RoundedCornerShape(20.dp)
                                 Button(
                                     onClick = { showSignOutDialog = true },
@@ -722,6 +787,7 @@ fun SettingsScreen(
                                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(tr("Sign out"), fontWeight = FontWeight.SemiBold)
+                                }
                                 }
                             }
 
@@ -1344,6 +1410,69 @@ private fun foxFieldColors(c: FoxExtras) = OutlinedTextFieldDefaults.colors(
     focusedTextColor = c.textPrimary,
     unfocusedTextColor = c.textPrimary,
 )
+
+/** (ادمین) نام حساب + رمز ادمین سرور؛ رمز ذخیره نمی‌شه. */
+@Composable
+private fun AddAccountToServerDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (label: String, adminKey: String, server: Int) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var label by remember { mutableStateOf("") }
+    var adminKey by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf(0) }
+    FoxDialog(
+        title = tr("Add account to server"),
+        onDismiss = onDismiss,
+        onConfirm = { onSubmit(label.trim(), adminKey.trim(), server) },
+        confirmEnabled = label.isNotBlank() && adminKey.isNotBlank(),
+        confirmLabel = tr("Add"),
+    ) {
+        OutlinedTextField(
+            value = label,
+            onValueChange = { label = it },
+            label = { Text(tr("Account name")) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        OutlinedTextField(
+            value = adminKey,
+            onValueChange = { adminKey = it },
+            label = { Text(tr("Server admin key")) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        if (RedeemClient.serverCount > 1) {
+            // هر Worker استخر حساب خودش رو داره؛ انتخاب کن این حساب به کدوم بره
+            Text(
+                tr("Server"),
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                for (i in 0 until RedeemClient.serverCount) {
+                    RadioButton(
+                        selected = server == i,
+                        onClick = { server = i },
+                        colors = foxRadioColors(c),
+                    )
+                    Text("${i + 1}", color = c.textPrimary, modifier = Modifier.padding(end = 12.dp))
+                }
+            }
+        }
+        Text(
+            tr("The admin key is not stored on this device."),
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
 
 /** قالب مشترک همه‌ی دیالوگ‌ها با استایل Fox. */
 @Composable
