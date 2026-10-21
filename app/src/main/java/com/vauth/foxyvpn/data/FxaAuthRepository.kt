@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.data
 
+import com.vauth.foxyvpn.i18n.tr
 import android.util.Base64
 import com.vauth.foxyvpn.data.model.RuntimeAuth
 import kotlinx.coroutines.CancellationException
@@ -80,7 +81,7 @@ class FxaAuthRepository(
 
     suspend fun submitTwoFactorCode(code: String): Result<Boolean> = runCatching {
         val cleanCode = sanitizeCode(code)
-        val sessionToken = pendingSessionToken ?: error("No pending FxA session. Start sign-in again.")
+        val sessionToken = pendingSessionToken ?: error(tr("No pending FxA session. Start sign-in again."))
         fxaDo("POST", "/session/verify_code", sessionToken = sessionToken, jsonBody = JSONObject().put("code", cleanCode))
         completeLogin(sessionToken)
         false
@@ -137,12 +138,12 @@ class FxaAuthRepository(
 
     suspend fun ensureFreshAccessToken(force: Boolean = false): RuntimeAuth {
         val current = tokenStore.loadAuth()
-            ?: throw FxaRefreshFailure("Not signed in", permanent = true)
+            ?: throw FxaRefreshFailure(tr("Not signed in"), permanent = true)
         if (!force && tokenStore.hasValidAccessToken()) return current
 
         val refreshToken = current.refreshToken
             ?: throw FxaRefreshFailure(
-                "The stored session has no refresh token; sign in again.",
+                tr("The stored session has no refresh token; sign in again."),
                 permanent = true,
             )
 
@@ -157,7 +158,7 @@ class FxaAuthRepository(
             fxaDo("POST", "/oauth/token", jsonBody = body)
         } catch (rejected: FxaApiError) {
             throw FxaRefreshFailure(
-                rejected.message ?: "FxA rejected the refresh token",
+                rejected.message ?: tr("FxA rejected the refresh token"),
                 permanent = rejected.isPermanentRefreshRejection(),
                 cause = rejected,
             )
@@ -165,7 +166,7 @@ class FxaAuthRepository(
             throw cancellation
         } catch (transport: Exception) {
             throw FxaRefreshFailure(
-                transport.message ?: "Could not reach the Firefox Accounts server",
+                transport.message ?: tr("Could not reach the Firefox Accounts server"),
                 permanent = false,
                 cause = transport,
             )
@@ -173,7 +174,7 @@ class FxaAuthRepository(
 
         val accessToken = tokenData.optString("access_token").takeIf { it.isNotBlank() }
             ?: throw FxaRefreshFailure(
-                "FxA returned no access token for the refresh grant",
+                tr("FxA returned no access token for the refresh grant"),
                 permanent = false,
             )
 
