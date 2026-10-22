@@ -29,6 +29,8 @@ import com.vauth.foxyvpn.ui.screens.ServerListScreen
 import com.vauth.foxyvpn.ui.screens.PlansScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
+import com.vauth.foxyvpn.ui.screens.ThemeSetupScreen
+import com.vauth.foxyvpn.ui.screens.WelcomeScreen
 import com.vauth.foxyvpn.ui.theme.ThemeController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -37,9 +39,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 object FoxyRoutes {
     const val LANGUAGE = "language"
+    const val THEME_SETUP = "theme_setup"
     const val SPLASH = "splash"
     const val LOGIN = "login"
     const val ADMIN_LOGIN = "admin_login"
+    const val WELCOME = "welcome"
+    const val UPGRADED = "upgraded"
     const val HOME = "home"
     const val SERVERS = "servers"
     const val SETTINGS = "settings"
@@ -83,7 +88,8 @@ fun FoxyNavGraph(
                 onConfirm = { choice ->
                     Lang.setChoice(context, choice)
                     Lang.markChosen(context)
-                    navController.navigate(FoxyRoutes.SPLASH) { popUpTo(FoxyRoutes.LANGUAGE) { inclusive = true } }
+                    // بعد از زبان، یک قدم انتخاب تم (فقط اولین اجرا)
+                    navController.navigate(FoxyRoutes.THEME_SETUP) { popUpTo(FoxyRoutes.LANGUAGE) { inclusive = true } }
                     // با زبان/جهت جدید دوباره ساخته می‌شه (بعد از رفتن به مسیر بعدی، تا وضعیت ذخیره‌شده درست باشه)
                     if (choice != AppLanguage.SYSTEM) {
                         scope.launch {
@@ -91,6 +97,14 @@ fun FoxyNavGraph(
                             context.findActivity()?.recreate()
                         }
                     }
+                },
+            )
+        }
+        composable(FoxyRoutes.THEME_SETUP) {
+            ThemeSetupScreen(
+                themeController = themeController,
+                onContinue = {
+                    navController.navigate(FoxyRoutes.SPLASH) { popUpTo(FoxyRoutes.THEME_SETUP) { inclusive = true } }
                 },
             )
         }
@@ -109,7 +123,7 @@ fun FoxyNavGraph(
             LoginScreen(
                 authRepository = app.authRepository,
                 onSignedIn = {
-                    navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
+                    navController.navigate(FoxyRoutes.WELCOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
                 },
                 onOpenAdmin = { navController.navigate(FoxyRoutes.ADMIN_LOGIN) },
             )
@@ -121,6 +135,22 @@ fun FoxyNavGraph(
                     RedeemClient(app).adminMode = true
                     navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.SPLASH) { inclusive = true } }
                 },
+            )
+        }
+        composable(FoxyRoutes.WELCOME) {
+            // «ادامه»: اول اجازه‌ی نوتیف پرسیده می‌شه، بعد صفحه‌ی اصلی
+            WelcomeScreen(
+                onContinue = {
+                    onHomeShown()
+                    navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.WELCOME) { inclusive = true } }
+                },
+            )
+        }
+        composable(FoxyRoutes.UPGRADED) {
+            // بعد از ارتقا: تبریک، و برگشت به همون صفحه‌ی اصلی
+            WelcomeScreen(
+                upgrade = true,
+                onContinue = { navController.popBackStack(FoxyRoutes.HOME, false) },
             )
         }
         composable(FoxyRoutes.HOME) {
@@ -147,6 +177,9 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.PLANS) {
             PlansScreen(
                 onBack = { navController.popBackStack() },
+                authRepository = app.authRepository,
+                onDisconnect = onDisconnect,
+                onUpgraded = { navController.navigate(FoxyRoutes.UPGRADED) },
                 // کد منقضی/لغو/تموم‌شده: دوباره می‌شه کد جدید وارد کرد
                 onEnterNewCode = {
                     onDisconnect()
