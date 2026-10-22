@@ -29,7 +29,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** یک اعلان همگانی از ربات. [worker] = ایندکس Worker که ازش اومده (شماره‌ی اعلان‌ها برای هر Worker جداست). */
-data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String)
+data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both")
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
 data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean)
@@ -37,7 +37,7 @@ data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: 
 /** بنر وضعیت سرور: kind = "maint" (در حال به‌روزرسانی) یا "info"؛ [text] خالی یعنی متن پیش‌فرض اپ. */
 data class StatusBanner(val kind: String, val text: String)
 
-data class NoticeResult(val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null)
+data class NoticeResult(val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both")
 
 /**
  * گرفتن اعلان‌ها از Workerها (POST /v1/notice). دو مسیر داره:
@@ -83,13 +83,13 @@ object NoticeClient {
                 val arr = j.optJSONArray("notices")
                 val list = (0 until (arr?.length() ?: 0)).map { i ->
                     val o = arr!!.getJSONObject(i)
-                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"))
+                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"))
                 }
                 val u = j.optJSONObject("update")?.let {
                     UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"))
                 }
                 val b = j.optJSONObject("banner")?.let { StatusBanner(it.optString("kind"), it.optString("text")) }
-                NoticeResult(list, u, b)
+                NoticeResult(list, u, b, j.optString("updSrc", "both"))
             }
         }.getOrNull()
     }
@@ -114,16 +114,23 @@ object NoticeClient {
         var update: UpdateInfo? = null
         var anyOk = false
         var banner: StatusBanner? = null
+        var updSrc = "both"
         for ((i, b) in bases) {
             val r = query(c, i, b, seenKey, seenOverride) ?: continue
             anyOk = true
-            if (banner == null) banner = r.banner
+            if (banner == null) { banner = r.banner; updSrc = r.updSrc }
             notices += r.notices
             val u = r.update
             if (u != null && (update == null || u.versionCode > update.versionCode || (u.versionCode == update.versionCode && u.force))) update = u
         }
-        if (!anyOk) update = queryFallback(c)
-        return NoticeResult(notices, update, banner)
+        // آپدیت از گیت‌هاب: وقتی ووکرها جواب ندادن، یا ادمین «گیت‌هاب» رو انتخاب کرده، یا هیچ‌کدوم مشخص نشده (بالاترین نسخه برنده)
+        val gh = if (!anyOk || updSrc != "bot") queryFallback(c) else null
+        if (gh != null) update = when {
+            update == null || gh.versionCode > update.versionCode -> gh
+            gh.versionCode == update.versionCode -> update.copy(force = update.force || gh.force)
+            else -> update
+        }
+        return NoticeResult(notices, update, banner, updSrc)
     }
 
     /** فقط بنر وضعیت و آپدیت (برای نوار بالای صفحه‌ی اصلی)؛ اعلان‌ها رو مصرف نمی‌کنه. */
@@ -134,7 +141,7 @@ object NoticeClient {
         val r = queryAll(c, "shown")
         val dismissed = prefs(c).getInt("upd_dismissed", 0)
         val u = r.update?.takeIf { it.force || it.versionCode > dismissed }
-        NoticeResult(r.notices, u)
+        NoticeResult(r.notices.filter { it.mode != "push" }, u)
     }
 
     fun markShown(c: Context, n: Notice) {
@@ -176,7 +183,7 @@ object NoticeClient {
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ensureChannel(c)
         for (n in r.notices) {
-            if (canNotify) post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") })
+            if (canNotify && n.mode != "window") post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") })
             if (n.id > p.getLong("notif_${n.worker}", 0L)) p.edit().putLong("notif_${n.worker}", n.id).apply()
         }
         val u = r.update
