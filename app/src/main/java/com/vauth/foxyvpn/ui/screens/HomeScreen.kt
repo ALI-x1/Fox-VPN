@@ -401,6 +401,7 @@ fun HomeScreen(
     val daysLeft = if (useLicense) license?.expiresAt?.let { kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong() } else null
     val remainingPct = if (useLicense && !dataUnlimited && dataRemainingGb != null && dataTotalGb > 0.0) (dataRemainingGb / dataTotalGb * 100).toInt() else null
     val blockMsg = block?.message ?: ""
+    val c = LocalFoxExtras.current
     val homeBanner: HomeBanner? = run {
         val sb = serverStatus?.banner
         when {
@@ -448,7 +449,6 @@ fun HomeScreen(
         }
     }
 
-    val c = LocalFoxExtras.current
 
     // کشوری که نمایش می‌دیم: وصل → کشور خروجی (تا چک تموم نشده کشور سرور انتخابی)،
     // در حال اتصال → کشور سرور انتخابی، قطع → کشور واقعی خودمون (اگه چک نشد، ایران).
