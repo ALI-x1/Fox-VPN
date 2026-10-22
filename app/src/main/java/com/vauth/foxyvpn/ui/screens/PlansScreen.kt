@@ -169,6 +169,8 @@ fun PlansScreen(
         val repo = authRepository ?: return
         if (!RedeemClient.isComplete(code) || busy) return
         val before = rank(currentKey)
+        val oldCode = redeem.activeCode
+        val releaseOld = redeem.releaseSnapshot()
         busy = true; codeMsg = null
         scope.launch {
             val grant = redeem.redeem(code).getOrElse {
@@ -179,6 +181,7 @@ fun PlansScreen(
             busy = false
             if (r.isSuccess) {
                 code = ""
+                if (redeem.activeCode != oldCode) releaseOld() // جای دستگاه روی کد قبلی آزاد بشه
                 if (rank(LicenseState.status.value?.plan) > before) onUpgraded()
                 else { codeOk = true; codeMsg = tr("Your code was applied.") }
             } else {
