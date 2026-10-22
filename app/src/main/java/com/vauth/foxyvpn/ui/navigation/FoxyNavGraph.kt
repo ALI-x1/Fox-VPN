@@ -184,7 +184,7 @@ fun FoxyNavGraph(
                 onEnterNewCode = {
                     onDisconnect()
                     app.tokenStore.clear()
-                    RedeemClient(app).apply { adminMode = false; activeCode = null }
+                    RedeemClient(app).apply { releaseSnapshot()(); adminMode = false; activeCode = null }
                     LicenseState.clear(app)
                     navController.navigate(FoxyRoutes.LOGIN) { popUpTo(0) { inclusive = true } }
                 },
@@ -220,7 +220,7 @@ fun FoxyNavGraph(
                 onSignOut = {
                     onDisconnect()
                     app.tokenStore.clear()
-                    RedeemClient(app).apply { adminMode = false; activeCode = null }
+                    RedeemClient(app).apply { releaseSnapshot()(); adminMode = false; activeCode = null }
                     LicenseState.clear(app)
                     navController.navigate(FoxyRoutes.LOGIN) { popUpTo(0) { inclusive = true } }
                 },
