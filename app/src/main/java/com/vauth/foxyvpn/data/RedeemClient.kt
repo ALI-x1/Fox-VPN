@@ -68,7 +68,8 @@ enum class LicenseBlock(private val en: String, val needsNewCode: Boolean) {
     EXPIRED("Your plan has expired.", true),
     REVOKED("This code has been disabled.", true),
     DEVICE("This device was removed from the code.", true),
-    FROZEN("Your account is temporarily frozen. Contact support.", false);
+    FROZEN("Your account is temporarily frozen. Contact support.", false),
+    MAINT("The server is being updated. Please try again in a few minutes.", false);
 
     val message: String get() = tr(en)
 }
@@ -104,6 +105,7 @@ object LicenseState {
         "revoked" -> LicenseBlock.REVOKED
         "device_removed" -> LicenseBlock.DEVICE
         "frozen" -> LicenseBlock.FROZEN
+        "maintenance" -> LicenseBlock.MAINT
         else -> null
     }
 
@@ -146,6 +148,27 @@ class RedeemClient(context: Context) {
         get() = prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString(KEY_DEVICE_ID, it).apply()
         }
+
+    /** نسخه‌ی اپ (versionCode)؛ با گزارش مصرف به سرور می‌ره تا تو ربات معلوم باشه کی نسخه‌ی قدیمی داره. */
+    private val appVersion: Int = runCatching {
+        val p = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 28) p.longVersionCode.toInt() else @Suppress("DEPRECATION") p.versionCode
+    }.getOrDefault(0)
+
+    /**
+     * عکس از کد و سرور فعلی؛ فراخوانی خروجی، جای این دستگاه رو روی همون کد آزاد می‌کنه (خروج از حساب).
+     * اول بگیر، بعد کد رو عوض/پاک کن.
+     */
+    fun releaseSnapshot(): () -> Unit {
+        val code = activeCode
+        val all = workers
+        val base = homeWorker?.takeIf { it in all } ?: all.firstOrNull()
+        val dev = deviceId
+        if (code == null || base == null) return {}
+        return {
+            Thread { runCatching { post(base, "/v1/release", JSONObject().put("code", code).put("deviceId", dev)) } }.start()
+        }
+    }
 
     /** آخرین کدی که با موفقیت وارد شده (برای مراحل بعدی: گزارش مصرف و تمدید). */
     var activeCode: String?
@@ -316,7 +339,7 @@ class RedeemClient(context: Context) {
             if (all.isEmpty()) throw RedeemException(tr("Service is not configured yet."))
             // فقط Workerی که کد روش ساخته شده؛ بقیه کد رو نمی‌شناسن و ۴۰۴ می‌دن (که به‌اشتباه «لغو شده» حساب می‌شد)
             val base = homeWorker?.takeIf { it in all } ?: all.first()
-            val r = post(base, "/v1/usage", JSONObject().put("code", code).put("deviceId", deviceId).put("bytes", bytes.coerceAtLeast(0)))
+            val r = post(base, "/v1/usage", JSONObject().put("code", code).put("deviceId", deviceId).put("bytes", bytes.coerceAtLeast(0)).put("v", appVersion))
             when {
                 r.network -> throw RedeemException(tr("No connection"))
                 // سقف روزانه‌ی Worker یا خطای زیرساخت: مصرف تو گوشی می‌مونه و بعداً فرستاده می‌شه
