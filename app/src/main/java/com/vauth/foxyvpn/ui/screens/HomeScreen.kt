@@ -81,6 +81,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,6 +97,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -133,6 +135,54 @@ import androidx.compose.foundation.layout.calculateEndPadding
 // ───────────────────────── تایمر اتصال ─────────────────────────
 
 /** زمان شروع اتصال؛ در سطح process نگه داشته می‌شه تا با رفتن به تنظیمات و برگشتن، تایمر صفر نشه. */
+/** انیمیشن ورود فقط یک‌بار در هر اجرای برنامه پخش می‌شه (نه هر بار که از تنظیمات برمی‌گردی). */
+private object EntryGate {
+    var played = false
+}
+
+@Composable
+private fun rememberEntrance(entered: Boolean, index: Int): State<Float> = animateFloatAsState(
+    targetValue = if (entered) 1f else 0f,
+    animationSpec = tween(durationMillis = 380, delayMillis = 60 + index * 70, easing = FastOutSlowInEasing),
+    label = "entrance-$index",
+)
+
+/** محو شدن + کمی بالا اومدن؛ فقط در فاز draw خونده می‌شه، پس recompose نداره. */
+private fun Modifier.entrance(progress: State<Float>): Modifier = graphicsLayer {
+    val p = progress.value
+    alpha = p
+    translationY = (1f - p) * 20.dp.toPx()
+}
+
+/** تایمر جدا از HomeScreen: با هر ثانیه فقط همین متن recompose می‌شه، نه کل صفحه. */
+@Composable
+private fun TimerText(elapsed: () -> Long, color: Color) {
+    Text(
+        text = formatElapsed(elapsed()),
+        fontSize = 40.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = color
+    )
+}
+
+/** سرعت با حرکت نرم بین مقدارها (به‌جای پرش هر ثانیه) و ارقام هم‌عرض تا عرض عدد نپره. */
+@Composable
+private fun SmoothSpeedText(speedBytes: Long, color: Color) {
+    val animated by animateFloatAsState(
+        targetValue = speedBytes.toFloat(),
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "speed-number",
+    )
+    Text(
+        text = formatBytesPerSecond(animated.toLong()),
+        style = TextStyle(fontFeatureSettings = "tnum"),
+        fontSize = 19.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = color,
+        maxLines = 1
+    )
+}
+
 private object SessionClock {
     var startedAt: Long = 0L
 }
@@ -233,7 +283,8 @@ fun HomeScreen(
         }
     }
 
-    val trafficState by TrafficMonitor.trafficState.collectAsState()
+    // State رو به TrafficCard می‌دیم (نه مقدارش رو) تا هر ثانیه فقط همون باکس recompose بشه
+    val trafficState = TrafficMonitor.trafficState.collectAsState()
     var ipAddress by remember { mutableStateOf("-") }
     var countryCode by remember { mutableStateOf("") }
 
@@ -412,6 +463,29 @@ fun HomeScreen(
 
     val layoutDirection = LocalLayoutDirection.current
 
+    // ───── انیمیشن ورود (یک‌بار در هر اجرا) ─────
+    var entered by remember { mutableStateOf(EntryGate.played) }
+    LaunchedEffect(Unit) {
+        if (!EntryGate.played) {
+            EntryGate.played = true
+            entered = true
+        }
+    }
+    val entranceHeader = rememberEntrance(entered, 0)
+    val entranceMain = rememberEntrance(entered, 1)
+    val entranceData = rememberEntrance(entered, 3)
+    // دکمه‌ی اتصال: پرش فنری + حلقه‌ی یک‌باره
+    val buttonPop = animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessLow),
+        label = "button-pop",
+    )
+    val buttonBurst = animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(durationMillis = 900, delayMillis = 250, easing = LinearOutSlowInEasing),
+        label = "button-burst",
+    )
+
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(
             modifier = Modifier
@@ -438,7 +512,7 @@ fun HomeScreen(
                 ) {
                     // ───── هدر: لوگو + نام + تنظیمات ─────
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().entrance(entranceHeader),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -505,6 +579,7 @@ fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .entrance(entranceMain)
                             .foxCard(c, 28.dp)
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -553,12 +628,7 @@ fun HomeScreen(
                                     animationSpec = tween(450),
                                     label = "timer-color",
                                 )
-                                Text(
-                                    text = formatElapsed(elapsedSeconds),
-                                    fontSize = 40.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = timerColor
-                                )
+                                TimerText(elapsed = { elapsedSeconds }, color = timerColor)
                             }
 
                             // پینگ (بعد از اتصال اندازه‌گیری می‌شه؛ قبلش خاکستری "---")
@@ -578,7 +648,7 @@ fun HomeScreen(
                         }
 
                         // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
-                        TrafficCard(c = c, traffic = trafficState)
+                        TrafficCard(c = c, traffic = trafficState, connected = state == ConnectionState.CONNECTED)
 
                         // سطر کشور / IP سرور + دکمه‌ی تغییر سرور
                         Row(
@@ -695,6 +765,8 @@ fun HomeScreen(
                         },
                         connecting = state == ConnectionState.CONNECTING,
                         animate = isForeground,
+                        entryPop = buttonPop,
+                        entryBurst = buttonBurst,
                     )
                 }
 
@@ -706,7 +778,7 @@ fun HomeScreen(
                     c = c,
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().entrance(entranceData),
                     bottomInset = padding.calculateBottomPadding(),
                 )
             }
@@ -727,12 +799,23 @@ private fun ConnectButton(
     onClick: () -> Unit,
     connecting: Boolean = false,
     animate: Boolean = true,
+    entryPop: State<Float>,
+    entryBurst: State<Float>,
 ) {
     // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
     val buttonSize = size * 0.824f * scale
     val logoTint = c.accent
     Box(
-        modifier = Modifier.size(size),
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer {
+                // ورود فنری: از کوچیک و محو شروع می‌شه و کمی بزرگ‌تر از اندازه‌ی نهایی می‌پره و می‌شینه
+                val p = entryPop.value
+                val sc = 0.55f + 0.45f * p
+                scaleX = sc
+                scaleY = sc
+                alpha = (p * 2f).coerceIn(0f, 1f)
+            },
         contentAlignment = Alignment.Center
     ) {
         // حلقه‌های هاله بیرونی
@@ -769,6 +852,24 @@ private fun ConnectButton(
             // وصل: ضربان نرم و آروم و پخش‌تر
             PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
         }
+
+        // حلقه‌ی ورود: فقط یک‌بار موقع باز شدن برنامه از لبه‌ی دکمه پخش می‌شه و محو می‌شه
+        Box(
+            modifier = Modifier
+                .size(buttonSize)
+                .graphicsLayer {
+                    val p = entryBurst.value
+                    if (p <= 0f || p >= 1f) {
+                        alpha = 0f
+                    } else {
+                        val sc = 1f + 0.9f * p
+                        scaleX = sc
+                        scaleY = sc
+                        alpha = (1f - p) * 0.55f
+                    }
+                }
+                .border(2.dp, ringColor, CircleShape)
+        )
 
         // دکمه اصلی
         Box(
@@ -1083,7 +1184,14 @@ private fun PingPill(
 
 /** باکس ترافیک: دانلود و آپلود کنار هم؛ هرکدام سرعت لحظه‌ای + مصرف کل از شروع اتصال. */
 @Composable
-private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
+private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: Boolean) {
+    val t = traffic.value
+    // مثل تایمر: وقتی وصل نیست خاکستری/کم‌رنگ، موقع اتصال نرم به رنگ اصلی (پررنگ) می‌رسه
+    val speedColor by animateColorAsState(
+        targetValue = if (connected) c.textPrimary else c.textPrimary.copy(alpha = 0.45f),
+        animationSpec = tween(450),
+        label = "speed-color",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1097,8 +1205,9 @@ private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
             label = tr("DOWNLOAD"),
             icon = Icons.Filled.ArrowDownward,
             tint = c.download,
-            speed = formatBytesPerSecond(traffic.downloadSpeed.toLong()),
-            total = formatBytes(traffic.totalDownload),
+            speedBytes = t.downloadSpeed.toLong(),
+            speedColor = speedColor,
+            total = formatBytes(t.totalDownload),
         )
         Box(
             modifier = Modifier
@@ -1112,8 +1221,9 @@ private fun TrafficCard(c: FoxExtras, traffic: TrafficState) {
             label = tr("UPLOAD"),
             icon = Icons.Filled.ArrowUpward,
             tint = c.upload,
-            speed = formatBytesPerSecond(traffic.uploadSpeed.toLong()),
-            total = formatBytes(traffic.totalUpload),
+            speedBytes = t.uploadSpeed.toLong(),
+            speedColor = speedColor,
+            total = formatBytes(t.totalUpload),
         )
     }
 }
@@ -1125,7 +1235,8 @@ private fun TrafficColumn(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: Color,
-    speed: String,
+    speedBytes: Long,
+    speedColor: Color,
     total: String,
 ) {
     Column(modifier = modifier.padding(horizontal = 14.dp)) {
@@ -1150,13 +1261,7 @@ private fun TrafficColumn(
             )
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            text = speed,
-            fontSize = 19.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = c.textPrimary,
-            maxLines = 1
-        )
+        SmoothSpeedText(speedBytes = speedBytes, color = speedColor)
         Text(
             text = trf("Total  %s", total),
             fontSize = 12.sp,
@@ -1220,7 +1325,11 @@ private fun DataRemainingCard(
     } else {
         (remainingGb / totalGb).coerceIn(0.0, 1.0).toFloat()
     }
-    val animatedFraction by animateFloatAsState(targetValue = fraction, label = "data-fraction")
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "data-fraction",
+    )
     val tone = when {
         unlimited || remainingGb == null -> c.accent
         fraction <= 0.10f -> criticalColor
@@ -1234,20 +1343,24 @@ private fun DataRemainingCard(
     } else {
         String.format(Locale.US, "%.1f", totalGb)
     }
+    // عدد هم همراه نوار از صفر بالا می‌ره؛ در حالت پایدار دقیقاً همون remainingGb می‌مونه
+    val shownRemaining = remainingGb?.let { r ->
+        if (fraction > 0f) r * (animatedFraction / fraction).coerceIn(0f, 1.5f) else r
+    }
     val valueText = if (unlimited) {
         tr("Unlimited")
     } else if (remainingGb == null) {
         trf("-- of %s GB", totalText)
     } else {
-        trf("%.1f of %s GB", remainingGb, totalText)
+        trf("%.1f of %s GB", shownRemaining ?: remainingGb, totalText)
     }
     val percentText = when {
         unlimited -> "∞"
         remainingGb == null -> "--%"
-        else -> "${(fraction * 100).roundToInt()}%"
+        else -> "${(animatedFraction * 100).roundToInt()}%"
     }
     val usedText = if (!unlimited && remainingGb != null) {
-        trf("Used %.1f GB", (totalGb - remainingGb).coerceAtLeast(0.0))
+        trf("Used %.1f GB", (totalGb - (shownRemaining ?: remainingGb)).coerceAtLeast(0.0))
     } else {
         null
     }
