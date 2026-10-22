@@ -69,12 +69,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
@@ -114,9 +108,20 @@ import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
+import com.vauth.foxyvpn.data.LicenseBlock
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.ui.platform.LocalUriHandler
+import com.vauth.foxyvpn.notice.NoticeClient
+import com.vauth.foxyvpn.notice.NoticeResult
 import com.vauth.foxyvpn.data.TrafficMonitor
 import com.vauth.foxyvpn.data.TrafficState
 import com.vauth.foxyvpn.data.formatBytes
@@ -364,6 +369,9 @@ fun HomeScreen(
     } else {
         ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
     }
+    // برچسب دکمه‌ی پلن: Free / Pro / Max (برای ادمین یا بدون کد: Plans)
+    val planLabel = if (isAdmin) tr("Plans")
+        else license?.plan?.takeIf { it.isNotBlank() && it != "custom" }?.replaceFirstChar { it.uppercase() } ?: tr("Plans")
     val planName = if (useLicense) lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
         ?.replaceFirstChar { it.uppercase() } else null
     val licenseNote: String? = if (useLicense && lic != null) {
@@ -377,6 +385,40 @@ fun HomeScreen(
         }
         parts.joinToString(" · ").ifBlank { null }
     } else null
+
+    // ───── نوار وضعیت بالای صفحه: فقط وقتی چیزی برای گفتن هست ─────
+    val uriHandler = LocalUriHandler.current
+    var serverStatus by remember { mutableStateOf<NoticeResult?>(null) }
+    LaunchedEffect(isForeground) {
+        if (!isForeground) return@LaunchedEffect
+        while (true) {
+            serverStatus = NoticeClient.fetchStatus(app)
+            delay(300_000)
+        }
+    }
+    val bannerWarn = LocalFoxyStatusColors.current.connecting
+    val bannerErr = MaterialTheme.colorScheme.error
+    val daysLeft = if (useLicense) license?.expiresAt?.let { kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong() } else null
+    val remainingPct = if (useLicense && !dataUnlimited && dataRemainingGb != null && dataTotalGb > 0.0) (dataRemainingGb / dataTotalGb * 100).toInt() else null
+    val blockMsg = block?.message ?: ""
+    val homeBanner: HomeBanner? = run {
+        val sb = serverStatus?.banner
+        when {
+            sb != null -> HomeBanner(
+                Icons.Filled.Build, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, bannerWarn, null,
+            )
+            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, c.accent) { uriHandler.openUri(RedeemClient.SUPPORT_URL) }
+            block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
+            block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
+            block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
+            daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
+            remainingPct != null && remainingPct <= 10 -> HomeBanner(Icons.Filled.DataUsage, trf("Only %d%% of your data is left.", remainingPct), bannerWarn) { onOpenPlans() }
+            serverStatus?.update != null -> serverStatus?.update?.let { u ->
+                HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), c.accent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
+            }
+            else -> null
+        }
+    }
 
     // پینگ فقط «بعد از اتصال» اندازه‌گیری می‌شه؛ قبل از اتصال (و تو حالت CONNECTING) null می‌مونه
     // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
@@ -517,35 +559,6 @@ fun HomeScreen(
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // دکمه‌ی پلن: Free / Pro / Max (برای ادمین: Plans)
-                            val planLabel = if (isAdmin) tr("Plans")
-                            else lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
-                                ?.replaceFirstChar { it.uppercase() } ?: tr("Plans")
-                            Row(
-                                modifier = Modifier
-                                    .height(46.dp)
-                                    .clip(CircleShape)
-                                    .background(c.card)
-                                    .border(1.dp, c.cardBorder, CircleShape)
-                                    .clickable(onClick = onOpenPlans)
-                                    .padding(horizontal = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = null,
-                                    tint = c.accent,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = planLabel,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = c.accentText,
-                                )
-                            }
-                            Spacer(Modifier.width(10.dp))
                             // کلید خورشید/ماه: فقط برای تم‌های لایت/دارک‌دار و وقتی از تنظیمات خاموشش نکرده باشن
                             val systemDark = isSystemInDarkTheme()
                             if (themeController.showHomeToggle && themeController.palette.supportsLightDark) {
@@ -578,6 +591,18 @@ fun HomeScreen(
 
 
                     Spacer(Modifier.height(10.dp))
+
+                    AnimatedVisibility(
+                        visible = homeBanner != null,
+                        enter = fadeIn() + expandVertically(),
+                    ) {
+                        homeBanner?.let { b ->
+                            Column {
+                                StatusBannerBar(b, c)
+                                Spacer(Modifier.height(10.dp))
+                            }
+                        }
+                    }
 
                     // ───── کارت اصلی: وضعیت، تایمر، ترافیک، سرور ─────
                     Column(
@@ -785,7 +810,8 @@ fun HomeScreen(
                     remainingGb = dataRemainingGb,
                     totalGb = dataTotalGb,
                     unlimited = dataUnlimited,
-                    title = if (planName != null) "${tr("Data remaining")} · $planName" else tr("Data remaining"),
+                    planLabel = planLabel,
+                    onPlanClick = onOpenPlans,
                     note = licenseNote,
                     c = c,
                     lowColor = statusColors.connecting,
@@ -1291,7 +1317,8 @@ private fun DataRemainingCard(
     remainingGb: Double?,
     totalGb: Double,
     unlimited: Boolean = false,
-    title: String = "Data remaining",
+    planLabel: String? = null,
+    onPlanClick: () -> Unit = {},
     note: String? = null,
     c: FoxExtras,
     lowColor: Color,
@@ -1355,7 +1382,7 @@ private fun DataRemainingCard(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = title,
+                    text = tr("Data remaining"),
                     style = MaterialTheme.typography.labelMedium,
                     color = c.textSecondary
                 )
@@ -1365,6 +1392,22 @@ private fun DataRemainingCard(
                     fontWeight = FontWeight.Bold,
                     color = animatedTone
                 )
+            }
+            if (planLabel != null) {
+                Row(
+                    modifier = Modifier
+                        .clip(pillShape)
+                        .background(c.accent.copy(alpha = 0.14f))
+                        .border(1.dp, c.accent.copy(alpha = 0.35f), pillShape)
+                        .clickable(onClick = onPlanClick)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(text = planLabel, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = c.accent, maxLines = 1)
+                }
+                Spacer(Modifier.width(8.dp))
             }
             Box(
                 modifier = Modifier
@@ -1411,13 +1454,15 @@ private fun DataRemainingCard(
             ) {
                 Text(
                     text = usedText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.textSecondary
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = animatedTone
                 )
                 Text(
                     text = trf("Total %s GB", totalText),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.textSecondary
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = c.textPrimary
                 )
             }
         }
@@ -1425,9 +1470,47 @@ private fun DataRemainingCard(
         if (note != null) {
             Text(
                 text = note,
-                style = MaterialTheme.typography.labelMedium,
-                color = c.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = c.textPrimary,
             )
+        }
+    }
+}
+
+
+/** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
+private class HomeBanner(val icon: androidx.compose.ui.graphics.vector.ImageVector, val text: String, val tone: Color, val onClick: (() -> Unit)?)
+
+@Composable
+private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(b.tone.copy(alpha = 0.14f))
+            .border(1.dp, b.tone.copy(alpha = 0.45f), shape)
+            .then(if (b.onClick != null) Modifier.clickable(onClick = b.onClick) else Modifier)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = b.text,
+            modifier = Modifier.weight(1f),
+            color = c.textPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 19.sp,
+        )
+        if (b.onClick != null) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.ArrowForwardIos, contentDescription = null, tint = b.tone, modifier = Modifier.size(14.dp))
         }
     }
 }
