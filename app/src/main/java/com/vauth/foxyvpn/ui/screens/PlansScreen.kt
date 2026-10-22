@@ -5,6 +5,16 @@ import com.vauth.foxyvpn.i18n.trf
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
+import com.vauth.foxyvpn.data.FxaAuthRepository
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +34,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Star
@@ -38,6 +55,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +96,7 @@ private data class PlanSpec(
 
 private val PLANS = listOf(
     PlanSpec(
-        key = "free", title = "Free", tagline = "Try it out", icon = Icons.Filled.Public, badge = null,
+        key = "free", title = "Free", tagline = "Try it out", icon = Icons.Filled.CardGiftcard, badge = null,
         groups = listOf(
             "Data" to listOf("5 GB in total", "1 GB per day"),
             "Access" to listOf("7 days", "1 device"),
@@ -98,6 +121,16 @@ private val PLANS = listOf(
     ),
 )
 
+/** آیکون اختصاصی هر ویژگی (بر اساس دسته و متن). */
+private fun featureIcon(group: String, index: Int, item: String): ImageVector = when {
+    item.contains("Unlimited") || item.contains("No daily") -> Icons.Filled.AllInclusive
+    group == "Data" && index == 0 -> Icons.Filled.DataUsage
+    group == "Data" -> Icons.Filled.Today
+    group == "Access" && index == 0 -> Icons.Filled.Timer
+    group == "Access" -> Icons.Filled.PhoneAndroid
+    else -> Icons.Filled.SupportAgent
+}
+
 private fun rank(key: String?): Int = when (key) {
     "free" -> 1
     "pro" -> 2
@@ -111,6 +144,9 @@ private fun rank(key: String?): Int = when (key) {
 fun PlansScreen(
     onBack: () -> Unit,
     onEnterNewCode: () -> Unit,
+    authRepository: FxaAuthRepository? = null,
+    onDisconnect: () -> Unit = {},
+    onUpgraded: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
@@ -121,6 +157,35 @@ fun PlansScreen(
     val license by LicenseState.status.collectAsState()
     val currentKey = if (isAdmin) null else license?.plan
     val block = if (isAdmin) null else LicenseState.blockOf(license)
+
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var codeMsg by remember { mutableStateOf<String?>(null) }
+    var codeOk by remember { mutableStateOf(false) }
+
+    // کد جدید: اگه پلن بالاتر بشه صفحه‌ی تبریک باز می‌شه، وگرنه فقط پیام «اعمال شد»
+    fun applyCode() {
+        val repo = authRepository ?: return
+        if (!RedeemClient.isComplete(code) || busy) return
+        val before = rank(currentKey)
+        busy = true; codeMsg = null
+        scope.launch {
+            val grant = redeem.redeem(code).getOrElse {
+                busy = false; codeOk = false; codeMsg = it.message ?: tr("Could not verify the code"); return@launch
+            }
+            onDisconnect()
+            val r = repo.loginWithRefreshToken(grant.refreshToken)
+            busy = false
+            if (r.isSuccess) {
+                code = ""
+                if (rank(LicenseState.status.value?.plan) > before) onUpgraded()
+                else { codeOk = true; codeMsg = tr("Your code was applied.") }
+            } else {
+                codeOk = false; codeMsg = tr("This code can't sign in right now. Please contact support.")
+            }
+        }
+    }
 
     fun contact(plan: String? = null) {
         val text = if (plan == null) "Hi, I need help with my Fox-VPN plan." else "Hi, I want to get the $plan plan on Fox-VPN."
@@ -154,8 +219,8 @@ fun PlansScreen(
                     }
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text(tr("Plans"), fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
-                        Text(tr("Pick what fits you"), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                        Text(tr("Plans"), fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                        Text(tr("Pick what fits you"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
                     }
                 }
 
@@ -172,7 +237,7 @@ fun PlansScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Warning, null, tint = err, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(10.dp))
-                            Text(block.message, style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
+                            Text(block.message, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
                         }
                         if (block.needsNewCode) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -183,8 +248,12 @@ fun PlansScreen(
                     }
                 }
 
-                PLANS.forEach { plan ->
+                var shown by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { shown = true }
+                PLANS.forEachIndexed { i, plan ->
+                    val a by animateFloatAsState(if (shown) 1f else 0f, tween(550, delayMillis = 120 * i), label = "plan-in")
                     PlanCard(
+                        modifier = Modifier.alpha(a).scale(0.94f + 0.06f * a),
                         plan = plan,
                         c = c,
                         active = plan.key == currentKey,
@@ -194,9 +263,18 @@ fun PlansScreen(
                     )
                 }
 
+                if (!isAdmin && authRepository != null) {
+                    RedeemBox(
+                        c = c, code = code, busy = busy, message = codeMsg, ok = codeOk,
+                        onCode = { code = RedeemClient.formatCode(it); codeMsg = null },
+                        onApply = ::applyCode,
+                    )
+                }
+
                 Text(
                     tr("Payment and activation are handled in Telegram. Your new code works right after it's sent to you."),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
                     color = c.textSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -221,6 +299,7 @@ private fun Modifier.planCard(c: FoxExtras, radius: Int, fill: Color, border: Co
 
 @Composable
 private fun PlanCard(
+    modifier: Modifier = Modifier,
     plan: PlanSpec,
     c: FoxExtras,
     active: Boolean,
@@ -231,29 +310,38 @@ private fun PlanCard(
     val highlighted = plan.key == "max"
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
+    val cardShape = RoundedCornerShape(28.dp)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .planCard(
-                c, 28, c.card,
-                border = if (active || highlighted) c.accent else c.cardBorder,
-                width = if (active || highlighted) 2 else 1,
+            .shadow(
+                if (active || highlighted) 12.dp else 6.dp, cardShape,
+                ambientColor = c.accent.copy(alpha = if (active || highlighted) 0.35f else 0.15f),
+                spotColor = c.accent.copy(alpha = if (active || highlighted) 0.35f else 0.15f),
+            )
+            .clip(cardShape)
+            .background(c.card)
+            .border(
+                if (active || highlighted) 2.dp else 1.dp,
+                if (active || highlighted) Brush.linearGradient(listOf(c.accentLight, c.accent)) else Brush.linearGradient(listOf(c.cardBorder, c.cardBorder)),
+                cardShape,
             )
             .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(54.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                 contentAlignment = Alignment.Center,
-            ) { Icon(plan.icon, null, tint = onAccent, modifier = Modifier.size(26.dp)) }
+            ) { Icon(plan.icon, null, tint = onAccent, modifier = Modifier.size(30.dp)) }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(tr(plan.title), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
-                Text(tr(plan.tagline), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                Text(tr(plan.title), fontSize = 26.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Text(tr(plan.tagline), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
             }
             val badge = if (active) "CURRENT" else plan.badge
             if (badge != null) {
@@ -263,24 +351,44 @@ private fun PlanCard(
                         .background(c.accent.copy(alpha = 0.16f))
                         .border(1.dp, c.accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
-                ) { Text(tr(badge), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = c.accentText) }
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (active) Icons.Filled.Check else Icons.Filled.Star, null, tint = c.accentText, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr(badge), fontSize = 11.sp, fontWeight = FontWeight.Black, color = c.accentText)
+                    }
+                }
             }
         }
 
         plan.groups.forEach { (group, items) ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    tr(group).uppercase(),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    color = c.textSecondary,
-                )
-                items.forEach { item ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Check, null, tint = c.accent, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text(tr(item), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(width = 4.dp, height = 14.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        tr(group).uppercase(),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.4.sp,
+                        color = c.accentText,
+                    )
+                }
+                items.forEachIndexed { index, item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(c.innerCard)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(c.accent.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(featureIcon(group, index, item), null, tint = c.accent, modifier = Modifier.size(20.dp)) }
+                        Spacer(Modifier.width(12.dp))
+                        Text(tr(item), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
                     }
                 }
             }
@@ -297,6 +405,60 @@ private fun PlanCard(
 }
 
 @Composable
+private fun RedeemBox(
+    c: FoxExtras,
+    code: String,
+    busy: Boolean,
+    message: String?,
+    ok: Boolean,
+    onCode: (String) -> Unit,
+    onApply: () -> Unit,
+) {
+    val shape = RoundedCornerShape(28.dp)
+    val err = MaterialTheme.colorScheme.error
+    Column(
+        modifier = Modifier.fillMaxWidth().planCard(c, 28, c.card, c.accent.copy(alpha = 0.45f), 2).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(tr("Have a code?"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+            }
+        }
+        OutlinedTextField(
+            value = code,
+            onValueChange = onCode,
+            singleLine = true,
+            enabled = !busy,
+            placeholder = { Text("FOX-XXXX-XXXX-XXXX", color = c.textSecondary.copy(alpha = 0.6f)) },
+            shape = RoundedCornerShape(18.dp),
+            textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onApply() }),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = c.accent, unfocusedBorderColor = c.cardBorder,
+                focusedContainerColor = c.innerCard, unfocusedContainerColor = c.innerCard,
+                cursorColor = c.accent,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (message != null) {
+            Text(message, color = if (ok) c.accentText else err, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        }
+        PlanButton(
+            if (busy) tr("Checking…") else tr("Redeem"), c,
+            enabled = RedeemClient.isComplete(code) && !busy, modifier = Modifier.fillMaxWidth(), onClick = onApply,
+        )
+    }
+}
+
+@Composable
 private fun PlanButton(
     text: String,
     c: FoxExtras,
@@ -309,7 +471,7 @@ private fun PlanButton(
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
     Box(
         modifier = modifier
-            .height(50.dp)
+            .height(54.dp)
             .clip(shape)
             .then(
                 if (outlined) Modifier.background(c.innerCard).border(1.dp, c.cardBorder, shape)
@@ -320,8 +482,8 @@ private fun PlanButton(
     ) {
         Text(
             text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
             color = when {
                 outlined && enabled -> c.accentText
                 outlined -> c.textSecondary
