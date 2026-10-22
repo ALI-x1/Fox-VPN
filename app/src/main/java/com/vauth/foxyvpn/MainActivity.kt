@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.notice.NoticeHost
 import com.vauth.foxyvpn.ui.navigation.FoxyNavGraph
 import com.vauth.foxyvpn.ui.theme.FoxyVpnTheme
 import com.vauth.foxyvpn.ui.theme.AppIconManager
@@ -125,6 +126,7 @@ class MainActivity : ComponentActivity() {
                             intent?.removeExtra(EXTRA_OPEN_SERVERS)
                         },
                     )
+                    NoticeHost()
                 }
             }
         }
