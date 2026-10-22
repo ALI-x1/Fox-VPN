@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -298,5 +300,44 @@ private fun PaletteCard(
             style = MaterialTheme.typography.bodyMedium,
             color = sub,
         )
+    }
+}
+
+
+/**
+ * انتخاب سریع رنگ تم (برای صفحه‌ی راه‌اندازی اولیه): ردیف دایره‌های رنگی قابل اسکرول
+ * (اول تم‌های لایت/دارک‌دار، بعد تم‌های تک‌حالته) و زیرش نام و توضیح تم انتخاب‌شده.
+ */
+@Composable
+fun ThemeSwatchRow(
+    themeController: ThemeController,
+    modifier: Modifier = Modifier,
+) {
+    val c = LocalFoxExtras.current
+    val selected = themeController.palette
+    val all = ThemePalette.values().filter { it.supportsLightDark } + ThemePalette.values().filter { !it.supportsLightDark }
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            all.forEach { p ->
+                val sel = p == selected
+                Box(
+                    modifier = Modifier
+                        .size(if (sel) 54.dp else 46.dp)
+                        .clip(CircleShape)
+                        .background(p.swatch)
+                        .border(if (sel) 3.dp else 1.dp, if (sel) c.textPrimary else c.cardBorder, CircleShape)
+                        .clickable { themeController.setPalette(p) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (sel) Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(selected.displayTitle(), color = c.textPrimary, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+        Text(selected.displaySubtitle(), color = c.textSecondary, style = MaterialTheme.typography.bodyMedium)
     }
 }
