@@ -2,210 +2,325 @@ package com.vauth.foxyvpn.ui.screens
 
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
-import android.os.Build
-import android.os.SystemClock
-import android.view.HapticFeedbackConstants
+import android.content.Context
+import android.widget.Toast
+import java.text.Collator
+import java.util.Locale
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import com.vauth.foxyvpn.ui.theme.ThemeMode
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.StartOffset
-import androidx.compose.animation.core.StartOffsetType
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vauth.foxyvpn.FoxyVpnApp
-import com.vauth.foxyvpn.R
-import com.vauth.foxyvpn.data.FxaAuthRepository
-import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
-import com.vauth.foxyvpn.data.GuardianClient
-import com.vauth.foxyvpn.data.LicenseBlock
-import com.vauth.foxyvpn.data.LicenseState
-import com.vauth.foxyvpn.data.RedeemClient
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.ui.draw.scale
-import android.content.Context
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.AcUnit
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.ui.platform.LocalUriHandler
-import com.vauth.foxyvpn.notice.NoticeClient
-import com.vauth.foxyvpn.notice.NoticeResult
-import com.vauth.foxyvpn.data.TrafficMonitor
-import com.vauth.foxyvpn.data.TrafficState
-import com.vauth.foxyvpn.data.formatBytes
-import com.vauth.foxyvpn.data.formatBytesPerSecond
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import com.vauth.foxyvpn.data.CityNames
+import com.vauth.foxyvpn.data.CountryUtil
+import com.vauth.foxyvpn.data.ProxyStateStore
+import com.vauth.foxyvpn.i18n.Lang
+import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
+import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.model.ConnectionState
-import com.vauth.foxyvpn.data.model.Entitlement
+import com.vauth.foxyvpn.data.model.VpnCity
+import com.vauth.foxyvpn.data.model.VpnCountry
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
-import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
-import com.vauth.foxyvpn.ui.theme.ThemeController
-import com.vauth.foxyvpn.vpn.ExitCheck
 import com.vauth.foxyvpn.vpn.FoxyVpnService
-import com.vauth.foxyvpn.vpn.IpInfo
 import com.vauth.foxyvpn.vpn.PingUtil
-import com.vauth.foxyvpn.widget.WidgetQuotaCache
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import java.util.Locale
-import kotlin.math.roundToInt
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
-// ───────────────────────── تایمر اتصال ─────────────────────────
+// ───────────────────────── مدل ردیف‌ها ─────────────────────────
 
-/** زمان شروع اتصال؛ در سطح process نگه داشته می‌شه تا با رفتن به تنظیمات و برگشتن، تایمر صفر نشه. */
-/** انیمیشن ورود فقط یک‌بار در هر اجرای برنامه پخش می‌شه (نه هر بار که از تنظیمات برمی‌گردی). */
-private object EntryGate {
-    var played = false
+private data class CityEntry(val country: VpnCountry, val city: VpnCity) {
+    val key: String get() = "${country.code}:${city.code}"
 }
 
-@Composable
-private fun rememberEntrance(entered: Boolean, index: Int): State<Float> = animateFloatAsState(
-    targetValue = if (entered) 1f else 0f,
-    animationSpec = tween(durationMillis = 380, delayMillis = 60 + index * 70, easing = FastOutSlowInEasing),
-    label = "entrance-$index",
+private data class PingTarget(val key: String, val host: String, val port: Int)
+
+private enum class PingState { PENDING, DONE, FAILED }
+
+/** ترتیب نمایش لیست؛ انتخاب کاربر ذخیره می‌شه. */
+private enum class SortMode(val label: String) {
+    PING("Fastest ping"),
+    COUNTRY("Country (A\u2013Z)"),
+    CITY("City (A\u2013Z)"),
+}
+
+/** نشان وضعیت روی کارتِ لوکیشن فعلی. */
+private enum class CardStatus { CONNECTED, CONNECTING, SELECTED }
+
+/**
+ * ذخیره‌ی تنظیمات این صفحه تو SharedPreferences: علاقه‌مندی‌ها، اخیراً استفاده‌شده‌ها و ترتیب لیست.
+ * کلید هر لوکیشن: "کشور:شهر".
+ */
+private object ServerListPrefs {
+    private const val PREFS = "fox_favorite_locations"
+    private const val KEY_FAVORITES = "locations"
+    private const val KEY_RECENTS = "recent_locations"
+    private const val KEY_SORT = "sort_mode"
+    private const val MAX_RECENTS = 3
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun loadFavorites(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_FAVORITES, emptySet())?.toSet() ?: emptySet()
+
+    fun saveFavorites(context: Context, keys: Set<String>) {
+        prefs(context).edit().putStringSet(KEY_FAVORITES, HashSet(keys)).apply()
+    }
+
+    fun loadRecents(context: Context): List<String> =
+        prefs(context).getString(KEY_RECENTS, "")
+            ?.split("|")?.filter { it.isNotBlank() }
+            ?: emptyList()
+
+    /** لوکیشن رو میاره اول لیست اخیراً‌ها (بدون تکرار) و لیست جدید رو برمی‌گردونه. */
+    fun pushRecent(context: Context, key: String): List<String> {
+        val updated = (listOf(key) + loadRecents(context).filter { it != key }).take(MAX_RECENTS)
+        prefs(context).edit().putString(KEY_RECENTS, updated.joinToString("|")).apply()
+        return updated
+    }
+
+    fun loadSort(context: Context): SortMode =
+        SortMode.entries.firstOrNull { it.name == prefs(context).getString(KEY_SORT, null) } ?: SortMode.PING
+
+    fun saveSort(context: Context, mode: SortMode) {
+        prefs(context).edit().putString(KEY_SORT, mode.name).apply()
+    }
+}
+
+/** هر چند ms بعد از پایان یک دور، دور بعدیِ پینگ شروع بشه. */
+private const val LIVE_INTERVAL_MS = 4_000L
+
+/** حداکثر پینگ هم‌زمان؛ که هم سریع باشه هم شبکه خفه نشه. */
+private const val PING_PARALLELISM = 6
+
+/** نمونه‌ی پینگ برای هر سرور تو لیست؛ کم‌تر از هوم‌اسکرین تا دور زنده سریع بمونه. */
+private const val LIST_PING_SAMPLES = 2
+
+/** برای هر لوکیشن در هر دور حداکثر چند سرور سنجیده بشن (بقیه به‌صورت چرخشی تو دورهای بعد). */
+private const val MAX_SERVERS_PER_CITY = 3
+
+/** عدد نمایش‌داده‌شده = بهترین پینگ این تعداد دورِ اخیر (~۱۵ تا ۲۰ ثانیه)؛ جهش‌های لحظه‌ای عدد رو خراب نمی‌کنن. */
+private const val PING_HISTORY_ROUNDS = 4
+
+/** سرورهای دور فعلی برای یک لوکیشن؛ اگه سرورها بیشتر از سقف باشن، هر دور یه پنجره‌ی بعدی میاد. */
+private fun pickRound(list: List<PingTarget>, round: Int): List<PingTarget> {
+    if (list.size <= MAX_SERVERS_PER_CITY) return list
+    val start = (round * MAX_SERVERS_PER_CITY) % list.size
+    return List(MAX_SERVERS_PER_CITY) { list[(start + it) % list.size] }
+}
+
+/** انتخاب سریع‌ترین سرور: حداکثر زمان انتظار، تعداد کاندیدای هم‌زمان و حداکثر کاندیدای سنجش‌شده. */
+private const val PICK_TIMEOUT_MS = 2_500L
+private const val PICK_PARALLELISM = 12
+private const val MAX_PICK_CANDIDATES = 24
+
+/**
+ * از بین سرورهای یک لوکیشن، سریع‌ترین (کم‌ترین پینگ TCP مستقیم) رو برمی‌گردونه.
+ * اگه هیچ‌کدوم تا مهلت جواب ندادن، یکی تصادفی (مثل رفتار قبلی). [target] میزبان و پورت هر کاندیدا رو می‌ده.
+ */
+private suspend fun <T> pickFastest(candidates: List<T>, target: (T) -> Pair<String, Int>): T? {
+    if (candidates.isEmpty()) return null
+    if (candidates.size == 1) return candidates.first()
+    val pool = if (candidates.size > MAX_PICK_CANDIDATES) {
+        candidates.shuffled().take(MAX_PICK_CANDIDATES)
+    } else {
+        candidates
+    }
+    val results = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    withTimeoutOrNull(PICK_TIMEOUT_MS) {
+        val semaphore = Semaphore(PICK_PARALLELISM)
+        coroutineScope {
+            pool.forEachIndexed { index, candidate ->
+                launch {
+                    semaphore.withPermit {
+                        val (host, port) = target(candidate)
+                        PingUtil.measureTcpLatencyMs(host, port, samples = 1)?.let { results[index] = it }
+                    }
+                }
+            }
+        }
+    }
+    val best = results.entries.minByOrNull { it.value }?.key
+    return if (best != null) pool[best] else pool.random()
+}
+
+/** اسم فارسی کشورهایی که تو CountryUtil نیستن (مثلاً سوئد). */
+private val EXTRA_COUNTRY_FA = mapOf(
+    "SE" to "\u0633\u0648\u0626\u062F",
 )
 
-/** محو شدن + کمی بالا اومدن؛ فقط در فاز draw خونده می‌شه، پس recompose نداره. */
-private fun Modifier.entrance(progress: State<Float>): Modifier = graphicsLayer {
-    val p = progress.value
-    alpha = p
-    translationY = (1f - p) * 20.dp.toPx()
+/** اسم کشور به زبان برنامه (فارسی → «فرانسه»)؛ اگه نبود همون اسم انگلیسی. */
+private fun localCountryName(code: String, fallback: String): String =
+    if (Lang.isFa) {
+        CountryUtil.countryName(code)
+            ?: EXTRA_COUNTRY_FA[code.trim().uppercase(Locale.ROOT)]
+            ?: fallback
+    } else {
+        fallback
+    }
+
+/** اسمِ شهرِ نمایشی یک لوکیشن (همونی که زیر اسم کشور دیده می‌شه). */
+private fun cityDisplayName(entry: CityEntry): String =
+    CityNames.display(entry.country.code, entry.country.name, entry.city.name)
+        .ifBlank { entry.city.name.ifBlank { entry.city.code } }
+
+/** مقایسه‌ی الفبایی مطابق زبان برنامه؛ فارسی با Collator درست مرتب می‌شه (پ، چ، ژ، گ سر جاشون). */
+private fun appCollator(): Collator =
+    Collator.getInstance(if (Lang.isFa) Locale("fa") else Locale.ENGLISH)
+
+/** جستجو روی اسم کشور، اسم/کد شهر و کد کشور. */
+private fun CityEntry.matches(query: String): Boolean =
+    country.name.contains(query, ignoreCase = true) ||
+        localCountryName(country.code, country.name).contains(query, ignoreCase = true) ||
+        city.name.contains(query, ignoreCase = true) ||
+        CityNames.display(country.code, country.name, city.name).contains(query, ignoreCase = true) ||
+        city.code.contains(query, ignoreCase = true) ||
+        country.code.equals(query, ignoreCase = true)
+
+/** یک بخش لیست (هدر + ردیف‌ها)؛ اگه ردیفی نباشه چیزی اضافه نمی‌کنه. */
+private fun LazyListScope.citySection(
+    id: String,
+    title: String,
+    icon: ImageVector?,
+    iconTint: Color,
+    c: FoxExtras,
+    entries: List<CityEntry>,
+    renderCity: @Composable (CityEntry, Modifier) -> Unit,
+    showHeader: Boolean = true,
+) {
+    if (entries.isEmpty()) return
+    if (showHeader) {
+        item(key = "header:$id") {
+            SectionHeader(
+                modifier = Modifier.animateItem(),
+                c = c,
+                title = title,
+                count = entries.size,
+                icon = icon,
+                iconTint = iconTint,
+            )
+        }
+    }
+    items(entries, key = { "city:${it.key}" }) { entry ->
+        renderCity(entry, Modifier.animateItem())
+    }
 }
 
-/** تایمر جدا از HomeScreen: با هر ثانیه فقط همین متن recompose می‌شه، نه کل صفحه. */
-@Composable
-private fun TimerText(elapsed: () -> Long, color: Color) {
-    Text(
-        text = formatElapsed(elapsed()),
-        fontSize = 40.sp,
-        fontWeight = FontWeight.ExtraBold,
-        color = color
-    )
-}
+// ───────────────────────── رنگ‌ها ─────────────────────────
+// رنگ‌های کارت/متن/اکسنت از تم برنامه (LocalFoxExtras) می‌آن؛ فقط رنگ‌های «کیفیت پینگ» ثابتن.
 
-/** سرعت با حرکت نرم بین مقدارها (به‌جای پرش هر ثانیه) و ارقام هم‌عرض تا عرض عدد نپره. */
-@Composable
-private fun SmoothSpeedText(speedBytes: Long, color: Color) {
-    val animated by animateFloatAsState(
-        targetValue = speedBytes.toFloat(),
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-        label = "speed-number",
-    )
-    Text(
-        text = formatBytesPerSecond(animated.toLong()),
-        style = TextStyle(fontFeatureSettings = "tnum"),
-        fontSize = 19.sp,
-        fontWeight = FontWeight.ExtraBold,
-        color = color,
-        maxLines = 1
-    )
-}
+private val PingGood = Color(0xFF22B573)
+private val PingMedium = Color(0xFFF2A81D)
+private val PingBad = Color(0xFFEF5350)
 
-private object SessionClock {
-    var startedAt: Long = 0L
-}
+/** رنگ ستاره‌ی علاقه‌مندی؛ طلایی که با نارنجی پروژه هماهنگه. */
+private val StarGold = Color(0xFFFFB400)
 
-/** کد دو حرفی کشور (مثل "DE") → ایموجی پرچم. برای کد نامعتبر null برمی‌گردونه. */
+// ───────────────────────── کمکی‌ها ─────────────────────────
+
+/** کد دو حرفی کشور (مثل "us") رو به ایموجی پرچم تبدیل می‌کنه؛ اگه معتبر نبود null. */
 private fun flagEmoji(code: String): String? {
     val cc = code.trim().uppercase().let { if (it == "UK") "GB" else it }
     if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
@@ -214,85 +329,88 @@ private fun flagEmoji(code: String): String? {
         String(Character.toChars(base + (cc[1] - 'A')))
 }
 
-/** اسم کامل کشور به انگلیسی (DE → Germany)؛ اگه کد معتبر نبود null. */
-private fun countryDisplayName(code: String): String? {
-    val cc = code.trim().uppercase()
-    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
-    val name = Locale("", cc).getDisplayCountry(com.vauth.foxyvpn.i18n.Lang.locale)
-    return name.takeIf { it.isNotBlank() && !it.equals(cc, ignoreCase = true) }
+/** آی‌دی drawable پرچم (flag_us, flag_de, ...) یا 0 اگه تصویرش تو پروژه نباشه. */
+private fun flagResId(context: Context, code: String): Int {
+    val cc = code.trim().lowercase().let { if (it == "uk") "gb" else it }
+    if (cc.length != 2) return 0
+    return context.resources.getIdentifier("flag_$cc", "drawable", context.packageName)
 }
 
-private fun formatElapsed(totalSeconds: Long): String {
-    val h = totalSeconds / 3600
-    val m = (totalSeconds % 3600) / 60
-    val sec = totalSeconds % 60
-    return String.format(Locale.US, "%02d:%02d:%02d", h, m, sec)
+private fun pingColor(ms: Int): Color = when {
+    ms < PingUtil.GOOD_MS -> PingGood
+    ms < PingUtil.FAIR_MS -> PingMedium
+    else -> PingBad
 }
 
-// ───────────────────────── دیتای باقی‌مانده ─────────────────────────
+private fun pingLevel(ms: Int): Int = PingUtil.level(ms)
 
-/** اگه کل حجم به‌جای 50 مثلاً 46.6 نشون داده شد، این رو بکن 1_000_000_000.0 */
-private const val BYTES_PER_GB = 1_073_741_824.0
-
-// ───────────────────────── پینگ و چک آی‌پی ─────────────────────────
-// همان سنجش TCP صفحه‌ی انتخاب سرور، بعد از اتصال روی سرور انتخاب‌شده اجرا می‌شود.
-
-private const val PING_REFRESH_MS = 5_000L
-
-/** برای اینکه وصل شدن خودکار فقط یک بار در هر اجرای برنامه انجام بشه. */
-private object AutoConnectGate {
-    @Volatile var consumed = false
+/** بخش‌های لیست (کلاس معمولی، نه data class؛ تا مقایسه‌ی عمیق لیست‌ها انجام نشه). */
+private class ListSections(
+    val searching: Boolean,
+    val query: String,
+    val visible: List<CityEntry>,
+    val current: List<CityEntry>,
+    val favorites: List<CityEntry>,
+    val recent: List<CityEntry>,
+    val others: List<CityEntry>,
+) {
+    val hasSections: Boolean get() = current.isNotEmpty() || favorites.isNotEmpty() || recent.isNotEmpty()
 }
 
-// همان رنگ‌های کیفیت پینگِ لیست سرورها: زیر ۳۰۰ سبز، زیر ۵۰۰ نارنجی، بالاتر قرمز
-private val PingGood = Color(0xFF22B573)
-private val PingMedium = Color(0xFFF2A81D)
-private val PingBad = Color(0xFFEF5350)
-// در حال اتصال: نارنجی، هم‌رنگ نقطه‌ی وضعیت
-private val PingConnecting = Color(0xFFFF9F1C)
-private const val EXIT_CHECK_ATTEMPTS = 3
-private const val EXIT_CHECK_RETRY_MS = 2_000L
-
-// ───────────────────────── کارت (رنگ‌ها از تم فعال) ─────────────────────────
-
-private fun Modifier.foxCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
-    val shape: Shape = RoundedCornerShape(radius)
-    return this
-        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
-        .clip(shape)
-        .background(color)
-        .border(1.dp, c.cardBorder, shape)
+/** هر لوکیشن فقط یک جا میاد: Current > Favorites > Recent > All. */
+private fun buildSections(
+    sorted: List<CityEntry>,
+    rawQuery: String,
+    favorites: Set<String>,
+    recents: List<String>,
+    currentEntry: CityEntry?,
+): ListSections {
+    val query = rawQuery.trim()
+    val searching = query.isNotEmpty()
+    val visible = if (searching) sorted.filter { it.matches(query) } else sorted
+    val current = if (!searching && currentEntry != null) listOf(currentEntry) else emptyList()
+    val currentKey = current.firstOrNull()?.key
+    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key != currentKey }
+    val byKey = if (searching) emptyMap() else visible.associateBy { it.key }
+    val recent = if (searching) {
+        emptyList()
+    } else {
+        recents.mapNotNull { byKey[it] }.filter { it.key !in favorites && it.key != currentKey }
+    }
+    val pinned = HashSet<String>().apply {
+        currentKey?.let { add(it) }
+        favs.forEach { add(it.key) }
+        recent.forEach { add(it.key) }
+    }
+    val others = if (searching) visible else visible.filter { it.key !in pinned }
+    return ListSections(searching, query, visible, current, favs, recent, others)
 }
 
-// ───────────────────────── صفحه اصلی ─────────────────────────
+// ───────────────────────── صفحه ─────────────────────────
 
 @Composable
-fun HomeScreen(
-    app: FoxyVpnApp,
-    themeController: ThemeController,
-    onRequestConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onOpenServers: () -> Unit,
-    onOpenSettings: () -> Unit,
-    authRepository: FxaAuthRepository? = null,
-    onOpenPlans: () -> Unit = {},
-    onOpenAccount: () -> Unit = {},
-    onOpenSupport: () -> Unit = {},
+fun ServerListScreen(
+    serverListClient: ServerListClient,
+    proxyStateStore: ProxyStateStore,
+    onServerSelected: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    val state by FoxyVpnService.state.collectAsState()
-    val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
-    val lastError by FoxyVpnService.lastError.collectAsState()
+    var countries by remember { mutableStateOf<List<VpnCountry>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // وضعیت کد (Redeem): مصرف، سقف روزانه، اعتبار؛ ادمین (ورود با ایمیل) محدودیتی نداره
-    val redeemClient = remember { RedeemClient(app) }
-    val isAdmin = remember { redeemClient.adminMode }
-    LaunchedEffect(Unit) { LicenseState.load(app) }
-    val license by LicenseState.status.collectAsState()
-    val useLicense = !isAdmin && license != null
-    val block = if (isAdmin) null else LicenseState.blockOf(license)
+    val selectedState by proxyStateStore.selectedProxyFlow.collectAsState()
+    val vpnState by FoxyVpnService.state.collectAsState()
 
-    // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) حلقه‌های تکراری زیر متوقف می‌شن تا باتری هدر نره.
-    val lifecycleOwner = LocalContext.current.findActivity() as? LifecycleOwner
+    // پینگ از شبکه‌ی مستقیم گوشی (نه تونل VPN) گرفته بشه
+    val context = LocalContext.current
+    // یک بار (نه با هر recompose)
+    remember { PingUtil.init(context) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) پینگ‌های زنده متوقف می‌شن تا باتری و دیتا هدر نره
+    val lifecycleOwner = LocalContext.current as? LifecycleOwner
     var isForeground by remember { mutableStateOf(true) }
     DisposableEffect(lifecycleOwner) {
         val lifecycle = lifecycleOwner?.lifecycle
@@ -311,606 +429,486 @@ fun HomeScreen(
             onDispose { lifecycle.removeObserver(observer) }
         }
     }
+    val listState = rememberLazyListState()
 
-    // وضعیت کد رو هر یک دقیقه از سرور می‌گیره (وقتی وصله، خود UsageReporter این کار رو می‌کنه)
-    LaunchedEffect(isForeground, state, isAdmin) {
-        if (isAdmin || !isForeground || redeemClient.activeCode == null) return@LaunchedEffect
-        while (true) {
-            if (state != ConnectionState.CONNECTED) redeemClient.reportUsage(0)
-            delay(60_000)
+    // علاقه‌مندی‌ها (ستاره)، اخیراً استفاده‌شده‌ها، ترتیب لیست و متن جستجو
+    var favorites by remember { mutableStateOf<Set<String>>(ServerListPrefs.loadFavorites(context)) }
+    var recents by remember { mutableStateOf(ServerListPrefs.loadRecents(context)) }
+    var sortMode by remember { mutableStateOf(ServerListPrefs.loadSort(context)) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // true وقتی داریم سریع‌ترین سرورِ لوکیشن انتخاب‌شده رو پیدا می‌کنیم (لمس‌ها قفل می‌شن)
+    var isPicking by remember { mutableStateOf(false) }
+
+    // پینگِ هموارشده‌ی هر لوکیشن (کلید: "کشور:شهر") و وضعیتش
+    val pingResults = remember { mutableStateMapOf<String, Int>() }
+    val pingStates = remember { mutableStateMapOf<String, PingState>() }
+    // تعداد شکست‌های پشت‌سرهم؛ یه timeout تصادفی نباید سرور خوب رو بندازه ته لیست
+    val failCounts = remember { HashMap<String, Int>() }
+
+    // حالت زنده: وقتی روشنه، پینگ‌ها مدام دوباره گرفته می‌شن و لیست جابه‌جا می‌شه
+    var isLive by remember { mutableStateOf(true) }
+
+    // با هر بار زدن دکمه‌ی رفرش یکی زیاد می‌شه و یه دور پینگ فوری شروع می‌شه
+    var refreshTick by remember { mutableIntStateOf(0) }
+    val refreshRotation by animateFloatAsState(
+        targetValue = refreshTick * 360f,
+        animationSpec = tween(durationMillis = 600),
+        label = "refresh-rotation",
+    )
+
+    // با هر بار «تلاش مجدد» یکی زیاد می‌شه و لیست دوباره گرفته می‌شه
+    var loadTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(loadTick) {
+        isLoading = true
+        errorMessage = null
+        runCatching { serverListClient.fetchCountries() }
+            .onSuccess { countries = it }
+            .onFailure { errorMessage = it.message ?: tr("Failed to load server list") }
+        isLoading = false
+    }
+
+    // خطای انتخاب سرور (مثلاً «سروری در دسترس نیست») تا حالا وقتی لیست پر بود هیچ‌جا نشون داده نمی‌شد
+    LaunchedEffect(errorMessage, countries) {
+        val msg = errorMessage
+        if (msg != null && countries.isNotEmpty()) {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            errorMessage = null
         }
     }
 
-    // State رو به TrafficCard می‌دیم (نه مقدارش رو) تا هر ثانیه فقط همون باکس recompose بشه
-    val trafficState = TrafficMonitor.trafficState.collectAsState()
-    var ipAddress by remember { mutableStateOf("-") }
-    var countryCode by remember { mutableStateOf("") }
+    val recommended = remember(countries) { countries.firstOrNull { it.code == RECOMMENDED_COUNTRY_CODE } }
 
-    // وصل شدن خودکار (اگه تو تنظیمات روشن باشه): فقط یک بار در هر بار اجرای برنامه
-    LaunchedEffect(Unit) {
-        if (!AutoConnectGate.consumed) {
-            AutoConnectGate.consumed = true
-            if (app.settingsStore.autoConnect &&
-                app.proxyStateStore.load() != null &&
-                FoxyVpnService.state.value == ConnectionState.DISCONNECTED
-            ) {
-                onRequestConnect()
+    val cityEntries = remember(countries) {
+        countries
+            .filter { it.code != RECOMMENDED_COUNTRY_CODE }
+            .sortedBy { it.name }
+            .flatMap { country -> country.cities.map { CityEntry(country, it) } }
+    }
+
+    // برای هر لوکیشن «چند» سرور سنجیده می‌شه (نه فقط اولی)؛ عدد لوکیشن = بهترین سرورِ اون لوکیشن،
+    // دقیقاً همونی که موقع انتخاب هم (pickFastest) برای اتصال برداشته می‌شه.
+    val cityTargets = remember(cityEntries) {
+        cityEntries
+            .associate { entry ->
+                entry.key to entry.city.servers
+                    .filter { !it.quarantined }
+                    .mapNotNull { ServerListClient.defaultConnectTarget(it) }
+                    .distinct()
+                    .map { PingTarget(entry.key, it.first, it.second) }
             }
-        }
+            .filterValues { it.isNotEmpty() }
     }
 
-    // مانیتور ترافیک فقط به وضعیت اتصال وابسته‌ست (نه به عوض شدن سرور)
-    LaunchedEffect(state, isForeground) {
-        if (state == ConnectionState.CONNECTED && isForeground) {
-            TrafficMonitor.start()
-        } else {
-            TrafficMonitor.stop()
-        }
-    }
+    // ───── حلقه‌ی زنده‌ی پینگ برای «همه‌ی» لوکیشن‌ها (نه فقط ردیف‌های دیده‌شده) ─────
+    // نتیجه‌ها اول تو نقشه‌های محلی جمع می‌شن و دسته‌ای (حداکثر هر ~۰٫۵ ثانیه، در یک snapshot) تو state نوشته می‌شن؛
+    // قبلاً هر نتیجه جدا لیست رو دوباره مرتب می‌کرد. وسط اسکرول هم نوشته نمی‌شه تا لیست زیر انگشت جابه‌جا نشه.
+    LaunchedEffect(cityTargets, refreshTick) {
+        val localResults = HashMap<String, Int>(pingResults)
+        val localStates = HashMap<String, PingState>(pingStates)
+        val dirty = HashSet<String>()
+        var lastFlush = 0L
 
-    // آی‌پی و کشور خروجی: وقتی وصلیم از طریق SOCKS تونل، وگرنه مستقیم (آی‌پی واقعی خودمون).
-    //  - با هر تغییر وضعیت/سرور مقدار قبلی پاک می‌شه تا پرچم و آی‌پی سرور قبلی نمونه.
-    //  - اگه چک شکست خورد (مثلاً تونل هنوز آماده نیست) چند بار با فاصله دوباره امتحان می‌شه.
-    //  - تو حالت CONNECTING چک نمی‌کنیم؛ نتیجه‌اش بی‌معنیه.
-    val exitKey = if (state == ConnectionState.CONNECTED) "${selectedProxy?.host}:${selectedProxy?.port}" else ""
-    LaunchedEffect(state, exitKey) {
-        ipAddress = "-"
-        countryCode = ""
-        if (state == ConnectionState.CONNECTING) return@LaunchedEffect
-
-        val proxyPort = if (state == ConnectionState.CONNECTED) 1080 else null
-        repeat(EXIT_CHECK_ATTEMPTS) { attempt ->
-            val result: Result<IpInfo> = try {
-                ExitCheck().verifyExitCountry(socksPort = proxyPort)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-            val info = result.getOrNull()
-            if (info != null) {
-                ipAddress = info.ip.ifBlank { "-" }
-                countryCode = info.countryCode
-                return@LaunchedEffect
-            }
-            if (attempt < EXIT_CHECK_ATTEMPTS - 1) delay(EXIT_CHECK_RETRY_MS)
-        }
-    }
-
-    var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(state, isForeground) {
-        if (state == ConnectionState.CONNECTED) {
-            if (SessionClock.startedAt == 0L) SessionClock.startedAt = SystemClock.elapsedRealtime()
-            if (isForeground) {
-                while (true) {
-                    elapsedSeconds = (SystemClock.elapsedRealtime() - SessionClock.startedAt) / 1000
-                    delay(1000)
+        fun flush() {
+            if (dirty.isEmpty()) return
+            Snapshot.withMutableSnapshot {
+                for (k in dirty) {
+                    val r = localResults[k]
+                    if (r != null) pingResults[k] = r else pingResults.remove(k)
+                    localStates[k]?.let { pingStates[k] = it }
                 }
             }
-        } else {
-            SessionClock.startedAt = 0L
-            elapsedSeconds = 0L
+            dirty.clear()
+            lastFlush = System.currentTimeMillis()
         }
-    }
 
-    // دیتای اکانت (همون منبع صفحه‌ی Account)؛ بعد از هر تغییر وضعیت اتصال و هر یک دقیقه رفرش می‌شه
-    var entitlement by remember { mutableStateOf<Entitlement?>(null) }
-    LaunchedEffect(authRepository, state, isForeground) {
-        if (authRepository == null || !isForeground || useLicense) return@LaunchedEffect
+        cityEntries.forEach {
+            if (it.key !in cityTargets) {
+                localStates[it.key] = PingState.FAILED
+                dirty += it.key
+            }
+        }
+        flush()
+
+        val semaphore = Semaphore(PING_PARALLELISM)
+        // بهترین پینگِ هر لوکیشن تو چند دور اخیر
+        val history = HashMap<String, ArrayDeque<Int>>()
+        var round = 0
         while (true) {
-            try {
-                val token = authRepository.currentAccessToken()
-                if (token != null) {
-                    entitlement = GuardianClient().fetchUserInfo(GUARDIAN_ENDPOINT_DEFAULT, token)
-                    // آخرین حجم باقی‌مانده برای ویجت بزرگ (بدون درخواست شبکه‌ی جدا)
-                    WidgetQuotaCache.save(app, entitlement)
+            // پاز: برنامه تو پس‌زمینه‌ست یا «Live» خاموشه
+            snapshotFlow { isLive && isForeground }.first { it }
+
+            // بهترین پینگ هر لوکیشن تو همین دور (همه‌ی کدها روی ترد اصلی اجرا می‌شن؛ نیازی به قفل نیست)
+            val roundBest = HashMap<String, Int>()
+            coroutineScope {
+                for ((key, list) in cityTargets) {
+                    for (t in pickRound(list, round)) {
+                        launch {
+                            semaphore.withPermit {
+                                val ms = PingUtil.measureTcpLatencyMs(t.host, t.port, samples = LIST_PING_SAMPLES)
+                                if (ms != null) {
+                                    val best = minOf(roundBest[key] ?: ms, ms)
+                                    roundBest[key] = best
+                                    val past = history[key]?.minOrNull()
+                                    localResults[key] = if (past == null) best else minOf(past, best)
+                                    localStates[key] = PingState.DONE
+                                    dirty += key
+                                    if (System.currentTimeMillis() - lastFlush >= 500L && !listState.isScrollInProgress) flush()
+                                }
+                            }
+                        }
+                    }
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // آخرین مقدار معتبر نگه داشته می‌شه
             }
-            delay(60_000)
-        }
-    }
-    val ent = entitlement
-    val lic = license
-    val dataUnlimited = if (useLicense) lic?.totalBytes == null else (ent != null && !ent.limitedBandwidth)
-    val dataTotalGb = if (useLicense) {
-        (lic?.totalBytes ?: 0L) / BYTES_PER_GB
-    } else {
-        ent?.maxBytes?.let { it.toDouble() / BYTES_PER_GB }?.takeIf { it > 0.0 } ?: 50.0
-    }
-    val dataRemainingGb = if (useLicense) {
-        lic?.let { l -> l.totalBytes?.let { (it - l.usedBytes).coerceAtLeast(0L) / BYTES_PER_GB } }
-    } else {
-        ent?.quotaRemaining?.let { it.toDouble() / BYTES_PER_GB }
-    }
-    // برچسب دکمه‌ی پلن: Free / Pro / Max (برای ادمین یا بدون کد: Plans)
-    val planLabel = if (isAdmin) tr("Plans")
-        else license?.plan?.takeIf { it.isNotBlank() && it != "custom" }?.replaceFirstChar { it.uppercase() } ?: tr("Plans")
-    val planName = if (useLicense) lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
-        ?.replaceFirstChar { it.uppercase() } else null
-    val dailyTotalGb = if (useLicense) (lic?.dailyBytes ?: 0L) / BYTES_PER_GB else 0.0
-    val dailyRemainingGb = if (useLicense) lic?.dailyBytes?.let { ((it - lic.dailyUsed).coerceAtLeast(0L)) / BYTES_PER_GB } else null
-    val daysLeftCard: Long? = if (useLicense) lic?.expiresAt?.let {
-        kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong().coerceAtLeast(0)
-    } else null
-    val licenseNote: String? = if (useLicense && lic != null) {
-        val parts = mutableListOf<String>()
-        lic.dailyBytes?.let {
-            parts += trf("Today %.1f / %.1f GB", lic.dailyUsed / BYTES_PER_GB, it / BYTES_PER_GB)
-        }
-        lic.expiresAt?.let {
-            val days = kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong().coerceAtLeast(0)
-            parts += if (days == 1L) tr("1 day left") else trf("%d days left", days)
-        }
-        parts.joinToString(" · ").ifBlank { null }
-    } else null
 
-    // ───── نوار وضعیت بالای صفحه: فقط وقتی چیزی برای گفتن هست ─────
-    val uriHandler = LocalUriHandler.current
-    var serverStatus by remember { mutableStateOf<NoticeResult?>(null) }
-    LaunchedEffect(isForeground) {
-        if (!isForeground) return@LaunchedEffect
-        while (true) {
-            serverStatus = NoticeClient.fetchStatus(app)
-            delay(300_000)
-        }
-    }
-    val bannerWarn = LocalFoxyStatusColors.current.connecting
-    val bannerAccent = LocalFoxExtras.current.accent
-    val bannerErr = MaterialTheme.colorScheme.error
-    val daysLeft = if (useLicense) license?.expiresAt?.let { kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong() } else null
-    val remainingPct = if (useLicense && !dataUnlimited && dataRemainingGb != null && dataTotalGb > 0.0) (dataRemainingGb / dataTotalGb * 100).toInt() else null
-    val blockMsg = block?.message ?: ""
-    val homeBanner: HomeBanner? = run {
-        val sb = serverStatus?.banner
-        when {
-            sb != null -> HomeBanner(
-                Icons.Filled.Build, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, bannerWarn, null,
-            )
-            block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
-            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
-            block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
-            block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
-            block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
-            daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
-            remainingPct != null && remainingPct <= 10 -> HomeBanner(Icons.Filled.DataUsage, trf("Only %d%% of your data is left.", remainingPct), bannerWarn) { onOpenPlans() }
-            serverStatus?.update != null -> serverStatus?.update?.let { u ->
-                HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), bannerAccent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
+            // پایان دور: ثبت تو تاریخچه، یا حساب شکست‌ها
+            for (key in cityTargets.keys) {
+                val best = roundBest[key]
+                if (best != null) {
+                    failCounts[key] = 0
+                    val window = history.getOrPut(key) { ArrayDeque() }
+                    window.addLast(best)
+                    while (window.size > PING_HISTORY_ROUNDS) window.removeFirst()
+                } else {
+                    // یه دور بدون جواب نباید لوکیشن خوب رو بندازه ته لیست؛ دو دور پشت‌سرهم یعنی در دسترس نیست
+                    val fails = (failCounts[key] ?: 0) + 1
+                    failCounts[key] = fails
+                    if (localResults[key] == null || fails >= 2) {
+                        localResults.remove(key)
+                        localStates[key] = PingState.FAILED
+                        dirty += key
+                        history.remove(key)
+                    }
+                }
             }
-            else -> null
+            // اگه کاربر داره اسکرول می‌کنه صبر می‌کنیم تا ول کنه، بعد همه‌ی تغییرها یک‌جا اعمال می‌شن
+            snapshotFlow { listState.isScrollInProgress }.first { !it }
+            flush()
+
+            round++
+            delay(LIVE_INTERVAL_MS)
         }
     }
 
-    // پینگ فقط «بعد از اتصال» اندازه‌گیری می‌شه؛ قبل از اتصال (و تو حالت CONNECTING) null می‌مونه
-    // و قرص پینگ خاکستری و بدون عدد ("---") نشون داده می‌شه.
-    // سنجش TCP مستقیم به سرور انتخابی از شبکه‌ی واقعی گوشی انجام می‌شه (نه از دل تونل)؛ PingUtil.init لازمه.
-    var pingMs by remember { mutableStateOf<Int?>(null) }
-    // با ضربه روی قرص پینگ زیاد می‌شه تا سنجش فوراً از نو شروع بشه؛ pingBusy تا رسیدن جواب قرص رو کم‌رنگ نگه می‌داره
-    var pingRefreshTick by remember { mutableStateOf(0) }
-    var pingBusy by remember { mutableStateOf(false) }
-    LaunchedEffect(state, selectedProxy?.host, selectedProxy?.port, isForeground, pingRefreshTick) {
-        if (state != ConnectionState.CONNECTED) {
-            pingMs = null
-            pingBusy = false
-        }
-        if (state != ConnectionState.CONNECTED || !isForeground) return@LaunchedEffect
-        val proxy = selectedProxy ?: return@LaunchedEffect
-        var misses = 0
-        while (true) {
-            val ms = PingUtil.measureTcpLatencyMs(proxy.host, proxy.port, samples = 3)
-            pingBusy = false
-            if (ms != null) {
-                pingMs = ms
-                misses = 0
-            } else if (++misses >= 2) {
-                pingMs = null // دو بار پشت‌سرهم جواب نداد: واقعاً در دسترس نیست
+    // ترتیب لیست بر اساس انتخاب کاربر. حالت پینگ: اول کم‌ترین پینگ، بعد در حال سنجش، آخر timeout ها.
+    // با هر تغییر پینگ خودکار دوباره محاسبه می‌شه (و animateItem جابه‌جایی رو نرم نشون می‌ده)
+    val sortedCities by remember(cityEntries, sortMode, Lang.isFa) {
+        derivedStateOf {
+            when (sortMode) {
+                SortMode.PING -> cityEntries.sortedWith(
+                    compareBy<CityEntry>(
+                        {
+                            when {
+                                pingResults.containsKey(it.key) -> 0
+                                pingStates[it.key] == PingState.FAILED -> 2
+                                else -> 1
+                            }
+                        },
+                        { pingResults[it.key] ?: Int.MAX_VALUE },
+                        { it.country.name },
+                        { it.city.code },
+                    ),
+                )
+                SortMode.COUNTRY -> {
+                    val collator = appCollator()
+                    cityEntries.sortedWith(
+                        Comparator { a, b ->
+                            val byCountry = collator.compare(
+                                localCountryName(a.country.code, a.country.name),
+                                localCountryName(b.country.code, b.country.name),
+                            )
+                            if (byCountry != 0) byCountry else a.city.code.compareTo(b.city.code)
+                        },
+                    )
+                }
+                SortMode.CITY -> {
+                    // بر اساس اسم شهرِ سرور (زیر اسم کشور)؛ اگه دو شهر هم‌نام بودن، بر اساس کشور
+                    val collator = appCollator()
+                    cityEntries.sortedWith(
+                        Comparator { a, b ->
+                            val byCity = collator.compare(cityDisplayName(a), cityDisplayName(b))
+                            if (byCity != 0) {
+                                byCity
+                            } else {
+                                collator.compare(
+                                    localCountryName(a.country.code, a.country.name),
+                                    localCountryName(b.country.code, b.country.name),
+                                )
+                            }
+                        },
+                    )
+                }
             }
-            delay(PING_REFRESH_MS)
+        }
+    }
+
+    val locationCount = cityEntries.size
+
+    // سریع‌ترین = کم‌ترین پینگ بین همه‌ی لوکیشن‌ها (وقتی حداقل دو نتیجه داریم که مقایسه معنی داشته باشه)
+    val fastestKey by remember {
+        derivedStateOf {
+            if (pingResults.size >= 2) pingResults.minByOrNull { it.value }?.key else null
         }
     }
 
     val c = LocalFoxExtras.current
 
-    // کشوری که نمایش می‌دیم: وصل → کشور خروجی (تا چک تموم نشده کشور سرور انتخابی)،
-    // در حال اتصال → کشور سرور انتخابی، قطع → کشور واقعی خودمون (اگه چک نشد، ایران).
-    val shownCountry = when (state) {
-        ConnectionState.CONNECTED -> countryCode.ifBlank { selectedProxy?.countryCode.orEmpty() }
-        ConnectionState.CONNECTING -> selectedProxy?.countryCode.orEmpty()
-        ConnectionState.DISCONNECTED -> countryCode.ifBlank { "IR" }
-    }
-
-    val statusColors = LocalFoxyStatusColors.current
-    val ping = pingMs
-    // رنگ پینگ مثل لیست سرورها: سبز / زرد / قرمز بر اساس کیفیت؛ بدون عدد (قبل از اتصال) خاکستری
-    val pingLevel = ping?.let { PingUtil.level(it) } ?: 0
-    val pingColor = when (pingLevel) {
-        3 -> PingGood
-        2 -> PingMedium
-        1 -> PingBad
-        // قبل از اتصال خاکستری؛ وقتی در حال اتصال هست نارنجی
-        else -> if (state == ConnectionState.CONNECTING) PingConnecting else c.textSecondary
-    }
-    val view = LocalView.current
-
-    // لرزش ریز موقع وصل شدنِ موفق (فقط وقتی از «در حال اتصال» به «وصل» می‌ره، نه موقع باز شدن برنامه)
-    var previousState by remember { mutableStateOf(state) }
-    LaunchedEffect(state) {
-        if (previousState == ConnectionState.CONNECTING && state == ConnectionState.CONNECTED) hapticSuccess(view)
-        previousState = state
-    }
-    // دلیل خطا: با ✕ بسته می‌شه؛ خطای جدید (متن متفاوت) دوباره نشون داده می‌شه
-    var dismissedError by remember { mutableStateOf<String?>(null) }
-    val visibleError = lastError?.takeIf { it.isNotBlank() && it != dismissedError }
-    // لرزش خطا فقط برای خطای تازه؛ نه هر بار که صفحه از نو ساخته می‌شه و خطای قدیمی هنوز تو سرویس مونده
-    val initialError = remember { lastError }
-    LaunchedEffect(lastError) {
-        if (!lastError.isNullOrBlank() && lastError != initialError) hapticError(view)
-    }
-    // با شروع اتصال تازه، خطای قبلی (حتی با همون متن) دوباره می‌تونه نشون داده بشه
-    LaunchedEffect(state) {
-        if (state == ConnectionState.CONNECTING) dismissedError = null
-    }
-    val targetRingColor = when (state) {
-        ConnectionState.CONNECTED -> statusColors.connected
-        ConnectionState.CONNECTING -> statusColors.connecting
-        ConnectionState.DISCONNECTED -> if (block != null) MaterialTheme.colorScheme.error else c.accent
-    }
-    val ringColor by animateColorAsState(targetValue = targetRingColor, label = "connect-ring-color")
-    val scale by animateFloatAsState(
-        targetValue = if (state == ConnectionState.CONNECTED) 1f else 0.96f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "connect-scale",
-    )
-
-    val layoutDirection = LocalLayoutDirection.current
-
-    // ───── انیمیشن ورود (یک‌بار در هر اجرا) ─────
-    var entered by remember { mutableStateOf(EntryGate.played) }
-    LaunchedEffect(Unit) {
-        if (!EntryGate.played) {
-            EntryGate.played = true
-            entered = true
+    // ───── لوکیشنی که الان انتخاب/وصله ─────
+    val currentEntry = remember(cityEntries, selectedState) {
+        val sel = selectedState
+        if (sel == null) {
+            null
+        } else {
+            cityEntries.firstOrNull { it.country.code == sel.countryCode && it.city.code == sel.cityCode }
         }
     }
-    val entranceHeader = rememberEntrance(entered, 0)
-    val entranceMain = rememberEntrance(entered, 1)
-    val entranceData = rememberEntrance(entered, 3)
-    // دکمه‌ی اتصال: پرش فنری + حلقه‌ی یک‌باره
-    val buttonPop = animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessLow),
-        label = "button-pop",
-    )
-    val buttonBurst = animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(durationMillis = 900, delayMillis = 250, easing = LinearOutSlowInEasing),
-        label = "button-burst",
-    )
+    val currentEntryState = rememberUpdatedState(currentEntry)
+    // sortedCities با عوض شدن cityEntries / sortMode «State جدید» می‌سازه؛ اگه derivedStateOf پایین مستقیم
+    // اون رو بگیره، همیشه نسخه‌ی اول (لیست خالی قبل از لود) رو می‌خونه و هیچ لوکیشنی نشون داده نمی‌شه.
+    val sortedCitiesState = rememberUpdatedState(sortedCities)
+
+    // ───── بخش‌های لیست ─────
+    // فقط وقتی ترتیب، جستجو، علاقه‌مندی‌ها، اخیراً‌ها یا لوکیشن فعلی عوض بشن دوباره ساخته می‌شه
+    // (نه با هر recompose، و نه با هر نتیجه‌ی پینگ که ترتیب رو عوض نمی‌کنه)
+    val sections by remember {
+        derivedStateOf { buildSections(sortedCitiesState.value, searchQuery, favorites, recents, currentEntryState.value) }
+    }
+    val query = sections.query
+    val searching = sections.searching
+    val visibleCities = sections.visible
+    val currentCities = sections.current
+    val favoriteCities = sections.favorites
+    val recentCities = sections.recent
+    val otherCities = sections.others
+    val hasSections = sections.hasSections
+
+    // ───── اکشن‌ها ─────
+    val toggleFavorite: (String) -> Unit = { key ->
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        favorites = if (key in favorites) favorites - key else favorites + key
+        ServerListPrefs.saveFavorites(context, favorites)
+    }
+
+    // انتخاب لوکیشن: از بین سرورهاش سریع‌ترین انتخاب می‌شه (نه تصادفی)
+    val selectCity: (CityEntry) -> Unit = { entry ->
+        if (!isPicking) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            isPicking = true
+            scope.launch {
+                val candidates = ServerListClient.candidatesForCity(countries, entry.country.code, entry.city.code)
+                // میزبان/پورت هر کاندیدا؛ اگه اسم فیلدها تو مدل شما فرق داره فقط همین یک خط رو عوض کن
+                val chosen = pickFastest(candidates) { it.host to it.port }
+                isPicking = false
+                if (chosen != null) {
+                    recents = ServerListPrefs.pushRecent(context, entry.key)
+                    proxyStateStore.save(chosen)
+                    onServerSelected()
+                } else {
+                    errorMessage = trf("No available servers in %s", entry.city.code)
+                }
+            }
+        }
+    }
+
+    val selectRecommended: (VpnCountry) -> Unit = { rec ->
+        if (!isPicking) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            isPicking = true
+            scope.launch {
+                val candidates = ServerListClient.candidatesForCountry(countries, rec.code)
+                val chosen = pickFastest(candidates) { it.host to it.port }
+                isPicking = false
+                if (chosen != null) {
+                    proxyStateStore.save(chosen)
+                    onServerSelected()
+                } else {
+                    errorMessage = trf("No available servers for %s", rec.name)
+                }
+            }
+        }
+    }
+
+    val renderCity: @Composable (CityEntry, Modifier) -> Unit = { entry, itemModifier ->
+        val selected = selectedState
+        val isSelected = entry.country.code == selected?.countryCode &&
+            entry.city.code == selected?.cityCode
+        CityCard(
+            modifier = itemModifier,
+            c = c,
+            countryCode = entry.country.code,
+            countryName = localCountryName(entry.country.code, entry.country.name),
+            cityLabel = CityNames.display(entry.country.code, entry.country.name, entry.city.name),
+            pingMs = pingResults[entry.key],
+            pingState = pingStates[entry.key] ?: PingState.PENDING,
+            isFastest = entry.key == fastestKey,
+            isSelected = isSelected,
+            status = if (isSelected) {
+                when (vpnState) {
+                    ConnectionState.CONNECTED -> CardStatus.CONNECTED
+                    ConnectionState.CONNECTING -> CardStatus.CONNECTING
+                    else -> CardStatus.SELECTED
+                }
+            } else {
+                null
+            },
+            isFavorite = entry.key in favorites,
+            onClick = { selectCity(entry) },
+            onToggleFavorite = { toggleFavorite(entry.key) },
+        )
+    }
 
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
+                .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom))),
         ) {
-            // بدون اسکرول: بالا (هدر + کارت اصلی) ثابته، وسط فضای باقی‌مانده رو برای دکمه‌ی اتصال
-            // می‌گیره و کارت دیتا چسبیده به لبه‌ی پایین صفحه‌ست.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        start = padding.calculateStartPadding(layoutDirection),
-                        end = padding.calculateEndPadding(layoutDirection),
-                        top = padding.calculateTopPadding(),
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(padding),
             ) {
-                Column(
+                // ───── هدر: برگشت + عنوان + رفرش پینگ ─────
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // ───── هدر: لوگو + نام + تنظیمات ─────
-                    Row(
-                        modifier = Modifier.fillMaxWidth().entrance(entranceHeader),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(id = R.drawable.ic_fox_logo),
-                                contentDescription = null,
-                                modifier = Modifier.size(46.dp)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column {
+                    CircleIconButton(c = c, onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = tr("Back"),
+                            tint = c.textPrimary.copy(alpha = 0.8f),
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = tr("Choose location"),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = c.textPrimary,
+                        )
+                        if (locationCount > 0) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = buildAnnotatedString {
-                                        withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
-                                        withStyle(SpanStyle(color = c.accent)) { append("VPN") }
-                                    },
-                                    fontSize = 30.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                )
-                                Text(
-                                    text = tr("Secure & Private"),
+                                    text = trf("%d locations", locationCount),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = c.textSecondary,
-                                    letterSpacing = 1.sp
-                                )
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // کلید خورشید/ماه: فقط برای تم‌های لایت/دارک‌دار و وقتی از تنظیمات خاموشش نکرده باشن
-                            val systemDark = isSystemInDarkTheme()
-                            if (themeController.showHomeToggle && themeController.palette.supportsLightDark) {
-                                val isDarkNow = themeController.resolveDark(systemDark)
-                                ThemeToggleButton(
-                                    isDark = isDarkNow,
-                                    c = c,
-                                    onClick = {
-                                        themeController.set(if (isDarkNow) ThemeMode.LIGHT else ThemeMode.DARK)
-                                    },
                                 )
                                 Spacer(Modifier.width(10.dp))
-                            }
-                            HeartHeaderButton(c)
-                            Spacer(Modifier.width(10.dp))
-                            IconButton(
-                                onClick = onOpenSettings,
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(c.card)
-                                    .border(1.dp, c.cardBorder, CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Settings,
-                                    contentDescription = tr("Settings"),
-                                    tint = c.textPrimary.copy(alpha = 0.75f)
-                                )
+                                LiveChip(c = c, live = isLive, onClick = { isLive = !isLive })
                             }
                         }
                     }
-
-
-                    Spacer(Modifier.height(10.dp))
-
-                    AnimatedVisibility(
-                        visible = homeBanner != null,
-                        enter = fadeIn() + expandVertically(),
+                    Spacer(Modifier.width(12.dp))
+                    CircleIconButton(
+                        c = c,
+                        onClick = { refreshTick++ },
                     ) {
-                        homeBanner?.let { b ->
-                            Column {
-                                StatusBannerBar(b, c)
-                                Spacer(Modifier.height(10.dp))
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = tr("Refresh ping"),
+                            tint = c.accent,
+                            modifier = Modifier.rotate(refreshRotation),
+                        )
                     }
+                }
 
-                    // ───── کارت اصلی: وضعیت، تایمر، ترافیک، سرور ─────
-                    Column(
+                // ───── جستجو + ترتیب لیست ─────
+                if (locationCount > 0) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .entrance(entranceMain)
-                            .foxCard(c, 28.dp)
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                // قطع: خاکستری · در حال اتصال: نارنجی · وصل: سبز
-                                                when (state) {
-                                                    ConnectionState.DISCONNECTED -> c.textSecondary.copy(alpha = 0.45f)
-                                                    ConnectionState.CONNECTING -> Color(0xFFFF9F1C)
-                                                    ConnectionState.CONNECTED -> Color(0xFF2ECC71)
-                                                }
-                                            )
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Crossfade(targetState = state, animationSpec = tween(300), label = "status-label") { st ->
-                                        Text(
-                                            text = when (st) {
-                                                ConnectionState.CONNECTED -> tr("CONNECTED")
-                                                ConnectionState.CONNECTING -> tr("CONNECTING…")
-                                                ConnectionState.DISCONNECTED -> if (block != null) tr("LOCKED") else tr("READY TO CONNECT")
-                                            },
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Medium,
-                                            letterSpacing = 1.sp,
-                                            color = c.textSecondary
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                // تایمر بزرگ
-                                // وقتی وصل نیست کم‌رنگ می‌شه و موقع اتصال نرم پررنگ می‌شه
-                                val timerColor by animateColorAsState(
-                                    targetValue = if (state == ConnectionState.CONNECTED) c.textPrimary
-                                    else c.textPrimary.copy(alpha = 0.45f),
-                                    animationSpec = tween(450),
-                                    label = "timer-color",
-                                )
-                                TimerText(elapsed = { elapsedSeconds }, color = timerColor)
-                            }
+                        SearchField(
+                            c = c,
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        SortButton(
+                            c = c,
+                            mode = sortMode,
+                            onSelected = { mode ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                sortMode = mode
+                                ServerListPrefs.saveSort(context, mode)
+                            },
+                        )
+                    }
+                }
 
-                            // پینگ (بعد از اتصال اندازه‌گیری می‌شه؛ قبلش خاکستری "---")
-                            PingPill(
-                                pingMs = ping,
-                                color = pingColor,
-                                busy = pingBusy,
-                                // فقط وقتی وصله: لرزش ریز + سنجش دوباره‌ی پینگ
-                                onClick = if (state == ConnectionState.CONNECTED && !pingBusy) {
-                                    {
-                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                        pingBusy = true
-                                        pingRefreshTick++
-                                    }
-                                } else null,
+                Box(Modifier.fillMaxSize()) {
+                    when {
+                        isLoading -> CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = c.accent,
+                        )
+                        errorMessage != null && countries.isEmpty() -> Column(
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                errorMessage.orEmpty(),
+                                color = c.textSecondary,
                             )
-                        }
-
-                        // سرعت لحظه‌ای + مصرف کل (دانلود و آپلود کنار هم در یک باکس)
-                        TrafficCard(c = c, traffic = trafficState, connected = state == ConnectionState.CONNECTED)
-
-                        // سطر کشور / IP سرور + دکمه‌ی تغییر سرور
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .foxCard(c, 18.dp, color = c.innerCard.copy(alpha = 0.6f))
-                                .clickable(onClick = onOpenServers)
-                                .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val isIranShown = shownCountry.equals("IR", ignoreCase = true)
-                            val shownCountryName = remember(shownCountry) { countryDisplayName(shownCountry) }
-                            val locationTitle = when {
-                                isIranShown -> tr("Iran")
-                                shownCountryName != null -> shownCountryName
-                                state == ConnectionState.CONNECTING -> tr("Connecting…")
-                                else -> tr("Location")
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = { loadTick++ }) {
+                                Text(tr("Retry"), color = c.accent, fontWeight = FontWeight.SemiBold)
                             }
-                            Box(
-                                modifier = Modifier.size(width = 52.dp, height = 32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // با عوض شدن کشور، پرچم نرم جایگزین می‌شه (به‌جای پرش ناگهانی)
-                                Crossfade(targetState = shownCountry, animationSpec = tween(350), label = "flag") { code ->
-                                    val isIran = code.equals("IR", ignoreCase = true)
-                                    val emoji = flagEmoji(code)
-                                    when {
-                                        isIran -> Image(
-                                            painter = painterResource(id = R.drawable.ic_flag_lion_sun),
-                                            contentDescription = tr("Iran flag"),
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                        emoji != null -> Text(text = emoji, fontSize = 30.sp)
-                                        else -> Icon(
-                                            imageVector = Icons.Filled.Public,
-                                            contentDescription = tr("Server location"),
-                                            tint = if (state == ConnectionState.CONNECTED) c.accent else c.textSecondary,
-                                            modifier = Modifier.size(30.dp)
+                        }
+                        else -> LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (!searching) {
+                                recommended?.let { rec ->
+                                    item(key = "recommended:${rec.code}") {
+                                        RecommendedCard(
+                                            modifier = Modifier.animateItem(),
+                                            c = c,
+                                            isSelected = rec.code == selectedState?.countryCode,
+                                            onClick = { selectRecommended(rec) },
                                         )
                                     }
                                 }
                             }
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (state == ConnectionState.DISCONNECTED) tr("YOUR LOCATION") else tr("SERVER LOCATION"),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    color = c.textSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Crossfade(targetState = locationTitle, animationSpec = tween(350), label = "location-title") { title ->
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = c.textPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Crossfade(targetState = ipAddress, animationSpec = tween(350), label = "ip-address") { ip ->
-                                    Text(
-                                        text = trf("IP  %s", ip),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = c.textSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            ChangeServerButton(c = c, onClick = onOpenServers)
-                        }
-                    }
 
-                    // ───── دلیل خطا / هشدار اتصال (فقط وقتی هست) ─────
-                    AnimatedVisibility(
-                        visible = visibleError != null,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
-                    ) {
-                        // آخرین متن رو نگه می‌داریم تا موقع محو شدن، متن نپره
-                        var shown by remember { mutableStateOf("") }
-                        if (visibleError != null) shown = visibleError
-                        Column {
-                            Spacer(Modifier.height(10.dp))
-                            ErrorBanner(message = shown, onDismiss = { dismissedError = lastError })
-                        }
-                    }
-                }
-
-                // ───── دکمه بزرگ اتصال با هاله؛ اندازه‌اش با فضای خالی تنظیم می‌شه ─────
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val buttonArea = minOf(maxWidth, maxHeight, 270.dp)
-                    ConnectButton(
-                        size = buttonArea,
-                        ringColor = ringColor,
-                        scale = scale,
-                        connected = state != ConnectionState.DISCONNECTED,
-                        labelColor = if (state == ConnectionState.DISCONNECTED && block == null) c.accentText else ringColor,
-                        c = c,
-                        onClick = {
-                            hapticPress(view)
-                            if (state == ConnectionState.DISCONNECTED) {
-                                if (block != null) onOpenPlans() else onRequestConnect()
+                            if (searching) {
+                                if (visibleCities.isEmpty()) {
+                                    item(key = "empty-search") { NoResults(c = c, query = query) }
+                                }
+                                items(visibleCities, key = { "city:${it.key}" }) { entry ->
+                                    renderCity(entry, Modifier.animateItem())
+                                }
                             } else {
-                                onDisconnect()
+                                citySection("current", tr("Current location"), Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
+                                citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
+                                citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
+                                citySection(
+                                    id = "all",
+                                    title = tr("All locations"),
+                                    icon = null,
+                                    iconTint = c.accentText,
+                                    c = c,
+                                    entries = otherCities,
+                                    renderCity = renderCity,
+                                    showHeader = hasSections,
+                                )
                             }
-                        },
-                        connecting = state == ConnectionState.CONNECTING,
-                        animate = isForeground,
-                        entryPop = buttonPop,
-                        entryBurst = buttonBurst,
-                    )
+                            item { Spacer(Modifier.height(16.dp)) }
+                        }
+                    }
                 }
-
-                // ───── پنل پایین: Data remaining (چسبیده به لبه‌ی پایین) ─────
-                DataRemainingCard(
-                    remainingGb = dataRemainingGb,
-                    totalGb = dataTotalGb,
-                    unlimited = dataUnlimited,
-                    planLabel = planLabel,
-                    onPlanClick = onOpenPlans,
-                    onCardClick = onOpenAccount,
-                    dailyRemainingGb = dailyRemainingGb,
-                    dailyTotalGb = dailyTotalGb,
-                    daysLeft = daysLeftCard,
-                    note = if (useLicense) null else licenseNote,
-                    c = c,
-                    lowColor = statusColors.connecting,
-                    criticalColor = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth().entrance(entranceData),
-                    bottomInset = padding.calculateBottomPadding(),
-                )
             }
+
+            if (isPicking) PickingOverlay(c = c)
         }
     }
 }
@@ -918,743 +916,641 @@ fun HomeScreen(
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
 
 @Composable
-private fun ConnectButton(
-    size: Dp,
-    ringColor: Color,
-    scale: Float,
-    connected: Boolean,
-    labelColor: Color,
+private fun CircleIconButton(
     c: FoxExtras,
     onClick: () -> Unit,
-    connecting: Boolean = false,
-    animate: Boolean = true,
-    entryPop: State<Float>,
-    entryBurst: State<Float>,
+    content: @Composable () -> Unit,
 ) {
-    // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
-    val buttonSize = size * 0.824f * scale
-    val logoTint = c.accent
-    Box(
-        modifier = Modifier
-            .size(size)
-            .graphicsLayer {
-                // ورود فنری: از کوچیک و محو شروع می‌شه و کمی بزرگ‌تر از اندازه‌ی نهایی می‌پره و می‌شینه
-                val p = entryPop.value
-                val sc = 0.55f + 0.45f * p
-                scaleX = sc
-                scaleY = sc
-                alpha = (p * 2f).coerceIn(0f, 1f)
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        // حلقه‌های هاله بیرونی
-        Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        listOf(ringColor.copy(alpha = 0.14f), ringColor.copy(alpha = 0.03f))
-                    )
-                )
-                .border(1.dp, ringColor.copy(alpha = 0.12f), CircleShape)
-        )
-        Box(
-            modifier = Modifier
-                .size(size * 0.912f)
-                .clip(CircleShape)
-                .background(ringColor.copy(alpha = 0.07f))
-                .border(1.dp, ringColor.copy(alpha = 0.18f), CircleShape)
-        )
-
-        // انیمیشن‌های ریز: فقط وقتی لازمه و برنامه جلوی چشمه ساخته می‌شن (مصرف باتری ~صفر در حالت قطع)
-        if (animate && connecting) {
-            // در حال اتصال: ضربان تندتر و کوتاه‌تر (دوره‌ی ۱ ثانیه، دامنه‌ی کم)
-            PulseRing(
-                size = buttonSize,
-                maxScale = 1.12f * size.value / buttonSize.value,
-                color = ringColor,
-                period = 1000,
-                peakAlpha = 0.6f,
-            )
-        } else if (animate && connected) {
-            // وصل: ضربان نرم و آروم و پخش‌تر
-            PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
-        }
-
-        // حلقه‌ی ورود: فقط یک‌بار موقع باز شدن برنامه از لبه‌ی دکمه پخش می‌شه و محو می‌شه
-        Box(
-            modifier = Modifier
-                .size(buttonSize)
-                .graphicsLayer {
-                    val p = entryBurst.value
-                    if (p <= 0f || p >= 1f) {
-                        alpha = 0f
-                    } else {
-                        val sc = 1f + 0.9f * p
-                        scaleX = sc
-                        scaleY = sc
-                        alpha = (1f - p) * 0.55f
-                    }
-                }
-                .border(2.dp, ringColor, CircleShape)
-        )
-
-        // دکمه اصلی
-        Box(
-            modifier = Modifier
-                .size(buttonSize)
-                .shadow(28.dp, CircleShape, ambientColor = ringColor, spotColor = ringColor)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(listOf(c.buttonFillCenter, c.buttonFillEdge))
-                )
-                .border(
-                    width = 4.dp,
-                    brush = Brush.linearGradient(listOf(c.accentLight, ringColor)),
-                    shape = CircleShape
-                )
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_fox_mono),
-                    contentDescription = when {
-                        connecting -> tr("Connecting…")
-                        connected -> tr("Disconnect")
-                        else -> tr("Connect")
-                    },
-                    tint = logoTint,
-                    modifier = Modifier.size(size * 0.256f)
-                )
-                Spacer(Modifier.height(size * 0.056f))
-                Text(
-                    text = when {
-                        connecting -> tr("CONNECTING…")
-                        connected -> tr("DISCONNECT")
-                        else -> tr("CONNECT")
-                    },
-                    maxLines = 1,
-                    fontSize = (size.value * 0.072f).sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (size.value * 0.016f).sp,
-                    color = labelColor
-                )
-            }
-        }
-    }
-}
-
-/**
- * موج‌های ضربان: از لبه‌ی دکمه شروع می‌شن، از هاله‌ی بیرونی هم رد می‌شن و آروم محو می‌شن.
- * دو موج با فاصله‌ی نیم‌دوره پشت هم می‌آن تا پیوسته و پخش‌تر دیده بشه.
- */
-@Composable
-private fun PulseRing(size: Dp, maxScale: Float, color: Color, period: Int = 3200, peakAlpha: Float = 0.5f) {
-    val transition = rememberInfiniteTransition(label = "pulse-ring")
-    val first = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(period, easing = LinearOutSlowInEasing), RepeatMode.Restart),
-        label = "pulse-progress-1",
-    )
-    val second = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(period, easing = LinearOutSlowInEasing),
-            RepeatMode.Restart,
-            initialStartOffset = StartOffset(period / 2, StartOffsetType.FastForward),
-        ),
-        label = "pulse-progress-2",
-    )
-    listOf(first, second).forEach { p ->
-        Box(
-            modifier = Modifier
-                .size(size)
-                .graphicsLayer {
-                    val t = p.value
-                    val sc = 1f + (maxScale - 1f) * t
-                    scaleX = sc
-                    scaleY = sc
-                    alpha = peakAlpha * (1f - t) * (1f - t * 0.3f)
-                }
-                .border(2.dp, color, CircleShape),
-        )
-    }
-}
-
-/** کلید لایت/دارک: آیکن خورشید و ماه با چرخش و محو/بزرگ‌شدن عوض می‌شن. */
-@Composable
-private fun ThemeToggleButton(isDark: Boolean, c: FoxExtras, onClick: () -> Unit) {
-    val rotation by animateFloatAsState(
-        targetValue = if (isDark) 360f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "theme-toggle-rotation",
-    )
     IconButton(
         onClick = onClick,
         modifier = Modifier
             .size(46.dp)
             .clip(CircleShape)
             .background(c.card)
-            .border(1.dp, c.cardBorder, CircleShape)
-    ) {
-        AnimatedContent(
-            targetState = isDark,
-            transitionSpec = {
-                (fadeIn(tween(240, delayMillis = 90)) + scaleIn(tween(240, delayMillis = 90), initialScale = 0.3f)) togetherWith
-                    (fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.3f))
-            },
-            label = "theme-toggle-icon",
-        ) { dark ->
-            Icon(
-                imageVector = if (dark) Icons.Filled.DarkMode else Icons.Filled.LightMode,
-                contentDescription = if (dark) tr("Light") else tr("Dark"),
-                tint = c.accentText,
-                modifier = Modifier.graphicsLayer { rotationZ = rotation },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SpeedCard(
-    modifier: Modifier,
-    colors: FoxExtras,
-    label: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconColor: Color,
-) {
-    Row(
-        modifier = modifier
-            .foxCard(colors, 20.dp, color = colors.innerCard.copy(alpha = 0.6f))
-            .padding(horizontal = 12.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .border(2.dp, iconColor, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                letterSpacing = 1.sp,
-                color = colors.textSecondary
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-private fun IconBubble(icon: androidx.compose.ui.graphics.vector.ImageVector, c: FoxExtras) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(c.accent.copy(alpha = 0.10f))
             .border(1.dp, c.cardBorder, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = c.accent,
-            modifier = Modifier.size(22.dp)
-        )
-    }
+    ) { content() }
 }
 
-/** میله‌های سیگنال؛ level = تعداد میله‌های روشن (۰ تا ۳). */
+/** قالب مشترک کارت‌ها؛ همون استایل کارت‌های هوم‌اسکرین (گوشه گرد + سایه نارنجی ملایم). */
 @Composable
-private fun SignalBars(
-    color: Color,
-    level: Int = 3,
-    heights: List<Dp> = listOf(10.dp, 16.dp, 22.dp),
-    barWidth: Dp = 5.dp,
+private fun LocationCardShell(
+    modifier: Modifier = Modifier,
+    c: FoxExtras,
+    isSelected: Boolean,
+    highlight: Boolean = false,
+    onClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        heights.forEachIndexed { index, h ->
-            Box(
-                modifier = Modifier
-                    .size(width = barWidth, height = h)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(if (index < level) color else color.copy(alpha = 0.25f))
-            )
-        }
-    }
-}
-
-/** لرزش‌های ریز: فشردن دکمه / اتصال موفق / خطا. اگه کاربر لرزش لمسی سیستم رو خاموش کرده باشه، اتفاقی نمی‌افته. */
-private fun hapticPress(view: android.view.View) {
-    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-}
-
-private fun hapticSuccess(view: android.view.View) {
-    view.performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CLOCK_TICK,
-    )
-}
-
-private fun hapticError(view: android.view.View) {
-    view.performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS,
-    )
-}
-
-/** نوار دلیل خطا / هشدار اتصال زیر کارت اصلی؛ با ضربه روی ✕ بسته می‌شه. */
-@Composable
-private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    val tone = MaterialTheme.colorScheme.error
-    val shape = RoundedCornerShape(16.dp)
-    val c = LocalFoxExtras.current
+    val shape = RoundedCornerShape(22.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(tone.copy(alpha = 0.12f))
-            .border(1.dp, tone.copy(alpha = 0.35f), shape)
-            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.Warning, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodySmall,
-            color = c.textPrimary,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Filled.Close, contentDescription = tr("Dismiss"), tint = c.textSecondary, modifier = Modifier.size(18.dp))
-        }
-    }
-}
-
-/** قرص پینگ: عدد + میله‌های سیگنال؛ رنگ مثل لیست سرورها (سبز / نارنجی / قرمز). بدون عدد: خاکستری و "---". */
-@Composable
-private fun PingPill(
-    pingMs: Int?,
-    color: Color,
-    modifier: Modifier = Modifier,
-    busy: Boolean = false,
-    onClick: (() -> Unit)? = null,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val level = pingMs?.let { PingUtil.level(it) } ?: 0
-    val contentAlpha by animateFloatAsState(targetValue = if (busy) 0.5f else 1f, label = "ping-busy")
-    Row(
-        modifier = modifier
-            .widthIn(min = 104.dp)
-            .alpha(contentAlpha)
-            .clip(shape)
-            .background(color.copy(alpha = 0.13f))
-            .border(1.dp, color.copy(alpha = 0.35f), shape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SignalBars(color = color, level = level)
-        Spacer(Modifier.width(8.dp))
-        if (pingMs != null) {
-            Text(
-                text = pingMs.toString(),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = color,
-                maxLines = 1
+            .shadow(
+                6.dp,
+                shape,
+                ambientColor = c.accent.copy(alpha = 0.15f),
+                spotColor = c.accent.copy(alpha = 0.15f),
             )
-            Spacer(Modifier.width(2.dp))
-            Text(
-                text = "ms",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = color.copy(alpha = 0.85f),
-                maxLines = 1
-            )
-        } else {
-            Text(
-                text = "---",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.sp,
-                color = color,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-/** باکس ترافیک: دانلود و آپلود کنار هم؛ هرکدام سرعت لحظه‌ای + مصرف کل از شروع اتصال. */
-@Composable
-private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: Boolean) {
-    val t = traffic.value
-    // مثل تایمر: وقتی وصل نیست اعداد سرعت کم‌رنگ‌ان و موقع اتصال نرم پررنگ می‌شن
-    val numberColor by animateColorAsState(
-        targetValue = if (connected) c.textPrimary else c.textPrimary.copy(alpha = 0.45f),
-        animationSpec = tween(450),
-        label = "traffic-number-color",
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .foxCard(c, 20.dp, color = c.innerCard.copy(alpha = 0.6f))
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TrafficColumn(
-            modifier = Modifier.weight(1f),
-            c = c,
-            label = tr("DOWNLOAD"),
-            icon = Icons.Filled.ArrowDownward,
-            tint = c.download,
-            speedBytes = t.downloadSpeed.toLong(),
-            numberColor = numberColor,
-            total = formatBytes(t.totalDownload),
-        )
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .height(54.dp)
-                .background(c.cardBorder)
-        )
-        TrafficColumn(
-            modifier = Modifier.weight(1f),
-            c = c,
-            label = tr("UPLOAD"),
-            icon = Icons.Filled.ArrowUpward,
-            tint = c.upload,
-            speedBytes = t.uploadSpeed.toLong(),
-            numberColor = numberColor,
-            total = formatBytes(t.totalUpload),
-        )
-    }
-}
-
-@Composable
-private fun TrafficColumn(
-    modifier: Modifier,
-    c: FoxExtras,
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
-    speedBytes: Long,
-    numberColor: Color,
-    total: String,
-) {
-    Column(modifier = modifier.padding(horizontal = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(tint.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
-            }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                color = c.textSecondary,
-                maxLines = 1
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        SmoothSpeedText(speedBytes = speedBytes, color = numberColor)
-        Text(
-            text = trf("Total  %s", total),
-            fontSize = 12.sp,
-            color = c.textSecondary,
-            maxLines = 1
-        )
-    }
-}
-
-/** دکمه‌ی تغییر سرور کنار سطر کشور. */
-@Composable
-private fun ChangeServerButton(c: FoxExtras, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        modifier = Modifier
-            .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(c.accent, c.accent.copy(alpha = 0.82f))))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Filled.SwapHoriz,
-            contentDescription = tr("Change server"),
-            tint = Color.White,
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(Modifier.width(5.dp))
-        Text(
-            text = tr("CHANGE"),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.8.sp,
-            color = Color.White,
-            maxLines = 1
-        )
-    }
-}
-
-/**
- * پنل «Data remaining»: چسبیده به لبه‌ی پایین صفحه، با درصد، خط پیشرفت و مصرف/کل.
- * خط و متن هم‌رنگ و هماهنگ‌اند: رنگ تم، و با کم شدن دیتا (≤۲۰٪ زرد، ≤۱۰٪ قرمز).
- * [bottomInset] فاصله‌ی نوار ناوبری سیستمه تا پنل زیرش ادامه پیدا کنه و فاصله‌ای نمونه.
- */
-@Composable
-private fun DataRemainingCard(
-    remainingGb: Double?,
-    totalGb: Double,
-    unlimited: Boolean = false,
-    planLabel: String? = null,
-    onPlanClick: () -> Unit = {},
-    onCardClick: () -> Unit = {},
-    dailyRemainingGb: Double? = null,
-    dailyTotalGb: Double = 0.0,
-    daysLeft: Long? = null,
-    note: String? = null,
-    c: FoxExtras,
-    lowColor: Color,
-    criticalColor: Color,
-    modifier: Modifier = Modifier,
-    bottomInset: Dp = 0.dp,
-) {
-    fun toneFor(f: Float, none: Boolean) = when {
-        none -> c.accent
-        f <= 0.10f -> criticalColor
-        f <= 0.20f -> lowColor
-        else -> c.accent
-    }
-    val fraction = if (unlimited) 1f
-    else if (remainingGb == null || totalGb <= 0.0) 0f
-    else (remainingGb / totalGb).coerceIn(0.0, 1.0).toFloat()
-    val animatedFraction by animateFloatAsState(fraction, tween(900, easing = FastOutSlowInEasing), label = "data-fraction")
-    val animatedTone by animateColorAsState(toneFor(fraction, unlimited || remainingGb == null), label = "data-tone")
-
-    val dailyFraction = if (dailyRemainingGb != null && dailyTotalGb > 0.0) (dailyRemainingGb / dailyTotalGb).coerceIn(0.0, 1.0).toFloat() else null
-    val animatedDaily by animateFloatAsState(dailyFraction ?: 0f, tween(900, easing = FastOutSlowInEasing), label = "daily-fraction")
-    val dailyTone by animateColorAsState(toneFor(dailyFraction ?: 1f, dailyFraction == null), label = "daily-tone")
-
-    // عدد هم همراه نوار از صفر بالا می‌ره؛ در حالت پایدار دقیقاً همون remainingGb می‌مونه
-    val shownRemaining = remainingGb?.let { r -> if (fraction > 0f) r * (animatedFraction / fraction).coerceIn(0f, 1.5f) else r }
-    val valueText = when {
-        unlimited -> tr("Unlimited")
-        remainingGb == null -> "--"
-        else -> trf("%.1f GB left", shownRemaining ?: remainingGb)
-    }
-    val percentText = when {
-        unlimited -> "∞"
-        remainingGb == null -> "--%"
-        else -> "${(animatedFraction * 100).roundToInt()}%"
-    }
-
-    val shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
-    val pillShape = RoundedCornerShape(12.dp)
-
-    Column(
-        modifier = modifier
-            .shadow(14.dp, shape, ambientColor = c.accent.copy(alpha = 0.2f), spotColor = c.accent.copy(alpha = 0.2f))
             .clip(shape)
             .background(c.card)
-            .border(1.dp, c.cardBorder, shape)
-            .clickable(onClick = onCardClick)
-            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 16.dp + bottomInset),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(Icons.Filled.DataUsage, c)
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = tr("Data remaining"), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                Text(text = valueText, fontSize = 20.sp, fontWeight = FontWeight.Black, color = animatedTone, maxLines = 1)
-            }
-            if (planLabel != null) {
-                Row(
-                    modifier = Modifier
-                        .clip(pillShape)
-                        .background(c.accent.copy(alpha = 0.14f))
-                        .border(1.dp, c.accent.copy(alpha = 0.35f), pillShape)
-                        .clickable(onClick = onPlanClick)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Star, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(text = planLabel, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = c.accent, maxLines = 1)
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            Box(
-                modifier = Modifier
-                    .clip(pillShape)
-                    .background(animatedTone.copy(alpha = 0.14f))
-                    .border(1.dp, animatedTone.copy(alpha = 0.35f), pillShape)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = percentText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = animatedTone, maxLines = 1)
-            }
-        }
+            .then(if (highlight) Modifier.background(c.accent.copy(alpha = 0.08f)) else Modifier)
+            .border(
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = if (isSelected) c.accent else c.cardBorder,
+                shape = shape,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
 
+@Composable
+private fun RecommendedCard(
+    modifier: Modifier = Modifier,
+    c: FoxExtras,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    LocationCardShell(modifier = modifier, c = c, isSelected = isSelected, highlight = true, onClick = onClick) {
         Box(
-            modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(animatedTone.copy(alpha = 0.15f))
+            modifier = Modifier
+                .size(width = 52.dp, height = 44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animatedFraction)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Brush.horizontalGradient(listOf(animatedTone.copy(alpha = 0.55f), animatedTone)))
+            Icon(
+                imageVector = Icons.Filled.Bolt,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
             )
         }
-
-        // امروز (سقف روزانه) + روزهای باقی‌مانده؛ جای «کل/مصرف‌شده»ی قبلی
-        if (dailyFraction != null || daysLeft != null) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (dailyFraction != null && dailyRemainingGb != null) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = trf("Today: %.1f GB left", dailyRemainingGb),
-                            fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = dailyTone, maxLines = 1,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(Modifier.fillMaxWidth(0.92f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(dailyTone.copy(alpha = 0.15f))) {
-                            Box(
-                                Modifier.fillMaxHeight().fillMaxWidth(animatedDaily).clip(RoundedCornerShape(3.dp))
-                                    .background(Brush.horizontalGradient(listOf(dailyTone.copy(alpha = 0.55f), dailyTone)))
-                            )
-                        }
-                    }
-                } else Spacer(Modifier.weight(1f))
-                if (daysLeft != null) {
-                    Spacer(Modifier.width(12.dp))
-                    Row(
-                        modifier = Modifier.clip(pillShape).background(c.innerCard).padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.Schedule, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = if (daysLeft == 1L) tr("1 day left") else trf("%d days left", daysLeft),
-                            fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary, maxLines = 1,
-                        )
-                    }
-                }
-            }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tr("Recommended"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = c.textPrimary,
+            )
+            Text(
+                text = tr("Automatically chosen for the best performance"),
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+            )
         }
-
-        if (note != null) {
-            Text(text = note, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
+        if (isSelected) {
+            Spacer(Modifier.width(10.dp))
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = tr("Selected"),
+                tint = c.accent,
+                modifier = Modifier.size(28.dp),
+            )
         }
     }
 }
 
-/** قلب کنار تنظیمات: فعلاً فقط واکنش نشون می‌ده (رنگ می‌گیره، می‌تپه و لرزش خفیف)؛ بعداً می‌شه بهش کار داد. */
 @Composable
-private fun HeartHeaderButton(c: FoxExtras) {
-    val context = LocalContext.current
-    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val prefs = remember { context.getSharedPreferences("foxvpn_ui", Context.MODE_PRIVATE) }
-    var on by remember { mutableStateOf(prefs.getBoolean("home_heart", false)) }
-    val pink = Color(0xFFFF5C8D)
-    val tint by animateColorAsState(if (on) pink else c.textPrimary.copy(alpha = 0.75f), label = "heart-tint")
-    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
-    LaunchedEffect(on) {
-        if (on) {
-            pop.animateTo(1.4f, tween(120))
-            pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 380f))
+private fun CityCard(
+    modifier: Modifier = Modifier,
+    c: FoxExtras,
+    countryCode: String,
+    countryName: String,
+    cityLabel: String,
+    pingMs: Int?,
+    pingState: PingState,
+    isFastest: Boolean,
+    isSelected: Boolean,
+    status: CardStatus?,
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
+    LocationCardShell(modifier = modifier, c = c, isSelected = isSelected, onClick = onClick) {
+        // پرچم کشور (نشان انتخاب‌شده روی گوشه‌ی پرچمه تا جای اسم کشور تنگ نشه)
+        val context = LocalContext.current
+        val flagRes = remember(countryCode) { flagResId(context, countryCode) }
+        val flag = remember(countryCode) { flagEmoji(countryCode) }
+        Box(modifier = Modifier.size(width = 48.dp, height = 44.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(c.innerCard)
+                    .border(1.dp, c.cardBorder, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (flagRes != 0) {
+                    // تصویر دقیق پرچم (res/drawable-nodpi/flag_xx.png) — مستقل از فونت گوشی
+                    Image(
+                        painter = painterResource(id = flagRes),
+                        contentDescription = countryName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(width = 38.dp, height = 28.dp)
+                            .clip(RoundedCornerShape(5.dp)),
+                    )
+                } else if (flag != null) {
+                    // اگه تصویر نبود، ایموجی
+                    Text(text = flag, fontSize = 26.sp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Public,
+                        contentDescription = null,
+                        tint = c.accent,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = tr("Selected"),
+                    tint = c.accent,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 5.dp, y = 5.dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.White),
+                )
+            }
         }
+
+        Spacer(Modifier.width(12.dp))
+
+        // اسم کشور + شهر
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = countryName,
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = c.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (cityLabel.isNotBlank()) {
+                Text(
+                    text = cityLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // نشان‌ها تو خط جدا می‌آن تا اسم شهر کوتاه نشه (وضعیت اتصال اولویت داره)
+            if (status != null || isFastest) {
+                Spacer(Modifier.height(4.dp))
+                if (status != null) StatusChip(status = status, c = c) else FastestChip()
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        PingBadge(pingMs = pingMs, pingState = pingState, c = c)
+
+        Spacer(Modifier.width(8.dp))
+
+        FavoriteButton(c = c, isFavorite = isFavorite, onClick = onToggleFavorite)
     }
+}
+
+/** ستاره‌ی علاقه‌مندی؛ هم‌قد قرص پینگ و با همان گوشه‌گردی. با لمس، لوکیشن می‌ره بالای لیست. */
+@Composable
+private fun FavoriteButton(c: FoxExtras, isFavorite: Boolean, onClick: () -> Unit) {
+    val tint by animateColorAsState(
+        targetValue = if (isFavorite) StarGold else c.textSecondary.copy(alpha = 0.75f),
+        label = "favorite-tint",
+    )
+    val starScale by animateFloatAsState(
+        targetValue = if (isFavorite) 1f else 0.88f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "favorite-scale",
+    )
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(if (on) pink.copy(alpha = 0.16f) else c.card)
-            .border(1.dp, if (on) pink.copy(alpha = 0.5f) else c.cardBorder, CircleShape)
-            .clickable {
-                on = !on
-                prefs.edit().putBoolean("home_heart", on).apply()
-                haptics.performHapticFeedback(if (on) androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress else androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-            },
+            .size(42.dp)
+            .clip(shape)
+            .background(if (isFavorite) StarGold.copy(alpha = 0.16f) else c.innerCard.copy(alpha = 0.6f))
+            .border(1.dp, if (isFavorite) StarGold.copy(alpha = 0.45f) else c.cardBorder, shape)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (on) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = tr("Favorite"),
+            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+            contentDescription = if (isFavorite) tr("Remove from favorites") else tr("Add to favorites"),
             tint = tint,
-            modifier = Modifier.size(24.dp).scale(pop.value),
+            modifier = Modifier
+                .size(24.dp)
+                .scale(starScale),
         )
     }
 }
 
-
-/** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
-private class HomeBanner(val icon: androidx.compose.ui.graphics.vector.ImageVector, val text: String, val tone: Color, val onClick: (() -> Unit)?)
-
+/** عنوان بخش‌های لیست (Current location، Favorites، Recent، All locations). */
 @Composable
-private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
-    val shape = RoundedCornerShape(20.dp)
+private fun SectionHeader(
+    modifier: Modifier = Modifier,
+    c: FoxExtras,
+    title: String,
+    count: Int,
+    icon: ImageVector?,
+    iconTint: Color,
+) {
     Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.5.sp,
+            color = c.accentText,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = c.textSecondary,
+        )
+    }
+}
+
+/** کادر جستجو؛ هم‌استایل کارت‌ها و هم‌قد دکمه‌ی ترتیب. */
+@Composable
+private fun SearchField(
+    c: FoxExtras,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusManager = LocalFocusManager.current
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = modifier
+            .height(50.dp)
+            .clip(shape)
+            .background(c.card)
+            .border(1.dp, c.cardBorder, shape)
+            .padding(start = 14.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = c.accent,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (value.isEmpty()) {
+                Text(
+                    text = tr("Search country or city"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.textSecondary,
+                    maxLines = 1,
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = c.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                cursorBrush = SolidColor(c.accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (value.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { onValueChange("") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = tr("Clear search"),
+                    tint = c.textSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+/** دکمه‌ی انتخاب ترتیب لیست؛ وقتی ترتیب پیش‌فرض (پینگ) نیست، نارنجی می‌شه. */
+@Composable
+private fun SortButton(c: FoxExtras, mode: SortMode, onSelected: (SortMode) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(18.dp)
+    val custom = mode != SortMode.PING
+    Box {
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .clip(shape)
+                .background(if (custom) c.accent.copy(alpha = 0.12f) else c.card)
+                .border(1.dp, if (custom) c.accent.copy(alpha = 0.45f) else c.cardBorder, shape)
+                .clickable { expanded = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Sort,
+                contentDescription = tr("Sort locations"),
+                tint = c.accent,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = c.innerCard,
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            SortMode.entries.forEach { option ->
+                val selected = option == mode
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = tr(option.label),
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) c.accentText else c.textPrimary,
+                        )
+                    },
+                    leadingIcon = {
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = c.accent,
+                            )
+                        } else {
+                            Spacer(Modifier.size(24.dp))
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelected(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** وقتی جستجو نتیجه‌ای نداره. */
+@Composable
+private fun NoResults(c: FoxExtras, query: String) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(b.tone.copy(alpha = 0.14f))
-            .border(1.dp, b.tone.copy(alpha = 0.45f), shape)
-            .then(if (b.onClick != null) Modifier.clickable(onClick = b.onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = c.textSecondary.copy(alpha = 0.6f),
+            modifier = Modifier.size(36.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = trf("No locations match \u201C%s\u201D", query),
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.textSecondary,
+        )
+    }
+}
+
+/** پرده‌ی «در حال پیدا کردن سریع‌ترین سرور»؛ لمس‌های دیگه رو تا پایان کار می‌بلعه. */
+@Composable
+private fun PickingOverlay(c: FoxExtras) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.3f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .clip(shape)
+                .background(c.innerCard)
+                .border(1.dp, c.cardBorder, shape)
+                .padding(horizontal = 28.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator(
+                color = c.accent,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(34.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = tr("Finding the fastest server\u2026"),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = c.textPrimary,
+            )
+        }
+    }
+}
+
+/** نشان وضعیت روی لوکیشن فعلی: CONNECTED (سبز) / CONNECTING (زرد) / SELECTED (نارنجی). */
+@Composable
+private fun StatusChip(status: CardStatus, c: FoxExtras) {
+    val (text, color) = when (status) {
+        CardStatus.CONNECTED -> tr("CONNECTED") to PingGood
+        CardStatus.CONNECTING -> tr("CONNECTING") to PingMedium
+        CardStatus.SELECTED -> tr("SELECTED") to c.accent
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
-            contentAlignment = Alignment.Center,
-        ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = b.text,
-            modifier = Modifier.weight(1f),
-            color = c.textPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            lineHeight = 19.sp,
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(color),
         )
-        if (b.onClick != null) {
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Filled.ArrowForwardIos, contentDescription = null, tint = b.tone, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            color = color,
+        )
+    }
+}
+
+/** نشان «LIVE» با نقطه‌ی چشمک‌زن؛ با لمس، به‌روزرسانی زنده رو متوقف/شروع می‌کنه. */
+@Composable
+private fun LiveChip(c: FoxExtras, live: Boolean, onClick: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "live-pulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "live-pulse-alpha",
+    )
+    val color = if (live) PingGood else c.textSecondary
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(color.copy(alpha = 0.13f))
+            .border(1.dp, color.copy(alpha = 0.35f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .alpha(if (live) pulse else 1f)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (live) tr("LIVE") else tr("PAUSED"),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            color = color,
+        )
+    }
+}
+
+/** نشان کوچک «FASTEST» برای سریع‌ترین لوکیشن. */
+@Composable
+private fun FastestChip() {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(PingGood.copy(alpha = 0.15f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Bolt,
+            contentDescription = null,
+            tint = PingGood,
+            modifier = Modifier.size(12.dp),
+        )
+        Text(
+            text = tr("FASTEST"),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            color = PingGood,
+        )
+    }
+}
+
+/** پینگ بزرگ با رنگ بر اساس کیفیت (سبز / زرد / قرمز) و میله‌های سیگنال. */
+@Composable
+private fun PingBadge(pingMs: Int?, pingState: PingState, c: FoxExtras) {
+    val color = when {
+        pingMs != null -> pingColor(pingMs)
+        pingState == PingState.FAILED -> PingBad
+        else -> c.textSecondary
+    }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .widthIn(min = 104.dp)
+            .clip(shape)
+            .background(color.copy(alpha = 0.13f))
+            .border(1.dp, color.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        when {
+            pingMs != null -> {
+                SignalBars(color = color, level = pingLevel(pingMs))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = pingMs.toString(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = color,
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    text = "ms",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = color.copy(alpha = 0.85f),
+                )
+            }
+
+            pingState == PingState.FAILED -> Text(
+                text = tr("Timeout"),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = color,
+            )
+
+            else -> CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.5.dp,
+                color = c.accent,
+            )
+        }
+    }
+}
+
+/** سه میله‌ی سیگنال؛ هر چقدر پینگ بهتر، میله‌های روشن بیشتر. */
+@Composable
+private fun SignalBars(color: Color, level: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        listOf(8.dp, 13.dp, 18.dp).forEachIndexed { index, h ->
+            Box(
+                modifier = Modifier
+                    .size(width = 4.dp, height = h)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (index < level) color else color.copy(alpha = 0.25f)),
+            )
         }
     }
 }
