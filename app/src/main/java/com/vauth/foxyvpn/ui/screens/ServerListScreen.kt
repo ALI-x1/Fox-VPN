@@ -55,8 +55,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -316,7 +316,7 @@ private val PingMedium = Color(0xFFF2A81D)
 private val PingBad = Color(0xFFEF5350)
 
 /** رنگ ستاره‌ی علاقه‌مندی؛ طلایی که با نارنجی پروژه هماهنگه. */
-private val StarGold = Color(0xFFFFB400)
+private val HeartPink = Color(0xFFFF5C8D)
 
 // ───────────────────────── کمکی‌ها ─────────────────────────
 
@@ -684,7 +684,7 @@ fun ServerListScreen(
 
     // ───── اکشن‌ها ─────
     val toggleFavorite: (String) -> Unit = { key ->
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        haptics.performHapticFeedback(if (key in favorites) HapticFeedbackType.TextHandleMove else HapticFeedbackType.LongPress)
         favorites = if (key in favorites) favorites - key else favorites + key
         ServerListPrefs.saveFavorites(context, favorites)
     }
@@ -889,7 +889,7 @@ fun ServerListScreen(
                                 }
                             } else {
                                 citySection("current", tr("Current location"), Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
-                                citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
+                                citySection("favorites", tr("Favorites"), Icons.Filled.Favorite, HeartPink, c, favoriteCities, renderCity)
                                 citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
                                 citySection(
                                     id = "all",
@@ -1120,15 +1120,15 @@ private fun CityCard(
     }
 }
 
-/** ستاره‌ی علاقه‌مندی؛ هم‌قد قرص پینگ و با همان گوشه‌گردی. با لمس، لوکیشن می‌ره بالای لیست. */
+/** قلبِ علاقه‌مندی؛ هم‌قد قرص پینگ و با همان گوشه‌گردی. با لمس، لوکیشن می‌ره بالای لیست. */
 @Composable
 private fun FavoriteButton(c: FoxExtras, isFavorite: Boolean, onClick: () -> Unit) {
     val tint by animateColorAsState(
-        targetValue = if (isFavorite) StarGold else c.textSecondary.copy(alpha = 0.75f),
+        targetValue = if (isFavorite) HeartPink else c.textSecondary.copy(alpha = 0.75f),
         label = "favorite-tint",
     )
     val starScale by animateFloatAsState(
-        targetValue = if (isFavorite) 1f else 0.88f,
+        targetValue = if (isFavorite) 1f else 0.8f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "favorite-scale",
     )
@@ -1137,13 +1137,13 @@ private fun FavoriteButton(c: FoxExtras, isFavorite: Boolean, onClick: () -> Uni
         modifier = Modifier
             .size(42.dp)
             .clip(shape)
-            .background(if (isFavorite) StarGold.copy(alpha = 0.16f) else c.innerCard.copy(alpha = 0.6f))
-            .border(1.dp, if (isFavorite) StarGold.copy(alpha = 0.45f) else c.cardBorder, shape)
+            .background(if (isFavorite) HeartPink.copy(alpha = 0.16f) else c.innerCard.copy(alpha = 0.6f))
+            .border(1.dp, if (isFavorite) HeartPink.copy(alpha = 0.45f) else c.cardBorder, shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
             contentDescription = if (isFavorite) tr("Remove from favorites") else tr("Add to favorites"),
             tint = tint,
             modifier = Modifier
