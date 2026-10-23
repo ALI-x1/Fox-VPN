@@ -2,11 +2,14 @@ package com.vauth.foxyvpn.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -29,6 +32,8 @@ import com.vauth.foxyvpn.ui.screens.ServerListScreen
 import com.vauth.foxyvpn.ui.screens.PlansScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
+import com.vauth.foxyvpn.ui.screens.SupportScreen
+import com.vauth.foxyvpn.ui.screens.PurchaseScreen
 import com.vauth.foxyvpn.ui.screens.ThemeSetupScreen
 import com.vauth.foxyvpn.ui.screens.WelcomeScreen
 import com.vauth.foxyvpn.ui.theme.ThemeController
@@ -36,6 +41,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+
+private fun planRankOf(plan: String?): Int = when (plan) { "free" -> 1; "pro" -> 2; "max" -> 3; else -> 0 }
+private const val UI_PREFS = "foxvpn_ui"
+private const val KEY_LAST_PLAN = "last_plan_rank"
 
 object FoxyRoutes {
     const val LANGUAGE = "language"
@@ -51,6 +60,9 @@ object FoxyRoutes {
     const val ACCOUNT = "account"
     const val PLANS = "plans"
     const val LOGS = "logs"
+    const val SUPPORT = "support"
+    const val PURCHASE = "purchase/{plan}?code={code}"
+    fun purchase(plan: String, code: String) = "purchase/$plan?code=${android.net.Uri.encode(code)}"
 }
 
 @Composable
@@ -126,6 +138,7 @@ fun FoxyNavGraph(
                     navController.navigate(FoxyRoutes.WELCOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
                 },
                 onOpenAdmin = { navController.navigate(FoxyRoutes.ADMIN_LOGIN) },
+                onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
             )
         }
         composable(FoxyRoutes.ADMIN_LOGIN) {
@@ -148,6 +161,11 @@ fun FoxyNavGraph(
         }
         composable(FoxyRoutes.UPGRADED) {
             // بعد از ارتقا: تبریک، و برگشت به همون صفحه‌ی اصلی
+            LaunchedEffect(Unit) {
+                // رتبه‌ی فعلی ثبت می‌شه تا هوم دوباره همین ارتقا رو جشن نگیره
+                context.getSharedPreferences(UI_PREFS, android.content.Context.MODE_PRIVATE).edit()
+                    .putInt(KEY_LAST_PLAN, planRankOf(LicenseState.status.value?.plan)).apply()
+            }
             WelcomeScreen(
                 upgrade = true,
                 onContinue = { navController.popBackStack(FoxyRoutes.HOME, false) },
@@ -156,6 +174,17 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.HOME) {
             // بعد از ورود به حساب (رسیدن به صفحه‌ی اصلی) یک بار اجازه‌ی نوتیفیکیشن پرسیده می‌شه
             LaunchedEffect(Unit) { onHomeShown() }
+            // ارتقا از ربات (ادمین پلن کد رو عوض کرده): با اولین به‌روزرسانی وضعیت، صفحه‌ی تبریک نشون داده می‌شه
+            val homeLicense by LicenseState.status.collectAsState()
+            LaunchedEffect(homeLicense?.plan) {
+                val rank = planRankOf(homeLicense?.plan)
+                if (rank > 0) {
+                    val prefs = context.getSharedPreferences(UI_PREFS, android.content.Context.MODE_PRIVATE)
+                    val prev = prefs.getInt(KEY_LAST_PLAN, -1)
+                    prefs.edit().putInt(KEY_LAST_PLAN, rank).apply()
+                    if (prev in 1 until rank) navController.navigate(FoxyRoutes.UPGRADED)
+                }
+            }
             HomeScreen(
                 app = app,
                 themeController = themeController,
@@ -172,6 +201,27 @@ fun FoxyNavGraph(
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
                 onOpenSettings = { navController.navigate(FoxyRoutes.SETTINGS) },
                 onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
+                onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
+                onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
+            )
+        }
+        composable(FoxyRoutes.SUPPORT) {
+            SupportScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
+            )
+        }
+        composable(
+            FoxyRoutes.PURCHASE,
+            arguments = listOf(
+                navArgument("plan") { type = NavType.StringType },
+                navArgument("code") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            PurchaseScreen(
+                planKey = entry.arguments?.getString("plan") ?: "pro",
+                discountCode = entry.arguments?.getString("code").orEmpty(),
+                onBack = { navController.popBackStack() },
             )
         }
         composable(FoxyRoutes.PLANS) {
@@ -180,6 +230,8 @@ fun FoxyNavGraph(
                 authRepository = app.authRepository,
                 onDisconnect = onDisconnect,
                 onUpgraded = { navController.navigate(FoxyRoutes.UPGRADED) },
+                onBuy = { plan, code -> navController.navigate(FoxyRoutes.purchase(plan, code)) },
+                onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
                 // کد منقضی/لغو/تموم‌شده: دوباره می‌شه کد جدید وارد کرد
                 onEnterNewCode = {
                     onDisconnect()
@@ -217,6 +269,8 @@ fun FoxyNavGraph(
                 themeController = themeController,
                 onOpenLogs = { navController.navigate(FoxyRoutes.LOGS) },
                 onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
+                onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
+                onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
                 onSignOut = {
                     onDisconnect()
                     app.tokenStore.clear()
@@ -230,6 +284,10 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.ACCOUNT) {
             AccountScreen(
                 authRepository = app.authRepository,
+                onDisconnect = onDisconnect,
+                onUpgraded = { navController.navigate(FoxyRoutes.UPGRADED) },
+                onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
+                onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
                 onBack = { navController.popBackStack() },
             )
         }
