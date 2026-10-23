@@ -1,6 +1,7 @@
 package com.vauth.foxyvpn.data
 
 import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.notice.NoticeClient
 import com.vauth.foxyvpn.i18n.trf
 
 import android.content.Context
@@ -35,6 +36,10 @@ data class LicenseStatus(
     val dailyUsed: Long,
     /** زمان (epoch ثانیه) ریست شدن سقف روزانه (نیمه‌شب تهران). */
     val resetAt: Long,
+    /** فاصله‌ی گزارش مصرف (ثانیه) که سرور تعیین می‌کنه؛ ۰ = پیش‌فرض اپ. */
+    val poll: Int = 0,
+    /** آخرین اعلانِ نوتیف‌دارِ سرور؛ اگه از آخرین دیده‌شده بزرگ‌تر باشه اپ همون لحظه نوتیف می‌ده. */
+    val nn: Long = 0,
 ) {
     fun toJson(): String = JSONObject()
         .put("state", state).put("plan", plan ?: JSONObject.NULL)
@@ -54,6 +59,8 @@ data class LicenseStatus(
             dailyBytes = j.longOrNull("dailyBytes"),
             dailyUsed = j.optLong("dailyUsed", 0L),
             resetAt = j.optLong("resetAt", 0L),
+            poll = j.optInt("poll", 0),
+            nn = j.optLong("nn", 0L),
         )
 
         fun parse(text: String?): LicenseStatus? =
@@ -245,6 +252,23 @@ class RedeemClient(context: Context) {
         }
     }
 
+    /**
+     * موزیلا به حساب این دستگاه 401 داده: از سرور می‌خوایم دستگاه رو به حساب سالم دیگه‌ای منتقل کنه و کلید تازه بده.
+     * سرور این درخواست رو برای هر دستگاه هر ۱۰ دقیقه یک بار قبول می‌کنه.
+     */
+    suspend fun rotate(): Result<RedeemGrant> = withContext(Dispatchers.IO) {
+        runCatching {
+            val code = activeCode ?: throw RedeemException(tr("No active code"))
+            val all = workers
+            if (all.isEmpty()) throw RedeemException(tr("Service is not configured yet."))
+            val base = homeWorker?.takeIf { it in all } ?: all.first()
+            val r = post(base, "/v1/redeem", JSONObject().put("code", code).put("deviceId", deviceId).put("rotate", true))
+            if (r.network) throw noConnection()
+            if (r.infra) throw serversBusy()
+            grantFrom(r, code, base)
+        }
+    }
+
     private fun grantFrom(r: Reply, code: String, base: String): RedeemGrant = when (r.code) {
         200 -> {
             val json = JSONObject(r.text)
@@ -344,7 +368,11 @@ class RedeemClient(context: Context) {
                 r.network -> throw RedeemException(tr("No connection"))
                 // سقف روزانه‌ی Worker یا خطای زیرساخت: مصرف تو گوشی می‌مونه و بعداً فرستاده می‌شه
                 r.infra -> throw RedeemException(trf("Server error (%s)", r.code))
-                r.code == 200 -> LicenseStatus.fromJson(JSONObject(r.text)).also { LicenseState.set(appContext, it) }
+                r.code == 200 -> LicenseStatus.fromJson(JSONObject(r.text)).also {
+                    LicenseState.set(appContext, it)
+                    // اعلان تازه‌ی نوتیف‌دار: همین حالا نوتیف می‌شه (روی همین ترد پس‌زمینه)
+                    NoticeClient.onHint(appContext, it.nn)
+                }
                 r.code == 404 -> {
                     // کد دیگه روی سرور وجود نداره (حذف/لغو شده)
                     val old = LicenseState.status.value ?: LicenseStatus("revoked", null, null, null, 0, null, 0, 0)
