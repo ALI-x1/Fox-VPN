@@ -29,7 +29,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** یک اعلان همگانی از ربات. [worker] = ایندکس Worker که ازش اومده (شماره‌ی اعلان‌ها برای هر Worker جداست). */
-data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both")
+data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false)
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
 data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean)
@@ -37,7 +37,7 @@ data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: 
 /** بنر وضعیت سرور: kind = "maint" (در حال به‌روزرسانی) یا "info"؛ [text] خالی یعنی متن پیش‌فرض اپ. */
 data class StatusBanner(val kind: String, val text: String)
 
-data class NoticeResult(val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both")
+data class NoticeResult(val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both", val pm: Int = 60)
 
 /**
  * گرفتن اعلان‌ها از Workerها (POST /v1/notice). دو مسیر داره:
@@ -50,8 +50,8 @@ object NoticeClient {
 
     /** پشتیبان آپدیت: وقتی هیچ Workerی جواب نده، اپ این فایل رو از گیت‌هاب می‌خونه. */
     const val FALLBACK_UPDATE_URL = "https://raw.githubusercontent.com/ALI-x1/Fox-VPN/main/update.json"
-    private const val JOB_ID = 7301
-    private const val PERIOD_MS = 6L * 60 * 60 * 1000
+    private const val JOB_ID = 7302 // 7301 = نسخه‌ی قدیمی با دوره‌ی ۶ ساعته
+    private const val OLD_JOB_ID = 7301
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -83,13 +83,13 @@ object NoticeClient {
                 val arr = j.optJSONArray("notices")
                 val list = (0 until (arr?.length() ?: 0)).map { i ->
                     val o = arr!!.getJSONObject(i)
-                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"))
+                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1)
                 }
                 val u = j.optJSONObject("update")?.let {
                     UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"))
                 }
                 val b = j.optJSONObject("banner")?.let { StatusBanner(it.optString("kind"), it.optString("text")) }
-                NoticeResult(list, u, b, j.optString("updSrc", "both"))
+                NoticeResult(list, u, b, j.optString("updSrc", "both"), j.optInt("pm", 60).coerceIn(15, 720))
             }
         }.getOrNull()
     }
@@ -115,22 +115,28 @@ object NoticeClient {
         var anyOk = false
         var banner: StatusBanner? = null
         var updSrc = "both"
+        var pm = 0
         for ((i, b) in bases) {
             val r = query(c, i, b, seenKey, seenOverride) ?: continue
             anyOk = true
             if (banner == null) { banner = r.banner; updSrc = r.updSrc }
+            if (pm == 0) pm = r.pm
             notices += r.notices
             val u = r.update
             if (u != null && (update == null || u.versionCode > update.versionCode || (u.versionCode == update.versionCode && u.force))) update = u
         }
         // آپدیت از گیت‌هاب: وقتی ووکرها جواب ندادن، یا ادمین «گیت‌هاب» رو انتخاب کرده، یا هیچ‌کدوم مشخص نشده (بالاترین نسخه برنده)
-        val gh = if (!anyOk || updSrc != "bot") queryFallback(c) else null
+        val gh = if (!anyOk || (updSrc != "bot" && updSrc != "off")) queryFallback(c) else null
         if (gh != null) update = when {
             update == null || gh.versionCode > update.versionCode -> gh
             gh.versionCode == update.versionCode -> update.copy(force = update.force || gh.force)
             else -> update
         }
-        return NoticeResult(notices, update, banner, updSrc)
+        if (pm > 0) {
+            val p = prefs(c)
+            if (p.getInt("job_pm", 60) != pm) { p.edit().putInt("job_pm", pm).apply(); schedule(c) }
+        }
+        return NoticeResult(notices, update, banner, updSrc, if (pm > 0) pm else 60)
     }
 
     /** فقط بنر وضعیت و آپدیت (برای نوار بالای صفحه‌ی اصلی)؛ اعلان‌ها رو مصرف نمی‌کنه. */
@@ -141,10 +147,25 @@ object NoticeClient {
         val r = queryAll(c, "shown")
         val dismissed = prefs(c).getInt("upd_dismissed", 0)
         val u = r.update?.takeIf { it.force || it.versionCode > dismissed }
-        NoticeResult(r.notices.filter { it.mode != "push" }, u)
+        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" }), u)
     }
 
+    /** سرور تو جواب گزارش مصرف خبر می‌ده اعلان نوتیف‌دار جدیدی هست → فوری می‌گیریمش و نوتیف می‌دیم. */
+    fun onHint(c: Context, nn: Long) {
+        if (nn <= 0) return
+        val p = prefs(c)
+        if (nn <= p.getLong("hint_nn", 0L)) return
+        p.edit().putLong("hint_nn", nn).apply()
+        runCatching { runBackground(c) }
+    }
+
+    /** اعلان‌های «هر ورود» که تو همین اجرای برنامه نشون داده شدن (با بستن برنامه خالی می‌شه). */
+    private val shownThisLaunch = HashSet<String>()
+
+    fun launchFilter(list: List<Notice>): List<Notice> = list.filter { !it.rep || "${it.worker}:${it.id}" !in shownThisLaunch }
+
     fun markShown(c: Context, n: Notice) {
+        if (n.rep) { shownThisLaunch.add("${n.worker}:${n.id}"); return }
         val p = prefs(c)
         if (n.id > p.getLong("shown_${n.worker}", 0L)) p.edit().putLong("shown_${n.worker}", n.id).apply()
     }
@@ -165,10 +186,14 @@ object NoticeClient {
     fun schedule(c: Context) {
         runCatching {
             val js = c.getSystemService(JobScheduler::class.java)
-            if (js.getPendingJob(JOB_ID) != null) return
+            js.cancel(OLD_JOB_ID)
+            val minutes = prefs(c).getInt("job_pm", 60).coerceIn(15, 720)
+            val periodMs = minutes * 60_000L
+            val pending = js.getPendingJob(JOB_ID)
+            if (pending != null && pending.intervalMillis == periodMs) return
             val info = JobInfo.Builder(JOB_ID, ComponentName(c, NoticeJobService::class.java))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setPeriodic(PERIOD_MS)
+                .setPeriodic(periodMs)
                 .setPersisted(true)
                 .build()
             js.schedule(info)
@@ -183,8 +208,10 @@ object NoticeClient {
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ensureChannel(c)
         for (n in r.notices) {
-            if (canNotify && n.mode != "window") post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") })
-            if (n.id > p.getLong("notif_${n.worker}", 0L)) p.edit().putLong("notif_${n.worker}", n.id).apply()
+            // اعلان‌های «هر ورود» هر بار از سرور برمی‌گردن؛ نوتیف فقط یک بار برای هر اعلان
+            val isNew = n.id > p.getLong("notif_${n.worker}", 0L)
+            if (isNew && canNotify && n.mode != "window") post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") })
+            if (isNew) p.edit().putLong("notif_${n.worker}", n.id).apply()
         }
         val u = r.update
         if (u != null && u.versionCode > p.getInt("upd_notified", 0)) {
