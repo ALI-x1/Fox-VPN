@@ -459,6 +459,7 @@ fun HomeScreen(
         }
     }
     val bannerWarn = LocalFoxyStatusColors.current.connecting
+    val bannerAccent = LocalFoxExtras.current.accent
     val bannerErr = MaterialTheme.colorScheme.error
     val daysLeft = if (useLicense) license?.expiresAt?.let { kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong() } else null
     val remainingPct = if (useLicense && !dataUnlimited && dataRemainingGb != null && dataTotalGb > 0.0) (dataRemainingGb / dataTotalGb * 100).toInt() else null
@@ -470,14 +471,14 @@ fun HomeScreen(
                 Icons.Filled.Build, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, bannerWarn, null,
             )
             block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
-            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, c.accent) { onOpenSupport() }
+            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
             block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
             block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
             block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
             daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
             remainingPct != null && remainingPct <= 10 -> HomeBanner(Icons.Filled.DataUsage, trf("Only %d%% of your data is left.", remainingPct), bannerWarn) { onOpenPlans() }
             serverStatus?.update != null -> serverStatus?.update?.let { u ->
-                HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), c.accent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
+                HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), bannerAccent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
             }
             else -> null
         }
