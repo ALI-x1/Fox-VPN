@@ -185,6 +185,7 @@ fun LoginScreen(
     authRepository: FxaAuthRepository,
     onSignedIn: () -> Unit,
     onOpenAdmin: () -> Unit = {},
+    onOpenSupport: () -> Unit = {},
 ) {
     // کد فعال‌سازی (قالب FOX-XXXX-XXXX-XXXX)
     var code by remember { mutableStateOf("") }
@@ -228,7 +229,7 @@ fun LoginScreen(
     }
 
     fun openSupport() {
-        runCatching { uriHandler.openUri(RedeemClient.SUPPORT_URL) }
+        onOpenSupport()
     }
 
     fun doRedeem(value: String = code) {

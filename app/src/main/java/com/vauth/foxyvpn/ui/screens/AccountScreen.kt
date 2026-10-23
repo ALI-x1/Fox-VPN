@@ -1,9 +1,8 @@
 package com.vauth.foxyvpn.ui.screens
 
-import com.vauth.foxyvpn.i18n.tr
-import com.vauth.foxyvpn.i18n.trf
-import android.content.Intent
-import android.net.Uri
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,11 +24,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +43,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,345 +51,388 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.GUARDIAN_ENDPOINT_DEFAULT
 import com.vauth.foxyvpn.data.GuardianClient
+import com.vauth.foxyvpn.data.LicenseState
+import com.vauth.foxyvpn.data.LicenseStatus
+import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.data.formatBytes
+import com.vauth.foxyvpn.data.gbLabel
 import com.vauth.foxyvpn.data.model.Entitlement
+import com.vauth.foxyvpn.data.rememberPlanConfig
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.i18n.trf
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// ───────────────────────── رنگ‌ها از تم فعال (LocalFoxExtras) ─────────────────────────
+private fun onAccentColor(c: FoxExtras): Color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
-/** رنگ متن/آیکون روی دکمه‌ها و آواتار: تیره روی accent روشن، سفید روی accent تیره. */
-private fun onAccentColor(c: FoxExtras): Color =
-    if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
-
-private fun Modifier.accCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
-    val shape: Shape = RoundedCornerShape(radius)
+private fun Modifier.accCard(c: FoxExtras, radius: Int, borderColor: Color = c.cardBorder, width: Int = 1): Modifier {
+    val shape = RoundedCornerShape(radius.dp)
     return this
-        .shadow(
-            6.dp, shape,
-            ambientColor = c.accent.copy(alpha = 0.15f),
-            spotColor = c.accent.copy(alpha = 0.15f),
-        )
+        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
         .clip(shape)
-        .background(color)
-        .border(1.dp, c.cardBorder, shape)
+        .background(c.card)
+        .border(width.dp, borderColor, shape)
 }
 
-// ───────────────────────── صفحه حساب ─────────────────────────
+private fun planIcon(key: String?): ImageVector = when (key) {
+    "free" -> Icons.Filled.CardGiftcard
+    "pro" -> Icons.Filled.Star
+    "max" -> Icons.Filled.Bolt
+    else -> Icons.Filled.WorkspacePremium
+}
+
+/** «۳ ساعت و ۱۲ دقیقه» / «۲ روز و ۴ ساعت». */
+private fun durationText(seconds: Long): String {
+    val s = seconds.coerceAtLeast(0)
+    val d = s / 86400; val h = (s % 86400) / 3600; val m = (s % 3600) / 60
+    return when {
+        d > 0 -> trf("%dd %dh", d, h)
+        h > 0 -> trf("%dh %dm", h, m)
+        else -> trf("%dm", maxOf(m, 1L))
+    }
+}
+
+// ───────────────────────── صفحه‌ی حساب ─────────────────────────
 
 @Composable
 fun AccountScreen(
     authRepository: FxaAuthRepository,
     onBack: () -> Unit,
+    onDisconnect: () -> Unit = {},
+    onUpgraded: () -> Unit = {},
+    onOpenPlans: () -> Unit = {},
+    onOpenSupport: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var entitlement by remember { mutableStateOf<Entitlement?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
     val c = LocalFoxExtras.current
     val statusColors = LocalFoxyStatusColors.current
     val onAccent = onAccentColor(c)
+    val redeem = remember { RedeemClient(context) }
+    val isAdmin = remember { redeem.adminMode }
+    val cfg by rememberPlanConfig()
+
+    LaunchedEffect(Unit) { LicenseState.load(context) }
+    val license by LicenseState.status.collectAsState()
+    var entitlement by remember { mutableStateOf<Entitlement?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
-        isLoading = true
-        errorMessage = null
+        loading = true; error = null
         scope.launch {
-            val accessToken = authRepository.currentAccessToken()
-            if (accessToken == null) {
-                isLoading = false
-                errorMessage = tr("Not signed in.")
-                return@launch
-            }
-            runCatching { GuardianClient().fetchUserInfo(GUARDIAN_ENDPOINT_DEFAULT, accessToken) }
+            if (!isAdmin && redeem.activeCode != null) runCatching { redeem.reportUsage(0) }
+            val token = authRepository.currentAccessToken()
+            if (token == null) { error = tr("Not signed in."); loading = false; return@launch }
+            runCatching { GuardianClient().fetchUserInfo(GUARDIAN_ENDPOINT_DEFAULT, token) }
                 .onSuccess { entitlement = it }
-                .onFailure { errorMessage = it.message ?: tr("Failed to load account info") }
-            isLoading = false
+                .onFailure { if (license == null) error = it.message ?: tr("Failed to load account info") }
+            loading = false
         }
     }
-
     LaunchedEffect(Unit) { refresh() }
 
+    // ساعت زنده برای شمارش معکوس
+    var nowSec by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); nowSec = System.currentTimeMillis() / 1000 } }
+
     Scaffold(containerColor = Color.Transparent) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
-        ) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // ───── هدر: بازگشت + عنوان + رفرش ─────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AccRoundButton(c, onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = tr("Back"),
-                                tint = c.textPrimary.copy(alpha = 0.75f),
-                            )
-                        }
+                        AccRoundButton(c, onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("Back"), tint = c.textPrimary.copy(alpha = 0.75f)) }
                         Spacer(Modifier.width(14.dp))
-                        Text(
-                            tr("Account"),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = c.textPrimary,
-                        )
+                        Column {
+                            Text(tr("Account"), fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                            Text(tr("Your plan and usage"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+                        }
                     }
-                    AccRoundButton(c, { if (!isLoading) refresh() }) {
-                        Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = tr("Refresh"),
-                            tint = c.textPrimary.copy(alpha = 0.75f),
-                        )
+                    AccRoundButton(c, { if (!loading) refresh() }) {
+                        if (loading) CircularProgressIndicator(color = c.accent, strokeWidth = 2.5.dp, modifier = Modifier.size(22.dp))
+                        else Icon(Icons.Filled.Refresh, tr("Refresh"), tint = c.textPrimary.copy(alpha = 0.75f))
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
-
-                // ───── کارت پروفایل ─────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .accCard(c, 28.dp)
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(62.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = null,
-                            tint = onAccent,
-                            modifier = Modifier.size(40.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            tr("FOX-VPN Account"),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = c.textPrimary,
-                        )
-                        Text(
-                            tr("Signed in to FOX-VPN"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = c.textSecondary,
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // ───── محتوا: لودینگ / خطا / اطلاعات ─────
                 when {
-                    isLoading -> Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 40.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    isAdmin -> AdminCard(c, onAccent, entitlement, statusColors.connected)
+                    license != null -> {
+                        val lic = license!!
+                        PlanHero(c, onAccent, lic, cfg.plan(lic.plan ?: "").days, nowSec)
+                        UsageRing(c, lic)
+                        DailyAndTimeCards(c, lic, cfg.plan(lic.plan ?: "").days, nowSec)
+                    }
+                    loading -> Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = c.accent, strokeWidth = 3.dp)
                     }
-
-                    errorMessage != null -> Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .accCard(c, 24.dp)
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                errorMessage.orEmpty(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                        AccPrimaryButton(tr("Retry"), c, onClick = { refresh() })
+                    error != null -> Row(Modifier.fillMaxWidth().accCard(c, 24).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                     }
+                }
 
-                    entitlement != null -> {
-                        val info = entitlement!!
+                // دکمه‌های سریع
+                if (!isAdmin) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
+                        QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
+                    }
+                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
+                }
 
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .accCard(c, 28.dp)
-                                .padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            AccountInfoRow(
-                                c = c,
-                                icon = Icons.Filled.Star,
-                                label = tr("Subscription"),
-                                value = if (info.subscribed) tr("Active") else tr("Inactive"),
-                                valueColor = if (info.subscribed) statusColors.connected else c.textSecondary,
-                            )
-                            AccountInfoRow(
-                                c = c,
-                                icon = Icons.Filled.Person,
-                                label = tr("Account ID"),
-                                value = info.uid.ifBlank { "\u2014" },
-                            )
-                            AccountInfoRow(
-                                c = c,
-                                icon = Icons.Filled.Public,
-                                label = tr("Data remaining"),
-                                value = when {
-                                    !info.limitedBandwidth -> tr("Unlimited")
-                                    info.quotaRemaining != null -> formatBytes(info.quotaRemaining)
-                                    info.maxBytes != null -> trf("Limited to %s", formatBytes(info.maxBytes))
-                                    else -> tr("Limited")
-                                },
-                            )
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-
-                        AccPrimaryButton(
-                            text = tr("Manage subscription"),
-                            c = c,
-                            onClick = {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(GUARDIAN_ENDPOINT_DEFAULT))
-                                )
+                // جزئیات فنی (حساب Guardian)
+                entitlement?.let { info ->
+                    Column(Modifier.fillMaxWidth().accCard(c, 24).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(tr("Details"), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp, color = c.accentText)
+                        DetailRow(c, tr("Account ID"), info.uid.ifBlank { "—" })
+                        DetailRow(
+                            c, tr("Server quota"),
+                            when {
+                                !info.limitedBandwidth -> tr("Unlimited")
+                                info.quotaRemaining != null -> formatBytes(info.quotaRemaining)
+                                info.maxBytes != null -> trf("Limited to %s", formatBytes(info.maxBytes))
+                                else -> tr("Limited")
                             },
                         )
                     }
                 }
-
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
 }
 
-// ───────────────────────── کامپوننت‌ها ─────────────────────────
+// ───────────────────────── اجزای صفحه ─────────────────────────
+
+@Composable
+private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays: Int, nowSec: Long) {
+    val block = LicenseState.blockOf(lic, nowSec)
+    val err = MaterialTheme.colorScheme.error
+    val statusColors = LocalFoxyStatusColors.current
+    val frozen = lic.state == "frozen"
+    val (statusText, statusColor) = when {
+        frozen -> tr("Frozen") to c.accentText
+        block != null -> tr("Limited") to err
+        else -> tr("Active") to statusColors.connected
+    }
+    val name = lic.plan?.let { tr(it.replaceFirstChar { ch -> ch.uppercase() }) } ?: tr("Custom plan")
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val a by animateFloatAsState(if (shown) 1f else 0f, tween(500), label = "hero")
+    val shape = RoundedCornerShape(28.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().alpha(a).scale(0.95f + 0.05f * a)
+            .shadow(12.dp, shape, ambientColor = c.accent.copy(alpha = 0.3f), spotColor = c.accent.copy(alpha = 0.3f))
+            .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape).padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(62.dp).shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+                .clip(CircleShape).background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
+            contentAlignment = Alignment.Center,
+        ) { Icon(if (frozen) Icons.Filled.AcUnit else planIcon(lic.plan), null, tint = onAccent, modifier = Modifier.size(34.dp)) }
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, fontSize = 28.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+            val exp = lic.expiresAt
+            Text(
+                when {
+                    exp == null -> tr("No expiry")
+                    exp <= nowSec -> tr("Expired")
+                    else -> trf("%s left", durationText(exp - nowSec))
+                },
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary,
+            )
+        }
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(statusColor.copy(alpha = 0.16f))
+                .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+        ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
+    }
+    if (block != null) {
+        Row(Modifier.fillMaxWidth().accCard(c, 20, err.copy(alpha = 0.45f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Warning, null, tint = err, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(block.message, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
+        }
+    }
+    @Suppress("UNUSED_VARIABLE") val unused = planDays
+}
+
+/** حلقه‌ی بزرگِ دیتای باقی‌مانده (ماهانه/کل) با انیمیشن. */
+@Composable
+private fun UsageRing(c: FoxExtras, lic: LicenseStatus) {
+    val total = lic.totalBytes
+    val unlimited = total == null || total <= 0
+    val remaining = if (unlimited) 0L else (total!! - lic.usedBytes).coerceAtLeast(0)
+    val fraction = if (unlimited) 1f else (remaining.toFloat() / total!!.toFloat()).coerceIn(0f, 1f)
+    val anim by animateFloatAsState(fraction, tween(1100), label = "ring")
+    val low = !unlimited && fraction <= 0.1f
+    val err = MaterialTheme.colorScheme.error
+    val track = c.cardBorder
+    Column(
+        Modifier.fillMaxWidth().accCard(c, 28).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(210.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 22.dp.toPx()
+                val inset = stroke / 2
+                val arcSize = Size(size.width - stroke, size.height - stroke)
+                drawArc(track, 135f, 270f, false, Offset(inset, inset), arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                if (anim > 0.001f) {
+                    drawArc(
+                        brush = if (low) Brush.linearGradient(listOf(err, err)) else Brush.sweepGradient(listOf(c.accent, c.accentLight, c.accent)),
+                        startAngle = 135f, sweepAngle = 270f * anim, useCenter = false,
+                        topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round),
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.DataUsage, null, tint = if (low) err else c.accent, modifier = Modifier.size(26.dp))
+                Text(
+                    if (unlimited) "∞" else formatBytes(remaining),
+                    fontSize = if (unlimited) 44.sp else 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary, textAlign = TextAlign.Center,
+                )
+                Text(tr("Data remaining"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+            }
+        }
+        if (!unlimited) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                MiniStat(c, tr("Used"), formatBytes(lic.usedBytes))
+                MiniStat(c, tr("Left"), "${(fraction * 100).toInt()}%")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniStat(c: FoxExtras, label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+    }
+}
+
+/** میله‌ی امروز + میله‌ی زمان پلن. */
+@Composable
+private fun DailyAndTimeCards(c: FoxExtras, lic: LicenseStatus, planDays: Int, nowSec: Long) {
+    val daily = lic.dailyBytes
+    if (daily != null && daily > 0) {
+        val left = (daily - lic.dailyUsed).coerceAtLeast(0)
+        BarCard(
+            c, Icons.Filled.Today, tr("Today"),
+            trf("%s left of %s", formatBytes(left), formatBytes(daily)),
+            left.toFloat() / daily.toFloat(),
+            if (lic.resetAt > nowSec) trf("Resets in %s", durationText(lic.resetAt - nowSec)) else null,
+        )
+    }
+    val exp = lic.expiresAt
+    if (exp != null && planDays > 0) {
+        val total = planDays * 86400L
+        val remain = (exp - nowSec).coerceAtLeast(0)
+        BarCard(
+            c, Icons.Filled.Schedule, tr("Plan time"),
+            if (remain == 0L) tr("Expired") else trf("%s left", durationText(remain)),
+            (remain.toFloat() / total.toFloat()).coerceIn(0f, 1f), null,
+        )
+    }
+}
+
+@Composable
+private fun BarCard(c: FoxExtras, icon: ImageVector, title: String, value: String, fraction: Float, hint: String?) {
+    val anim by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(900), label = "bar")
+    val low = fraction <= 0.1f
+    val err = MaterialTheme.colorScheme.error
+    Column(Modifier.fillMaxWidth().accCard(c, 24).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(c.accent.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = c.accent, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(c.innerCard)) {
+            Box(
+                Modifier.fillMaxWidth(anim).height(12.dp).clip(RoundedCornerShape(6.dp))
+                    .background(if (low) Brush.horizontalGradient(listOf(err, err)) else Brush.horizontalGradient(listOf(c.accent, c.accentLight))),
+            )
+        }
+        if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+    }
+}
+
+@Composable
+private fun AdminCard(c: FoxExtras, onAccent: Color, info: Entitlement?, okColor: Color) {
+    Row(Modifier.fillMaxWidth().accCard(c, 28, c.accent.copy(alpha = 0.5f), 2).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(62.dp).clip(CircleShape).background(Brush.linearGradient(listOf(c.accentLight, c.accent))), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.AccountCircle, null, tint = onAccent, modifier = Modifier.size(40.dp))
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tr("Admin"), fontSize = 26.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+            Text(tr("Unlimited — no plan limits apply"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+        }
+        if (info?.subscribed == true) Text(tr("Active"), fontWeight = FontWeight.Black, color = okColor)
+    }
+}
+
+@Composable
+private fun QuickAction(c: FoxExtras, icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = modifier.clip(shape).background(c.card).border(1.dp, c.accent.copy(alpha = 0.35f), shape).clickable(onClick = onClick).padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, tint = c.accent, modifier = Modifier.size(28.dp))
+        Text(label, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary)
+    }
+}
+
+@Composable
+private fun DetailRow(c: FoxExtras, label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
+    }
+}
 
 @Composable
 private fun AccRoundButton(c: FoxExtras, onClick: () -> Unit, content: @Composable () -> Unit) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(c.card)
-            .border(1.dp, c.cardBorder, CircleShape),
+        modifier = Modifier.size(46.dp).clip(CircleShape).background(c.card).border(1.dp, c.cardBorder, CircleShape),
     ) { content() }
-}
-
-@Composable
-private fun AccountInfoRow(
-    c: FoxExtras,
-    icon: ImageVector,
-    label: String,
-    value: String,
-    valueColor: Color = c.textPrimary,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .accCard(c, 18.dp, color = c.innerCard.copy(alpha = 0.6f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(c.accent.copy(alpha = 0.10f))
-                .border(1.dp, c.cardBorder, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = c.textSecondary,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = valueColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-    }
-}
-
-@Composable
-private fun AccPrimaryButton(text: String, c: FoxExtras, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .shadow(
-                10.dp, shape,
-                ambientColor = c.accent.copy(alpha = 0.35f),
-                spotColor = c.accent.copy(alpha = 0.35f),
-            )
-            .clip(shape)
-            .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            color = onAccentColor(c),
-        )
-    }
 }

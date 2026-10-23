@@ -8,6 +8,13 @@ import android.widget.Toast
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.luminance
+import com.vauth.foxyvpn.notice.NoticeClient
+import com.vauth.foxyvpn.notice.UpdateInfo
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.ui.platform.LocalUriHandler
 import com.vauth.foxyvpn.FoxyVpnApp
@@ -24,7 +31,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
@@ -34,7 +40,6 @@ import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -201,9 +206,26 @@ fun SettingsScreen(
     onOpenAccount: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
+    onOpenSupport: () -> Unit = {},
+    onOpenPlans: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
+
+    // آپدیت جدید؟ (از ربات یا گیت‌هاب)
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    var checked by remember { mutableStateOf(false) }
+    val updateScope = rememberCoroutineScope()
+    fun checkUpdate() {
+        if (checking) return
+        checking = true
+        updateScope.launch {
+            updateInfo = runCatching { NoticeClient.fetchStatus(context).update }.getOrNull()
+            checking = false; checked = true
+        }
+    }
+    LaunchedEffect(Unit) { checkUpdate() }
 
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
     var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
@@ -713,18 +735,39 @@ fun SettingsScreen(
                                         divider = false,
                                         onClick = onOpenLogs,
                                     )
+                                    val upd = updateInfo
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.Info,
-                                        title = tr("Version"),
-                                        subtitle = BuildConfig.VERSION_NAME,
+                                        icon = if (upd != null) Icons.Filled.SystemUpdate else Icons.Filled.Info,
+                                        title = if (upd != null) tr("Update available") else tr("Version"),
+                                        subtitle = when {
+                                            upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
+                                            checking -> BuildConfig.VERSION_NAME + " · " + tr("Checking…")
+                                            checked -> BuildConfig.VERSION_NAME + " · " + tr("You're up to date")
+                                            else -> BuildConfig.VERSION_NAME
+                                        },
+                                        onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate() },
+                                        trailing = {
+                                            if (upd != null) {
+                                                Box(
+                                                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 6.dp),
+                                                ) { Text(tr("Update"), fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White) }
+                                            }
+                                        },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.CardGiftcard,
+                                        title = tr("Redeem a code"),
+                                        subtitle = tr("Upgrade your plan with a code"),
+                                        onClick = onOpenAccount,
                                     )
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.SupportAgent,
                                         title = tr("Support"),
-                                        subtitle = tr("Message us on Telegram"),
-                                        onClick = { runCatching { uriHandler.openUri(RedeemClient.SUPPORT_URL) } },
+                                        subtitle = tr("Bot, Telegram and help"),
+                                        onClick = onOpenSupport,
                                     )
                                     if (isAdmin) {
                                         SettingRow(

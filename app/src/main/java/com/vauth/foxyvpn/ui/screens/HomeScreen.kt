@@ -114,6 +114,10 @@ import com.vauth.foxyvpn.data.LicenseBlock
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.draw.scale
+import android.content.Context
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Build
@@ -272,6 +276,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     authRepository: FxaAuthRepository? = null,
     onOpenPlans: () -> Unit = {},
+    onOpenAccount: () -> Unit = {},
+    onOpenSupport: () -> Unit = {},
 ) {
     val state by FoxyVpnService.state.collectAsState()
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
@@ -425,6 +431,11 @@ fun HomeScreen(
         else license?.plan?.takeIf { it.isNotBlank() && it != "custom" }?.replaceFirstChar { it.uppercase() } ?: tr("Plans")
     val planName = if (useLicense) lic?.plan?.takeIf { it.isNotBlank() && it != "custom" }
         ?.replaceFirstChar { it.uppercase() } else null
+    val dailyTotalGb = if (useLicense) (lic?.dailyBytes ?: 0L) / BYTES_PER_GB else 0.0
+    val dailyRemainingGb = if (useLicense) lic?.dailyBytes?.let { ((it - lic.dailyUsed).coerceAtLeast(0L)) / BYTES_PER_GB } else null
+    val daysLeftCard: Long? = if (useLicense) lic?.expiresAt?.let {
+        kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong().coerceAtLeast(0)
+    } else null
     val licenseNote: String? = if (useLicense && lic != null) {
         val parts = mutableListOf<String>()
         lic.dailyBytes?.let {
@@ -459,7 +470,7 @@ fun HomeScreen(
                 Icons.Filled.Build, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, bannerWarn, null,
             )
             block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
-            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, c.accent) { uriHandler.openUri(RedeemClient.SUPPORT_URL) }
+            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, c.accent) { onOpenSupport() }
             block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
             block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
             block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
@@ -647,6 +658,8 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.width(10.dp))
                             }
+                            HeartHeaderButton(c)
+                            Spacer(Modifier.width(10.dp))
                             IconButton(
                                 onClick = onOpenSettings,
                                 modifier = Modifier
@@ -885,7 +898,11 @@ fun HomeScreen(
                     unlimited = dataUnlimited,
                     planLabel = planLabel,
                     onPlanClick = onOpenPlans,
-                    note = licenseNote,
+                    onCardClick = onOpenAccount,
+                    dailyRemainingGb = dailyRemainingGb,
+                    dailyTotalGb = dailyTotalGb,
+                    daysLeft = daysLeftCard,
+                    note = if (useLicense) null else licenseNote,
                     c = c,
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
@@ -1425,6 +1442,10 @@ private fun DataRemainingCard(
     unlimited: Boolean = false,
     planLabel: String? = null,
     onPlanClick: () -> Unit = {},
+    onCardClick: () -> Unit = {},
+    dailyRemainingGb: Double? = null,
+    dailyTotalGb: Double = 0.0,
+    daysLeft: Long? = null,
     note: String? = null,
     c: FoxExtras,
     lowColor: Color,
@@ -1432,51 +1453,33 @@ private fun DataRemainingCard(
     modifier: Modifier = Modifier,
     bottomInset: Dp = 0.dp,
 ) {
-    val fraction = if (unlimited) {
-        1f
-    } else if (remainingGb == null || totalGb <= 0.0) {
-        0f
-    } else {
-        (remainingGb / totalGb).coerceIn(0.0, 1.0).toFloat()
-    }
-    val animatedFraction by animateFloatAsState(
-        targetValue = fraction,
-        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
-        label = "data-fraction",
-    )
-    val tone = when {
-        unlimited || remainingGb == null -> c.accent
-        fraction <= 0.10f -> criticalColor
-        fraction <= 0.20f -> lowColor
+    fun toneFor(f: Float, none: Boolean) = when {
+        none -> c.accent
+        f <= 0.10f -> criticalColor
+        f <= 0.20f -> lowColor
         else -> c.accent
     }
-    val animatedTone by animateColorAsState(targetValue = tone, label = "data-tone")
+    val fraction = if (unlimited) 1f
+    else if (remainingGb == null || totalGb <= 0.0) 0f
+    else (remainingGb / totalGb).coerceIn(0.0, 1.0).toFloat()
+    val animatedFraction by animateFloatAsState(fraction, tween(900, easing = FastOutSlowInEasing), label = "data-fraction")
+    val animatedTone by animateColorAsState(toneFor(fraction, unlimited || remainingGb == null), label = "data-tone")
 
-    val totalText = if (totalGb % 1.0 == 0.0) {
-        String.format(Locale.US, "%.0f", totalGb)
-    } else {
-        String.format(Locale.US, "%.1f", totalGb)
-    }
+    val dailyFraction = if (dailyRemainingGb != null && dailyTotalGb > 0.0) (dailyRemainingGb / dailyTotalGb).coerceIn(0.0, 1.0).toFloat() else null
+    val animatedDaily by animateFloatAsState(dailyFraction ?: 0f, tween(900, easing = FastOutSlowInEasing), label = "daily-fraction")
+    val dailyTone by animateColorAsState(toneFor(dailyFraction ?: 1f, dailyFraction == null), label = "daily-tone")
+
     // عدد هم همراه نوار از صفر بالا می‌ره؛ در حالت پایدار دقیقاً همون remainingGb می‌مونه
-    val shownRemaining = remainingGb?.let { r ->
-        if (fraction > 0f) r * (animatedFraction / fraction).coerceIn(0f, 1.5f) else r
-    }
-    val valueText = if (unlimited) {
-        tr("Unlimited")
-    } else if (remainingGb == null) {
-        trf("-- of %s GB", totalText)
-    } else {
-        trf("%.1f of %s GB", shownRemaining ?: remainingGb, totalText)
+    val shownRemaining = remainingGb?.let { r -> if (fraction > 0f) r * (animatedFraction / fraction).coerceIn(0f, 1.5f) else r }
+    val valueText = when {
+        unlimited -> tr("Unlimited")
+        remainingGb == null -> "--"
+        else -> trf("%.1f GB left", shownRemaining ?: remainingGb)
     }
     val percentText = when {
         unlimited -> "∞"
         remainingGb == null -> "--%"
         else -> "${(animatedFraction * 100).roundToInt()}%"
-    }
-    val usedText = if (!unlimited && remainingGb != null) {
-        trf("Used %.1f GB", (totalGb - (shownRemaining ?: remainingGb)).coerceAtLeast(0.0))
-    } else {
-        null
     }
 
     val shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
@@ -1488,24 +1491,16 @@ private fun DataRemainingCard(
             .clip(shape)
             .background(c.card)
             .border(1.dp, c.cardBorder, shape)
+            .clickable(onClick = onCardClick)
             .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 16.dp + bottomInset),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(Icons.Filled.Public, c)
+            IconBubble(Icons.Filled.DataUsage, c)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = tr("Data remaining"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.textSecondary
-                )
-                Text(
-                    text = valueText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = animatedTone
-                )
+                Text(text = tr("Data remaining"), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
+                Text(text = valueText, fontSize = 20.sp, fontWeight = FontWeight.Black, color = animatedTone, maxLines = 1)
             }
             if (planLabel != null) {
                 Row(
@@ -1531,64 +1526,98 @@ private fun DataRemainingCard(
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = percentText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = animatedTone,
-                    maxLines = 1
-                )
+                Text(text = percentText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = animatedTone, maxLines = 1)
             }
         }
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(12.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(animatedTone.copy(alpha = 0.15f))
+            modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(animatedTone.copy(alpha = 0.15f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(animatedFraction)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(animatedTone.copy(alpha = 0.55f), animatedTone)
-                        )
-                    )
+                    .background(Brush.horizontalGradient(listOf(animatedTone.copy(alpha = 0.55f), animatedTone)))
             )
         }
 
-        if (usedText != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = usedText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = animatedTone
-                )
-                Text(
-                    text = trf("Total %s GB", totalText),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = c.textPrimary
-                )
+        // امروز (سقف روزانه) + روزهای باقی‌مانده؛ جای «کل/مصرف‌شده»ی قبلی
+        if (dailyFraction != null || daysLeft != null) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (dailyFraction != null && dailyRemainingGb != null) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = trf("Today: %.1f GB left", dailyRemainingGb),
+                            fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = dailyTone, maxLines = 1,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.fillMaxWidth(0.92f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(dailyTone.copy(alpha = 0.15f))) {
+                            Box(
+                                Modifier.fillMaxHeight().fillMaxWidth(animatedDaily).clip(RoundedCornerShape(3.dp))
+                                    .background(Brush.horizontalGradient(listOf(dailyTone.copy(alpha = 0.55f), dailyTone)))
+                            )
+                        }
+                    }
+                } else Spacer(Modifier.weight(1f))
+                if (daysLeft != null) {
+                    Spacer(Modifier.width(12.dp))
+                    Row(
+                        modifier = Modifier.clip(pillShape).background(c.innerCard).padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.Schedule, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (daysLeft == 1L) tr("1 day left") else trf("%d days left", daysLeft),
+                            fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = c.textPrimary, maxLines = 1,
+                        )
+                    }
+                }
             }
         }
 
         if (note != null) {
-            Text(
-                text = note,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color = c.textPrimary,
-            )
+            Text(text = note, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
         }
+    }
+}
+
+/** قلب کنار تنظیمات: فعلاً فقط واکنش نشون می‌ده (رنگ می‌گیره، می‌تپه و لرزش خفیف)؛ بعداً می‌شه بهش کار داد. */
+@Composable
+private fun HeartHeaderButton(c: FoxExtras) {
+    val context = LocalContext.current
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val prefs = remember { context.getSharedPreferences("foxvpn_ui", Context.MODE_PRIVATE) }
+    var on by remember { mutableStateOf(prefs.getBoolean("home_heart", false)) }
+    val pink = Color(0xFFFF5C8D)
+    val tint by animateColorAsState(if (on) pink else c.textPrimary.copy(alpha = 0.75f), label = "heart-tint")
+    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(on) {
+        if (on) {
+            pop.animateTo(1.4f, tween(120))
+            pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 380f))
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(if (on) pink.copy(alpha = 0.16f) else c.card)
+            .border(1.dp, if (on) pink.copy(alpha = 0.5f) else c.cardBorder, CircleShape)
+            .clickable {
+                on = !on
+                prefs.edit().putBoolean("home_heart", on).apply()
+                haptics.performHapticFeedback(if (on) androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress else androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (on) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = tr("Favorite"),
+            tint = tint,
+            modifier = Modifier.size(24.dp).scale(pop.value),
+        )
     }
 }
 

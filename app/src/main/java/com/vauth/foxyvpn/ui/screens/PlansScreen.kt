@@ -77,6 +77,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.data.LicenseState
+import com.vauth.foxyvpn.data.PlanConfigStore
+import com.vauth.foxyvpn.data.PlanInfo
+import com.vauth.foxyvpn.data.formatMoney
+import com.vauth.foxyvpn.data.gbLabel
+import com.vauth.foxyvpn.data.rememberPlanConfig
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.ui.text.style.TextDecoration
 import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
@@ -90,40 +97,24 @@ private data class PlanSpec(
     val tagline: String,
     val icon: ImageVector,
     val badge: String?,
-    /** دسته‌بندی ویژگی‌ها: عنوان دسته به همراه لیست مزیت‌ها. */
-    val groups: List<Pair<String, List<String>>>,
 )
 
 private val PLANS = listOf(
-    PlanSpec(
-        key = "free", title = "Free", tagline = "Try it out", icon = Icons.Filled.CardGiftcard, badge = null,
-        groups = listOf(
-            "Data" to listOf("5 GB in total", "1 GB per day"),
-            "Access" to listOf("7 days", "1 device"),
-            "Support" to listOf("Telegram support"),
-        ),
-    ),
-    PlanSpec(
-        key = "pro", title = "Pro", tagline = "For everyday use", icon = Icons.Filled.Star, badge = "POPULAR",
-        groups = listOf(
-            "Data" to listOf("50 GB in total", "5 GB per day"),
-            "Access" to listOf("30 days", "Up to 3 devices"),
-            "Support" to listOf("Priority support"),
-        ),
-    ),
-    PlanSpec(
-        key = "max", title = "Max", tagline = "No limits", icon = Icons.Filled.Bolt, badge = "BEST VALUE",
-        groups = listOf(
-            "Data" to listOf("Unlimited data", "No daily limit"),
-            "Access" to listOf("30 days", "Up to 5 devices"),
-            "Support" to listOf("Priority support"),
-        ),
-    ),
+    PlanSpec("free", "Free", "Try it out", Icons.Filled.CardGiftcard, null),
+    PlanSpec("pro", "Pro", "For everyday use", Icons.Filled.Star, "POPULAR"),
+    PlanSpec("max", "Max", "For power users", Icons.Filled.Bolt, "BEST VALUE"),
+)
+
+/** ویژگی‌های هر پلن از روی اعداد سرور (ربات: /plan) ساخته می‌شه تا همیشه با سرور یکی باشه. */
+private fun groupsFor(key: String, p: PlanInfo): List<Pair<String, List<String>>> = listOf(
+    "Data" to listOf(trf("%s per month", gbLabel(p.gb)), trf("%s per day", gbLabel(p.daily))),
+    "Access" to listOf(if (p.days > 0) trf("%d days", p.days) else tr("No expiry"), if (p.devices > 1) trf("Up to %d devices", p.devices) else tr("1 device")),
+    "Support" to listOf(if (key == "free") tr("Telegram support") else tr("Priority support")),
 )
 
 /** آیکون اختصاصی هر ویژگی (بر اساس دسته و متن). */
 private fun featureIcon(group: String, index: Int, item: String): ImageVector = when {
-    item.contains("Unlimited") || item.contains("No daily") -> Icons.Filled.AllInclusive
+    item.startsWith("Unlimited") || item.startsWith("نامحدود") -> Icons.Filled.AllInclusive
     group == "Data" && index == 0 -> Icons.Filled.DataUsage
     group == "Data" -> Icons.Filled.Today
     group == "Access" && index == 0 -> Icons.Filled.Timer
@@ -147,6 +138,8 @@ fun PlansScreen(
     authRepository: FxaAuthRepository? = null,
     onDisconnect: () -> Unit = {},
     onUpgraded: () -> Unit = {},
+    onBuy: (plan: String, discountCode: String) -> Unit = { _, _ -> },
+    onOpenSupport: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
@@ -159,40 +152,27 @@ fun PlansScreen(
     val block = if (isAdmin) null else LicenseState.blockOf(license)
 
     val scope = rememberCoroutineScope()
-    var code by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var codeMsg by remember { mutableStateOf<String?>(null) }
-    var codeOk by remember { mutableStateOf(false) }
 
-    // کد جدید: اگه پلن بالاتر بشه صفحه‌ی تبریک باز می‌شه، وگرنه فقط پیام «اعمال شد»
-    fun applyCode() {
-        val repo = authRepository ?: return
-        if (!RedeemClient.isComplete(code) || busy) return
-        val before = rank(currentKey)
-        val oldCode = redeem.activeCode
-        val releaseOld = redeem.releaseSnapshot()
-        busy = true; codeMsg = null
+    fun contact() = onOpenSupport()
+
+    // تنظیمات سرور (محدودیت‌ها، قیمت، تخفیف) + کد تخفیف واردشده
+    val cfg by rememberPlanConfig()
+    var discCode by remember { mutableStateOf("") }
+    var discMsg by remember { mutableStateOf<String?>(null) }
+    var discOk by remember { mutableStateOf(false) }
+    var discBusy by remember { mutableStateOf(false) }
+    var applied by remember { mutableStateOf<Map<String, Pair<Int, Long>>>(emptyMap()) }
+    var appliedCode by remember { mutableStateOf("") }
+    fun applyDiscount() {
+        val code = discCode.trim()
+        if (code.isEmpty() || discBusy) return
+        discBusy = true; discMsg = null
         scope.launch {
-            val grant = redeem.redeem(code).getOrElse {
-                busy = false; codeOk = false; codeMsg = it.message ?: tr("Could not verify the code"); return@launch
-            }
-            onDisconnect()
-            val r = repo.loginWithRefreshToken(grant.refreshToken)
-            busy = false
-            if (r.isSuccess) {
-                code = ""
-                if (redeem.activeCode != oldCode) releaseOld() // جای دستگاه روی کد قبلی آزاد بشه
-                if (rank(LicenseState.status.value?.plan) > before) onUpgraded()
-                else { codeOk = true; codeMsg = tr("Your code was applied.") }
-            } else {
-                codeOk = false; codeMsg = tr("This code can't sign in right now. Please contact support.")
-            }
+            val r = listOf("pro", "max").mapNotNull { k -> PlanConfigStore.checkDiscount(code, k)?.let { k to it } }.toMap()
+            discBusy = false
+            if (r.isEmpty()) { discOk = false; discMsg = tr("This discount code isn't valid."); applied = emptyMap(); appliedCode = "" }
+            else { discOk = true; applied = r; appliedCode = code.uppercase(); discMsg = trf("Discount applied: %d%% off", r.values.maxOf { it.first }) }
         }
-    }
-
-    fun contact(plan: String? = null) {
-        val text = if (plan == null) "Hi, I need help with my Fox-VPN plan." else "Hi, I want to get the $plan plan on Fox-VPN."
-        uriHandler.openUri("${RedeemClient.SUPPORT_URL}?text=${Uri.encode(text)}")
     }
 
     Scaffold(containerColor = Color.Transparent) { padding ->
@@ -262,16 +242,20 @@ fun PlansScreen(
                         active = plan.key == currentKey,
                         lowerThanCurrent = rank(plan.key) < rank(currentKey),
                         hasPlan = rank(currentKey) > 0,
-                        onGet = { contact(plan.title) },
+                        info = cfg.plan(plan.key),
+                        coupon = applied[plan.key],
+                        onGet = { onBuy(plan.key, if (applied.containsKey(plan.key)) appliedCode else "") },
                     )
                 }
 
+                DiscountBox(
+                    c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
+                    onCode = { discCode = it.uppercase(); discMsg = null },
+                    onApply = ::applyDiscount,
+                )
+
                 if (!isAdmin && authRepository != null) {
-                    RedeemBox(
-                        c = c, code = code, busy = busy, message = codeMsg, ok = codeOk,
-                        onCode = { code = RedeemClient.formatCode(it); codeMsg = null },
-                        onApply = ::applyCode,
-                    )
+                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
                 }
 
                 Text(
@@ -291,7 +275,7 @@ fun PlansScreen(
 
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
 
-private fun Modifier.planCard(c: FoxExtras, radius: Int, fill: Color, border: Color, width: Int = 1): Modifier {
+internal fun Modifier.planCard(c: FoxExtras, radius: Int, fill: Color, border: Color, width: Int = 1): Modifier {
     val shape = RoundedCornerShape(radius.dp)
     return this
         .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
@@ -308,9 +292,11 @@ private fun PlanCard(
     active: Boolean,
     lowerThanCurrent: Boolean,
     hasPlan: Boolean,
+    info: PlanInfo,
+    coupon: Pair<Int, Long>?,
     onGet: () -> Unit,
 ) {
-    val highlighted = plan.key == "max"
+    val highlighted = true // همه‌ی کارت‌ها دور هماهنگ با تم دارن (قبلاً Pro نداشت)
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     val cardShape = RoundedCornerShape(28.dp)
@@ -364,7 +350,30 @@ private fun PlanCard(
             }
         }
 
-        plan.groups.forEach { (group, items) ->
+        // قیمت (اگه از ربات گذاشته شده): تخفیف پلن یا کد تخفیف → نشان OFF و قیمت خط‌خورده
+        if (info.price > 0 && plan.key != "free") {
+            val pct = maxOf(info.disc, coupon?.first ?: 0)
+            val couponFinal = if (coupon != null && coupon.first >= info.disc) coupon.second else null
+            val finalPrice = couponFinal ?: info.final.takeIf { it > 0 } ?: info.price
+            val cur = com.vauth.foxyvpn.data.PlanConfigStore.cached(LocalContext.current).contacts.cur.ifBlank { tr("Toman") }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(formatMoney(finalPrice), fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.accentText)
+                Spacer(Modifier.width(6.dp))
+                Text(cur, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                if (pct > 0) {
+                    Spacer(Modifier.width(10.dp))
+                    OffBadge(c, pct)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        formatMoney(info.price), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.textSecondary,
+                        style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.LineThrough),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
+        }
+
+        groupsFor(plan.key, info).forEach { (group, items) ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(width = 4.dp, height = 14.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
@@ -408,7 +417,7 @@ private fun PlanCard(
 }
 
 @Composable
-private fun RedeemBox(
+private fun DiscountBox(
     c: FoxExtras,
     code: String,
     busy: Boolean,
@@ -417,52 +426,50 @@ private fun RedeemBox(
     onCode: (String) -> Unit,
     onApply: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(28.dp)
     val err = MaterialTheme.colorScheme.error
     Column(
-        modifier = Modifier.fillMaxWidth().planCard(c, 28, c.card, c.accent.copy(alpha = 0.45f), 2).padding(18.dp),
+        modifier = Modifier.fillMaxWidth().planCard(c, 28, c.card, c.cardBorder).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
+            ) { Icon(Icons.Filled.LocalOffer, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(tr("Have a code?"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
-                Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+                Text(tr("Discount code"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Text(tr("Got a promo code? Apply it to see the new price."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
             }
         }
-        OutlinedTextField(
-            value = code,
-            onValueChange = onCode,
-            singleLine = true,
-            enabled = !busy,
-            placeholder = { Text("FOX-XXXX-XXXX-XXXX", color = c.textSecondary.copy(alpha = 0.6f)) },
-            shape = RoundedCornerShape(18.dp),
-            textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onApply() }),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = c.accent, unfocusedBorderColor = c.cardBorder,
-                focusedContainerColor = c.innerCard, unfocusedContainerColor = c.innerCard,
-                cursorColor = c.accent,
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = code,
+                onValueChange = onCode,
+                singleLine = true,
+                enabled = !busy,
+                placeholder = { Text("CODE", color = c.textSecondary.copy(alpha = 0.6f)) },
+                shape = RoundedCornerShape(18.dp),
+                textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onApply() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = c.accent, unfocusedBorderColor = c.cardBorder,
+                    focusedContainerColor = c.innerCard, unfocusedContainerColor = c.innerCard,
+                    cursorColor = c.accent,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            PlanButton(if (busy) "…" else tr("Apply"), c, enabled = code.isNotBlank() && !busy, modifier = Modifier.width(100.dp), onClick = onApply)
+        }
         if (message != null) {
             Text(message, color = if (ok) c.accentText else err, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
         }
-        PlanButton(
-            if (busy) tr("Checking…") else tr("Redeem"), c,
-            enabled = RedeemClient.isComplete(code) && !busy, modifier = Modifier.fillMaxWidth(), onClick = onApply,
-        )
     }
 }
 
 @Composable
-private fun PlanButton(
+internal fun PlanButton(
     text: String,
     c: FoxExtras,
     modifier: Modifier = Modifier,
