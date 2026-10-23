@@ -70,7 +70,9 @@ object UsageReporter {
             lastTotal = sampleTotal()
             job = scope.launch {
                 while (isActive) {
-                    delay(INTERVAL_MS)
+                    // فاصله رو سرور تعیین می‌کنه (ربات: ⚙️ زمان‌بندی)؛ کمتر = فریز/نگهداری زودتر به کاربر متصل می‌رسه
+                    val sec = LicenseState.status.value?.poll?.takeIf { it > 0 }?.coerceIn(30, 600)
+                    delay(if (sec != null) sec * 1000L else INTERVAL_MS)
                     sample(app)
                     send(app, client, notifyBlock = true)
                 }
