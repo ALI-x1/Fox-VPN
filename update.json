@@ -1,6 +1,6 @@
 {
-  "version": "1.0.5",
-  "version_code": 42,
+  "version": "1.0.7",
+  "version_code": 44,
   "force": false,
   "changelog": "• صفحه‌ی پشتیبانی و خرید\n• پلن‌های جدید با قیمت و تخفیف\n• اکانت و صفحه‌ی اصلی بازطراحی شد\n• رفع خطای خروج از حساب\n• اعلان و نوار وضعیت بهتر",
   "release_url": "https://github.com/ALI-x1/Fox-VPN/releases/latest/download/app.apk"
