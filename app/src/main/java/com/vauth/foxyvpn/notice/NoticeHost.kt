@@ -44,6 +44,8 @@ fun NoticeHost() {
         val r = NoticeClient.fetchForDialog(ctx)
         update = r.update
         queue = r.notices
+        // نوتیفِ اعلان‌های تازه همین حالا هم برسه (قبلاً فقط با کار پس‌زمینه‌ی چند ساعته می‌رسید)
+        runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { NoticeClient.runBackground(ctx) } }
     }
 
     fun open(url: String) {
