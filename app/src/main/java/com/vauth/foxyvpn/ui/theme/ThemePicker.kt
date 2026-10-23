@@ -1,6 +1,16 @@
 package com.vauth.foxyvpn.ui.theme
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -316,23 +326,52 @@ fun ThemeSwatchRow(
     val c = LocalFoxExtras.current
     val selected = themeController.palette
     val all = ThemePalette.values().filter { it.supportsLightDark } + ThemePalette.values().filter { !it.supportsLightDark }
+    val scroll = rememberScrollState()
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    // ردیف سوئچ‌ها وقتی تم انتخاب‌شده بیرون از دیده‌ست (مثلاً بعد از برگشتن) خودش می‌لغزه تا اون دیده بشه
+    LaunchedEffect(selected) {
+        val slot = with(density) { (56.dp + 12.dp).toPx() }
+        val target = (all.indexOf(selected) * slot - slot).toInt().coerceAtLeast(0)
+        scroll.animateScrollTo(target)
+    }
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 4.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             all.forEach { p ->
                 val sel = p == selected
+                // اندازه‌ی ثابت ۵۶: انتخاب‌شده فقط داخل خودش بزرگ می‌شه، پس ارتفاع ردیف نمی‌پره
+                val dia by animateDpAsState(if (sel) 54.dp else 44.dp, tween(220), label = "swatch-size")
+                val ring by animateColorAsState(if (sel) c.textPrimary else c.cardBorder, tween(220), label = "swatch-ring")
+                val checkTint = if (p.swatch.luminance() > 0.55f) Color(0xFF1B1B1B) else Color.White
                 Box(
                     modifier = Modifier
-                        .size(if (sel) 54.dp else 46.dp)
+                        .size(56.dp)
                         .clip(CircleShape)
-                        .background(p.swatch)
-                        .border(if (sel) 3.dp else 1.dp, if (sel) c.textPrimary else c.cardBorder, CircleShape)
-                        .clickable { themeController.setPalette(p) },
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            if (!sel) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                themeController.setPalette(p)
+                            }
+                        }
+                        .semantics { contentDescription = p.displayTitle() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (sel) Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(dia)
+                            .clip(CircleShape)
+                            .background(p.swatch)
+                            .border(if (sel) 3.dp else 1.dp, ring, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (sel) Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint, modifier = Modifier.size(22.dp))
+                    }
                 }
             }
         }
