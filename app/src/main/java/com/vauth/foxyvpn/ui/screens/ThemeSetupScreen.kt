@@ -34,7 +34,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -68,35 +76,39 @@ fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
     val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 150), label = "a2")
     val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 300), label = "a3")
     val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 450), label = "a4")
+    var done by remember { mutableStateOf(false) } // دوبار لمس سریع دوبار ناوبری نکنه
+    val haptics = LocalHapticFeedback.current
+    val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Column(
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            modifier = Modifier.weight(1f).widthIn(max = 520.dp).align(Alignment.CenterHorizontally).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(24.dp))
             Text(
                 tr("Make it yours"), color = c.textPrimary, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold,
-                textAlign = TextAlign.Center, modifier = Modifier.alpha(a1),
+                textAlign = TextAlign.Center, modifier = Modifier.graphicsLayer { alpha = a1 },
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 tr("Pick a theme. You can change it any time in Settings."), color = c.textSecondary, fontSize = 15.sp,
-                textAlign = TextAlign.Center, modifier = Modifier.alpha(a1),
+                textAlign = TextAlign.Center, modifier = Modifier.graphicsLayer { alpha = a1 },
             )
             Spacer(Modifier.height(22.dp))
 
-            ThemePreviewCard(Modifier.alpha(a2))
+            ThemePreviewCard(Modifier.graphicsLayer { alpha = a2; translationY = (1f - a2) * 24f })
 
             Spacer(Modifier.height(22.dp))
-            Column(Modifier.alpha(a3)) {
+            Column(Modifier.graphicsLayer { alpha = a3; translationY = (1f - a3) * 24f }) {
                 ThemeModeSelector(themeController)
                 Spacer(Modifier.height(14.dp))
                 ThemeSwatchRow(themeController)
@@ -106,16 +118,23 @@ fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
         val shape = RoundedCornerShape(20.dp)
         Box(
             modifier = Modifier
-                .alpha(a4)
+                .graphicsLayer { alpha = a4 }
                 .padding(top = 8.dp, bottom = 18.dp)
                 .fillMaxWidth()
+                .widthIn(max = 520.dp)
                 .height(56.dp)
                 .shadow(10.dp, shape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
                 .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
-                .clickable(onClick = onContinue),
+                .clickable {
+                    if (!done) {
+                        done = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onContinue()
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Text(tr("Continue"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Continue"), color = onAccent, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
@@ -125,6 +144,11 @@ fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
 private fun ThemePreviewCard(modifier: Modifier = Modifier) {
     val c = LocalFoxExtras.current
     val shape = RoundedCornerShape(28.dp)
+    val breathe by rememberInfiniteTransition(label = "preview").animateFloat(
+        initialValue = 0.94f, targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse), label = "breathe",
+    )
+    val fill by animateFloatAsState(0.72f, tween(1000, delayMillis = 500), label = "fill")
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -150,6 +174,7 @@ private fun ThemePreviewCard(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .size(92.dp)
+                .graphicsLayer { scaleX = breathe; scaleY = breathe }
                 .shadow(12.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.4f), spotColor = c.accent.copy(alpha = 0.4f))
                 .clip(CircleShape)
                 .background(c.accent.copy(alpha = 0.12f))
@@ -172,7 +197,7 @@ private fun ThemePreviewCard(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(10.dp))
         Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(c.accent.copy(alpha = 0.15f))) {
             Box(
-                Modifier.fillMaxHeight().fillMaxWidth(0.72f).clip(RoundedCornerShape(6.dp))
+                Modifier.fillMaxHeight().fillMaxWidth(fill).clip(RoundedCornerShape(6.dp))
                     .background(Brush.horizontalGradient(listOf(c.accent.copy(alpha = 0.55f), c.accent))),
             )
         }
