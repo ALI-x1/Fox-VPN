@@ -50,6 +50,7 @@ fun SplashScreen(
     onSignedIn: () -> Unit,
     onNeedsLogin: () -> Unit,
 ) {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     LaunchedEffect(Unit) {
         delay(500)
         val status = withTimeoutOrNull(SESSION_RESTORE_TIMEOUT_MS) {
@@ -59,7 +60,11 @@ fun SplashScreen(
         when (status) {
             SessionStatus.ACTIVE -> onSignedIn()
             SessionStatus.UNREACHABLE -> onSignedIn()
-            SessionStatus.NEEDS_LOGIN -> onNeedsLogin()
+            SessionStatus.NEEDS_LOGIN -> {
+                // کلید موزیلا رد شده؛ اگه با کد وارد شده بود، بی‌صدا با همون کد کلید تازه می‌گیریم (نه بیرون‌انداختن از اکانت)
+                val recovered = withTimeoutOrNull(12_000L) { com.vauth.foxyvpn.data.SessionRecovery.recover(appContext, authRepository, rotate = true) } ?: false
+                if (recovered) onSignedIn() else onNeedsLogin()
+            }
         }
     }
 
