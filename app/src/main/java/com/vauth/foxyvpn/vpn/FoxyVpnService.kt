@@ -33,6 +33,8 @@ import com.vauth.foxyvpn.data.RECOMMENDED_COUNTRY_CODE
 import com.vauth.foxyvpn.data.ServerListClient
 import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.TokenInvalidError
+import com.vauth.foxyvpn.data.GuardianHttpError
+import com.vauth.foxyvpn.data.SessionRecovery
 import com.vauth.foxyvpn.data.TokenStore
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
@@ -676,6 +678,8 @@ class FoxyVpnService : VpnService() {
             }
             ensureGenerationCurrent(myGeneration)
 
+            var sessionRecoveryTried = false
+
             suspend fun mintProxyPass(): ProxyPass {
                 var auth = tokenStore.loadAuth() ?: throw TokenInvalidError(tr("Not signed in"))
 
@@ -695,12 +699,26 @@ class FoxyVpnService : VpnService() {
                 }
                 val guardian = GuardianClient()
 
-                return try {
-                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
+                suspend fun passWith(token: String): ProxyPass = try {
+                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, token)
                 } catch (invalid: TokenInvalidError) {
                     AppLogger.w(TAG, "proxy pass rejected, activating Guardian entitlement and retrying", invalid)
-                    guardian.activateGuardian(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
-                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
+                    guardian.activateGuardian(GUARDIAN_ENDPOINT_DEFAULT, token)
+                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, token)
+                }
+
+                return try {
+                    passWith(auth.accessToken)
+                } catch (e: Exception) {
+                    // 401/403 از موزیلا = حساب این دستگاه خرابه: یک بار از سرور حساب سالم دیگه می‌گیریم و دوباره امتحان می‌کنیم
+                    val rejected = e is TokenInvalidError || (e is GuardianHttpError && (e.statusCode == 401 || e.statusCode == 403))
+                    if (!rejected || sessionRecoveryTried) throw e
+                    sessionRecoveryTried = true
+                    AppLogger.w(TAG, "Guardian rejected this account; asking the server for a healthy one", e)
+                    val ok = SessionRecovery.recover(applicationContext, (application as FoxyVpnApp).authRepository, rotate = true)
+                    if (!ok) throw e
+                    val fresh = tokenStore.loadAuth() ?: throw e
+                    passWith(fresh.accessToken)
                 }
             }
 
