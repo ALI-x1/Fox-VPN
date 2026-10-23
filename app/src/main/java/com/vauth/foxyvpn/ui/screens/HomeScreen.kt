@@ -114,6 +114,9 @@ import com.vauth.foxyvpn.data.LicenseBlock
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.ui.draw.scale
 import android.content.Context
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -467,9 +470,16 @@ fun HomeScreen(
     val homeBanner: HomeBanner? = run {
         val sb = serverStatus?.banner
         when {
-            sb != null -> HomeBanner(
-                Icons.Filled.Build, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, bannerWarn, null,
-            )
+            sb != null -> {
+                val ok = LocalFoxyStatusColors.current.connected
+                val (ic, tone) = when (sb.kind) {
+                    "good" -> Icons.Filled.CheckCircle to ok
+                    "alert" -> Icons.Filled.ErrorOutline to bannerErr
+                    "info" -> Icons.Filled.Info to bannerAccent
+                    else -> Icons.Filled.Build to bannerWarn // maint / warn
+                }
+                HomeBanner(ic, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, tone, null)
+            }
             block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
             block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
             block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
