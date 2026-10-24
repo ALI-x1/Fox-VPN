@@ -384,6 +384,7 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Enter it and your plan upgrades instantly." to "واردش کنید تا پلن شما همان لحظه ارتقا یابد.",
     "Your code was applied." to "کد شما اعمال شد.",
     "Checking…" to "در حال بررسی…",
+    "Paste" to "چسباندن",
     "The server is being updated. Please try again in a few minutes." to "سرور در حال به‌روزرسانی است. چند دقیقه‌ی دیگر دوباره تلاش کنید.",
     "Your plan ends in %d days. Renew it to stay connected." to "پلن شما %d روز دیگر تمام می‌شود. برای ادامه‌ی اتصال تمدید کنید.",
     "Only %d%% of your data is left." to "فقط %d٪ از دیتای شما باقی مانده.",
