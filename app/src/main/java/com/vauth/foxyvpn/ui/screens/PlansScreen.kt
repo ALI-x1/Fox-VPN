@@ -16,6 +16,20 @@ import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.border
+import androidx.compose.runtime.State
+import kotlinx.coroutines.delay
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.ui.draw.rotate
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -129,6 +144,35 @@ private fun rank(key: String?): Int = when (key) {
     else -> 0
 }
 
+// ───────────────────────── قیمت، تایمر، پیشنهاد ─────────────────────────
+
+@Composable
+private fun rememberNowSec(enabled: Boolean): State<Long> {
+    val st = remember { mutableStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(enabled) {
+        if (enabled) while (true) { st.value = System.currentTimeMillis() / 1000; delay(1000) }
+    }
+    return st
+}
+
+private fun discLive(info: PlanInfo, nowS: Long) = info.disc > 0 && (info.dend == 0L || info.dend > nowS)
+
+/** (درصد تخفیف، قیمت نهایی): بهترین بین تخفیف پلن (تا پایان تایمر) و کد تخفیف. */
+private fun effPrice(info: PlanInfo, coupon: Pair<Int, Long>?, nowS: Long): Pair<Int, Long> {
+    val live = discLive(info, nowS)
+    val planFinal = if (live && info.final > 0) info.final else info.price
+    val planPct = if (live) info.disc else 0
+    val couponBetter = coupon != null && coupon.first >= planPct
+    return maxOf(planPct, coupon?.first ?: 0) to (if (couponBetter) coupon!!.second else planFinal)
+}
+
+private fun countdownText(sec: Long): String {
+    val s = sec.coerceAtLeast(0)
+    val d = s / 86400
+    val hms = String.format(java.util.Locale.US, "%02d:%02d:%02d", (s % 86400) / 3600, (s % 3600) / 60, s % 60)
+    return if (d > 0) trf("%d days", d) + " " + hms else hms
+}
+
 // ───────────────────────── صفحه ─────────────────────────
 
 @Composable
@@ -161,6 +205,31 @@ fun PlansScreen(
     var discMsg by remember { mutableStateOf<String?>(null) }
     var discOk by remember { mutableStateOf(false) }
     var discBusy by remember { mutableStateOf(false) }
+    // آکاردئون: فقط یک کارت باز؛ اول پلن فعلی (یا Pro) باز است و با لمس هدر عوض می‌شود
+    var expanded by remember { mutableStateOf<String?>(null) }
+    var autoOpen by remember { mutableStateOf(true) }
+    val nowBase = System.currentTimeMillis() / 1000
+    val anyTimed = listOf("pro", "max").any { cfg.plan(it).dend > nowBase && cfg.plan(it).disc > 0 }
+    val nowState = rememberNowSec(anyTimed)
+    // پیشنهاد هوشمند: حجم رو به پایان / سقف خورده / پلن در آستانه‌ی انقضا
+    val lic0 = license
+    val fracLeft = lic0?.totalBytes?.takeIf { it > 0 }?.let { t -> ((t - (lic0?.usedBytes ?: 0L)).toFloat() / t.toFloat()).coerceIn(0f, 1f) }
+    val lowData = !isAdmin && fracLeft != null && fracLeft <= 0.2f
+    val expSoon = !isAdmin && (lic0?.expiresAt ?: Long.MAX_VALUE) - nowBase in 0L..(3 * 86400L)
+    val nextKey = when (currentKey) { "free" -> "pro"; "pro" -> "max"; else -> null }
+    val suggestKey: String? = when {
+        isAdmin || lic0 == null -> null
+        expSoon && (currentKey == "pro" || currentKey == "max") -> currentKey
+        (lowData || block != null) && nextKey != null -> nextKey
+        else -> null
+    }
+    val suggestReason: String? = when {
+        suggestKey == null -> null
+        expSoon -> tr("Your plan ends soon — renew to keep your access.")
+        block != null -> tr("You've reached your limit — upgrade to keep going.")
+        else -> trf("Your data is running low (%d%% left).", ((fracLeft ?: 0f) * 100).toInt())
+    }
+    LaunchedEffect(currentKey, suggestKey) { if (autoOpen) expanded = suggestKey ?: currentKey ?: "pro" }
     var applied by remember { mutableStateOf<Map<String, Pair<Int, Long>>>(emptyMap()) }
     var appliedCode by remember { mutableStateOf("") }
     fun applyDiscount() {
@@ -175,7 +244,45 @@ fun PlansScreen(
         }
     }
 
-    Scaffold(containerColor = Color.Transparent) { padding ->
+    val barPlan = PLANS.firstOrNull { it.key == expanded && it.key != "free" && rank(it.key) >= rank(currentKey) }
+    Scaffold(
+        containerColor = Color.Transparent,
+        bottomBar = {
+            AnimatedVisibility(visible = barPlan != null, enter = expandVertically(tween(260)) + fadeIn(tween(260)), exit = shrinkVertically(tween(200)) + fadeOut(tween(140))) {
+                val bp = barPlan ?: PLANS[1]
+                val info = cfg.plan(bp.key)
+                val nowS = if (info.dend > 0) nowState.value else 0L
+                val (pct, fin) = effPrice(info, applied[bp.key], nowS)
+                val finalP = if (fin > 0) fin else info.price
+                val cur = PlanConfigStore.cached(context).contacts.cur.ifBlank { tr("Toman") }
+                val label = when {
+                    bp.key == currentKey -> trf("Renew %s", tr(bp.title))
+                    rank(currentKey) > 0 -> trf("Upgrade to %s", tr(bp.title))
+                    else -> trf("Buy %s", tr(bp.title))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(c.bgBottom)
+                        .border(1.dp, c.cardBorder, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                        .navigationBarsPadding().padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr(bp.title), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.textSecondary)
+                        if (finalP > 0) {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(formatMoney(finalP), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.accentText)
+                                Spacer(Modifier.width(5.dp))
+                                Text(cur, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.padding(bottom = 2.dp))
+                                if (pct > 0) { Spacer(Modifier.width(8.dp)); OffBadge(c, pct) }
+                            }
+                        }
+                    }
+                    PlanButton(label, c, modifier = Modifier.weight(1.3f)) { onBuy(bp.key, if (applied.containsKey(bp.key)) appliedCode else "") }
+                }
+            }
+        },
+    ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -231,6 +338,24 @@ fun PlansScreen(
                     }
                 }
 
+                if (suggestKey != null && suggestReason != null) {
+                    SuggestStrip(c, suggestReason, suggestKey == currentKey, tr(PLANS.first { it.key == suggestKey }.title)) { autoOpen = false; expanded = suggestKey }
+                }
+                // تخفیف زمان‌دار فعال: نوار جذاب با شمارش معکوس
+                val promo = listOf("pro", "max").filter { discLive(cfg.plan(it), nowBase) && cfg.plan(it).dend > nowBase }.minByOrNull { cfg.plan(it).dend }
+                if (promo != null) {
+                    val pi = cfg.plan(promo)
+                    PromoStrip(c, trf("%s · %d%% off", tr(PLANS.first { it.key == promo }.title), pi.disc), nowState, pi.dend) { autoOpen = false; expanded = promo }
+                }
+                CompareTable(c, cfg, currentKey, applied, nowState)
+
+                DiscountBox(
+                    c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
+                    onCode = { discCode = it.uppercase(); discMsg = null },
+                    onApply = ::applyDiscount,
+                    appliedLabel = if (appliedCode.isNotEmpty()) appliedCode else null,
+                )
+
                 var shown by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) { shown = true }
                 PLANS.forEachIndexed { i, plan ->
@@ -244,15 +369,12 @@ fun PlansScreen(
                         hasPlan = rank(currentKey) > 0,
                         info = cfg.plan(plan.key),
                         coupon = applied[plan.key],
+                        expanded = expanded == plan.key,
+                        nowState = nowState,
+                        onToggle = { autoOpen = false; expanded = if (expanded == plan.key) null else plan.key },
                         onGet = { onBuy(plan.key, if (applied.containsKey(plan.key)) appliedCode else "") },
                     )
                 }
-
-                DiscountBox(
-                    c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
-                    onCode = { discCode = it.uppercase(); discMsg = null },
-                    onApply = ::applyDiscount,
-                )
 
                 if (!isAdmin && authRepository != null) {
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
@@ -294,6 +416,9 @@ private fun PlanCard(
     hasPlan: Boolean,
     info: PlanInfo,
     coupon: Pair<Int, Long>?,
+    expanded: Boolean,
+    nowState: State<Long>,
+    onToggle: () -> Unit,
     onGet: () -> Unit,
 ) {
     val highlighted = true // همه‌ی کارت‌ها دور هماهنگ با تم دارن (قبلاً Pro نداشت)
@@ -303,11 +428,7 @@ private fun PlanCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                if (active || highlighted) 12.dp else 6.dp, cardShape,
-                ambientColor = c.accent.copy(alpha = if (active || highlighted) 0.35f else 0.15f),
-                spotColor = c.accent.copy(alpha = if (active || highlighted) 0.35f else 0.15f),
-            )
+            .softGlowRect(c.accent, 28f, 10f, if (active) 0.14f else 0.08f)
             .clip(cardShape)
             .background(c.card)
             .border(
@@ -318,11 +439,11 @@ private fun PlanCard(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(54.dp)
-                    .shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+                    .softGlow(c.accent, 6f, 0.35f)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                 contentAlignment = Alignment.Center,
@@ -348,13 +469,16 @@ private fun PlanCard(
                     }
                 }
             }
+            val rot by animateFloatAsState(if (expanded) 180f else 0f, tween(260), label = "chev")
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
         }
 
         // قیمت (اگه از ربات گذاشته شده): تخفیف پلن یا کد تخفیف → نشان OFF و قیمت خط‌خورده
         if (info.price > 0 && plan.key != "free") {
-            val pct = maxOf(info.disc, coupon?.first ?: 0)
-            val couponFinal = if (coupon != null && coupon.first >= info.disc) coupon.second else null
-            val finalPrice = couponFinal ?: info.final.takeIf { it > 0 } ?: info.price
+            val nowS = if (info.dend > 0) nowState.value else 0L
+            val (pct, finalPrice0) = effPrice(info, coupon, nowS)
+            val finalPrice = if (finalPrice0 > 0) finalPrice0 else info.price
             val cur = com.vauth.foxyvpn.data.PlanConfigStore.cached(LocalContext.current).contacts.cur.ifBlank { tr("Toman") }
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(formatMoney(finalPrice), fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.accentText)
@@ -373,6 +497,16 @@ private fun PlanCard(
             }
         }
 
+        if (info.dend > 0 && info.disc > 0 && plan.key != "free" && info.dend > nowState.value) {
+            DiscountTimer(c, info.dend - nowState.value)
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
+            exit = shrinkVertically(tween(240)) + fadeOut(tween(160)),
+        ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         groupsFor(plan.key, info).forEach { (group, items) ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -408,10 +542,13 @@ private fun PlanCard(
 
         // دکمه‌ی پایین کارت
         when {
-            active -> PlanButton("${tr(plan.title)} · ${tr("Active")}", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            active && plan.key == "free" -> PlanButton("${tr(plan.title)} · ${tr("Active")}", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            active -> {} // تمدید از نوار پایین صفحه
             lowerThanCurrent -> PlanButton(tr("Included in your plan"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
             plan.key == "free" -> PlanButton(tr("Free"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            else -> PlanButton(if (hasPlan) trf("Upgrade to %s", tr(plan.title)) else trf("Buy %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
+            else -> {} // خرید/ارتقا از نوار ثابت پایین صفحه
+        }
+        }
         }
     }
 }
@@ -425,23 +562,33 @@ private fun DiscountBox(
     ok: Boolean,
     onCode: (String) -> Unit,
     onApply: () -> Unit,
+    appliedLabel: String? = null,
 ) {
     val err = MaterialTheme.colorScheme.error
+    var open by remember { mutableStateOf(false) }
+    val rot by animateFloatAsState(if (open) 180f else 0f, tween(260), label = "disc-chev")
     Column(
         modifier = Modifier.fillMaxWidth().planCard(c, 28, c.card, c.cardBorder).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Filled.LocalOffer, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(tr("Discount code"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
-                Text(tr("Got a promo code? Apply it to see the new price."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+                Text(
+                    if (appliedLabel != null && !open) appliedLabel else tr("Got a promo code? Apply it to see the new price."),
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                    color = if (appliedLabel != null && !open) c.accentText else c.textSecondary,
+                )
             }
+            Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
         }
+        AnimatedVisibility(visible = open, enter = expandVertically(tween(280)) + fadeIn(tween(280)), exit = shrinkVertically(tween(220)) + fadeOut(tween(140))) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = code,
@@ -464,6 +611,8 @@ private fun DiscountBox(
         }
         if (message != null) {
             Text(message, color = if (ok) c.accentText else err, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        }
+        }
         }
     }
 }
@@ -500,5 +649,124 @@ internal fun PlanButton(
                 else -> onAccent
             },
         )
+    }
+}
+
+
+// ───────────────────────── اجزای جدید ─────────────────────────
+
+@Composable
+private fun DiscountTimer(c: FoxExtras, remainSec: Long) {
+    val err = MaterialTheme.colorScheme.error
+    val urgent = remainSec < 3600
+    val tint = if (urgent) err else c.accentText
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape).background(tint.copy(alpha = 0.10f)).border(1.dp, tint.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Timer, null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(tr("Offer ends in"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.weight(1f))
+        Text(
+            countdownText(remainSec), fontSize = 15.sp, fontWeight = FontWeight.Black, color = tint,
+            style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
+        )
+    }
+}
+
+@Composable
+private fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end: Long, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
+    val left = (end - nowState.value).coerceAtLeast(0)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
+            .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.LocalFireDepartment, null, tint = onAccent, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tr("Limited-time offer"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = onAccent.copy(alpha = 0.85f))
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Black, color = onAccent)
+        }
+        Text(
+            countdownText(left), fontSize = 15.sp, fontWeight = FontWeight.Black, color = onAccent,
+            style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
+        )
+    }
+}
+
+@Composable
+private fun SuggestStrip(c: FoxExtras, reason: String, renew: Boolean, planTitle: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape).background(c.accent.copy(alpha = 0.10f)).border(1.dp, c.accent.copy(alpha = 0.40f), shape)
+            .clickable(onClick = onClick).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(c.accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+            Icon(if (renew) Icons.Filled.Autorenew else Icons.Filled.TrendingUp, null, tint = c.accent, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(reason, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
+            Text(if (renew) trf("Renew %s", planTitle) else trf("Recommended: %s", planTitle), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText)
+        }
+        Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(22.dp).rotate(-90f))
+    }
+}
+
+/** مقایسه‌ی سریع سه پلن کنار هم (بدون باز کردن کارت‌ها). */
+@Composable
+private fun CompareTable(c: FoxExtras, cfg: com.vauth.foxyvpn.data.PlanConfig, currentKey: String?, applied: Map<String, Pair<Int, Long>>, nowState: State<Long>) {
+    val context = LocalContext.current
+    val cur = PlanConfigStore.cached(context).contacts.cur.ifBlank { tr("Toman") }
+    val nowS = nowState.value
+    fun priceOf(k: String): String {
+        val i = cfg.plan(k)
+        if (k == "free") return tr("Free")
+        if (i.price <= 0) return "—"
+        val (_, fin) = effPrice(i, applied[k], nowS)
+        return formatMoney(if (fin > 0) fin else i.price)
+    }
+    val rows: List<Pair<String, (String) -> String>> = listOf(
+        tr("Per month") to { k -> cfg.plan(k).gb.let { if (it <= 0) "∞" else gbLabel(it) } },
+        tr("Per day") to { k -> cfg.plan(k).daily.let { if (it <= 0) "∞" else gbLabel(it) } },
+        tr("Devices") to { k -> cfg.plan(k).devices.toString() },
+        tr("Duration") to { k -> cfg.plan(k).days.let { if (it > 0) trf("%d days", it) else tr("No expiry") } },
+        trf("Price (%s)", cur) to { k -> priceOf(k) },
+    )
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.cardBorder, shape).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(tr("Compare plans").uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp, color = c.accentText)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1.2f))
+            PLANS.forEach { p ->
+                val cur0 = p.key == currentKey
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(10.dp)).background(if (cur0) c.accent.copy(alpha = 0.18f) else Color.Transparent)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) { Text(tr(p.title), fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (cur0) c.accentText else c.textPrimary) }
+                }
+            }
+        }
+        rows.forEachIndexed { i, (label, value) ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (i % 2 == 0) c.innerCard else Color.Transparent).padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c.textSecondary, modifier = Modifier.weight(1.2f))
+                PLANS.forEach { p ->
+                    Text(value(p.key), fontSize = 13.sp, fontWeight = FontWeight.Black, color = if (p.key == currentKey) c.accentText else c.textPrimary, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
