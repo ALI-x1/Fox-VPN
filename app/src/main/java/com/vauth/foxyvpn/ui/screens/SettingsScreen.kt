@@ -648,6 +648,13 @@ fun SettingsScreen(
                                         // صفحه‌ی «کد و ارتقا»، نه صفحه‌ی اشتراک حساب
                                         onClick = { RedeemRequest.pending = true; if (authRepository == null) (onOpenPlans ?: onOpenAccount).invoke() },
                                     )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.SupportAgent,
+                                        title = tr("Support"),
+                                        subtitle = tr("Bot, Telegram and help"),
+                                        onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
+                                    )
                                     val upd = updateInfo
                                     SettingRow(
                                         c = c,
@@ -775,8 +782,8 @@ fun SettingsScreen(
                                     )
                                 }
 
-                                SettingsSection(c, tr("About")) {
-                                    if (isAdmin) {
+                                if (isAdmin) SettingsSection(c, tr("About")) {
+                                    run {
                                         SettingRow(
                                             c = c,
                                             icon = Icons.Filled.VpnKey,
@@ -802,14 +809,6 @@ fun SettingsScreen(
                                             onClick = { showAddAccountDialog = true },
                                         )
                                     }
-                                    SettingRow(
-                                        c = c,
-                                        icon = Icons.Filled.SupportAgent,
-                                        title = tr("Support"),
-                                        subtitle = tr("Bot, Telegram and help"),
-                                        onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
-                                        divider = false,
-                                    )
                                 }
 
                                 AnimatedVisibility(visible = connectionChanged) {
