@@ -209,6 +209,10 @@ fun SettingsScreen(
     onOpenSupport: (() -> Unit)? = null,
     // صفحه‌ی «کد و ارتقا»: اگه NavGraph چیزی نداد، مثل قبل صفحه‌ی حساب باز می‌شه
     onOpenPlans: (() -> Unit)? = null,
+    // برای باز شدن پنجره‌ی ردیم همین‌جا (بدون رفتن به صفحه‌ی پلن‌ها)
+    authRepository: com.vauth.foxyvpn.data.FxaAuthRepository? = null,
+    onDisconnect: () -> Unit = {},
+    onUpgraded: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
@@ -628,7 +632,8 @@ fun SettingsScreen(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         when (target) {
                             SettingsPage.MAIN -> {
-                                // ───── اکانت (اول صفحه)؛ زیرش: وارد کردن کد، پشتیبانی ─────
+                                if (authRepository != null) RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded, showCard = false)
+                                // ───── اکانت (اول صفحه)؛ زیرش: وارد کردن کد، نسخه‌ی اپ ─────
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -641,14 +646,28 @@ fun SettingsScreen(
                                         title = tr("Redeem a code"),
                                         subtitle = tr("Upgrade your plan with a code"),
                                         // صفحه‌ی «کد و ارتقا»، نه صفحه‌ی اشتراک حساب
-                                        onClick = { RedeemRequest.pending = true; (onOpenPlans ?: onOpenAccount).invoke() },
+                                        onClick = { RedeemRequest.pending = true; if (authRepository == null) (onOpenPlans ?: onOpenAccount).invoke() },
                                     )
+                                    val upd = updateInfo
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.SupportAgent,
-                                        title = tr("Support"),
-                                        subtitle = tr("Bot, Telegram and help"),
-                                        onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
+                                        icon = if (upd != null) Icons.Filled.SystemUpdate else Icons.Filled.Info,
+                                        divider = false,
+                                        title = if (upd != null) tr("Update available") else tr("Version"),
+                                        subtitle = when {
+                                            upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
+                                            checking -> BuildConfig.VERSION_NAME + " · " + tr("Checking…")
+                                            checked -> BuildConfig.VERSION_NAME + " · " + tr("You're up to date")
+                                            else -> BuildConfig.VERSION_NAME
+                                        },
+                                        onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate(force = true) },
+                                        trailing = {
+                                            if (upd != null) {
+                                                Box(
+                                                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 6.dp),
+                                                ) { Text(tr("Update"), fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White) }
+                                            }
+                                        },
                                     )
                                 }
                                 Spacer(Modifier.height(16.dp))
@@ -757,27 +776,6 @@ fun SettingsScreen(
                                 }
 
                                 SettingsSection(c, tr("About")) {
-                                    val upd = updateInfo
-                                    SettingRow(
-                                        c = c,
-                                        icon = if (upd != null) Icons.Filled.SystemUpdate else Icons.Filled.Info,
-                                        divider = false,
-                                        title = if (upd != null) tr("Update available") else tr("Version"),
-                                        subtitle = when {
-                                            upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
-                                            checking -> BuildConfig.VERSION_NAME + " · " + tr("Checking…")
-                                            checked -> BuildConfig.VERSION_NAME + " · " + tr("You're up to date")
-                                            else -> BuildConfig.VERSION_NAME
-                                        },
-                                        onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate(force = true) },
-                                        trailing = {
-                                            if (upd != null) {
-                                                Box(
-                                                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 6.dp),
-                                                ) { Text(tr("Update"), fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White) }
-                                            }
-                                        },
-                                    )
                                     if (isAdmin) {
                                         SettingRow(
                                             c = c,
@@ -804,6 +802,14 @@ fun SettingsScreen(
                                             onClick = { showAddAccountDialog = true },
                                         )
                                     }
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.SupportAgent,
+                                        title = tr("Support"),
+                                        subtitle = tr("Bot, Telegram and help"),
+                                        onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
+                                        divider = false,
+                                    )
                                 }
 
                                 AnimatedVisibility(visible = connectionChanged) {
