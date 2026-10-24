@@ -29,15 +29,19 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** یک اعلان همگانی از ربات. [worker] = ایندکس Worker که ازش اومده (شماره‌ی اعلان‌ها برای هر Worker جداست). */
-data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false)
+data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false, val ev: String = "open", val fx: String = "", val ccode: String = "")
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
 data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean)
 
 /** بنر وضعیت سرور: kind = "maint" (در حال به‌روزرسانی) یا "info"؛ [text] خالی یعنی متن پیش‌فرض اپ. */
-data class StatusBanner(val kind: String, val text: String)
+data class StatusBanner(val kind: String, val text: String, val id: String = "", val fx: String = "")
 
-data class NoticeResult(val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both", val pm: Int = 60)
+/** [banners] = همه‌ی نوارهای فعال (به‌نوبت نشون داده می‌شن)؛ [whatsNew] = متن «تبریک نسخه‌ی جدید» وقتی همین نسخه آخرینه (null = ندارد). */
+data class NoticeResult(
+    val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both", val pm: Int = 60,
+    val banners: List<StatusBanner> = emptyList(), val whatsNew: String? = null,
+)
 
 /**
  * گرفتن اعلان‌ها از Workerها (POST /v1/notice). دو مسیر داره:
@@ -83,13 +87,19 @@ object NoticeClient {
                 val arr = j.optJSONArray("notices")
                 val list = (0 until (arr?.length() ?: 0)).map { i ->
                     val o = arr!!.getJSONObject(i)
-                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1)
+                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1, o.optString("ev", "open"), o.optString("fx"), o.optString("ccode"))
                 }
                 val u = j.optJSONObject("update")?.let {
                     UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"))
                 }
                 val b = j.optJSONObject("banner")?.let { StatusBanner(it.optString("kind"), it.optString("text")) }
-                NoticeResult(list, u, b, j.optString("updSrc", "both"), j.optInt("pm", 60).coerceIn(15, 720))
+                val bArr = j.optJSONArray("banners")
+                val bars = (0 until (bArr?.length() ?: 0)).map { i ->
+                    val o = bArr!!.getJSONObject(i)
+                    StatusBanner(o.optString("kind"), o.optString("text"), o.optString("id"), o.optString("fx"))
+                }.filter { it.text.isNotBlank() || it.kind == "maint" }
+                val wn = j.optJSONObject("wn")?.optString("notes")
+                NoticeResult(list, u, b, j.optString("updSrc", "both"), j.optInt("pm", 60).coerceIn(15, 720), bars, wn)
             }
         }.getOrNull()
     }
@@ -114,12 +124,16 @@ object NoticeClient {
         var update: UpdateInfo? = null
         var anyOk = false
         var banner: StatusBanner? = null
+        var banners: List<StatusBanner> = emptyList()
+        var whatsNew: String? = null
         var updSrc = "both"
         var pm = 0
         for ((i, b) in bases) {
             val r = query(c, i, b, seenKey, seenOverride) ?: continue
             anyOk = true
             if (banner == null) { banner = r.banner; updSrc = r.updSrc }
+            if (banners.isEmpty()) banners = r.banners.ifEmpty { listOfNotNull(r.banner) }
+            if (whatsNew == null) whatsNew = r.whatsNew
             if (pm == 0) pm = r.pm
             notices += r.notices
             val u = r.update
@@ -136,7 +150,7 @@ object NoticeClient {
             val p = prefs(c)
             if (p.getInt("job_pm", 60) != pm) { p.edit().putInt("job_pm", pm).apply(); schedule(c) }
         }
-        return NoticeResult(notices, update, banner, updSrc, if (pm > 0) pm else 60)
+        return NoticeResult(notices, update, banner, updSrc, if (pm > 0) pm else 60, banners, whatsNew)
     }
 
     /** فقط بنر وضعیت و آپدیت (برای نوار بالای صفحه‌ی اصلی)؛ اعلان‌ها رو مصرف نمی‌کنه. */
@@ -147,7 +161,52 @@ object NoticeClient {
         val r = queryAll(c, "shown")
         val dismissed = prefs(c).getInt("upd_dismissed", 0)
         val u = r.update?.takeIf { it.force || it.versionCode > dismissed }
-        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" }), u)
+        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" }), u, whatsNew = r.whatsNew)
+    }
+
+    /**
+     * اعلان‌های «موقع وصل‌شدن به VPN» (ev=connect). فقط‌نوتیف‌ها همین‌جا نوتیف می‌شن، بقیه برای پنجره برمی‌گردن.
+     * «یک‌بار» ها یک بار نشون داده می‌شن؛ «هر ورود» ها در هر وصل‌شدن.
+     */
+    suspend fun fetchForConnect(c: Context): List<Notice> = withContext(Dispatchers.IO) {
+        val r = queryAll(c, "shown", 1_000_000_000_000L)
+        val seen = prefs(c).getStringSet("cseen", emptySet()) ?: emptySet()
+        val list = r.notices.filter { it.ev == "connect" && (it.rep || "${it.worker}:${it.id}" !in seen) }
+        val canNotify = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ensureChannel(c)
+        val (pushOnly, dialogs) = list.partition { it.mode == "push" }
+        for (n in pushOnly) {
+            if (canNotify) post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") }, n.url)
+            markShown(c, n)
+        }
+        dialogs
+    }
+
+    /** نوتیفِ پوش واقعی (از [com.vauth.foxyvpn.push.FoxPushService]). */
+    fun showPush(c: Context, nid: Long, title: String, body: String, url: String) {
+        val canNotify = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!canNotify) return
+        ensureChannel(c)
+        post(c, (nid.toInt()).coerceAtLeast(1), title, body.ifBlank { tr("Tap to open") }, url)
+    }
+
+    /** بعد از آپدیت اپ، فقط یک‌بار true می‌ده (برای صفحه‌ی «تبریک نسخه‌ی جدید»). نصب تازه false است. */
+    fun justUpdated(c: Context): Boolean {
+        val p = prefs(c)
+        val cur = versionCode(c)
+        val last = p.getInt("last_vc", 0)
+        if (last != cur) p.edit().putInt("last_vc", cur).apply()
+        return last in 1 until cur
+    }
+
+    /** نوارهایی که افکتشون قبلاً پخش شده (برای هر نوار فقط یک بار). */
+    fun fxSeen(c: Context, id: String): Boolean = prefs(c).getStringSet("fx_seen", emptySet())?.contains(id) == true
+    fun markFxSeen(c: Context, id: String) {
+        val p = prefs(c)
+        val set = HashSet(p.getStringSet("fx_seen", emptySet()) ?: emptySet()); set.add(id)
+        p.edit().putStringSet("fx_seen", set.toList().takeLast(40).toSet()).apply()
     }
 
     /** سرور تو جواب گزارش مصرف خبر می‌ده اعلان نوتیف‌دار جدیدی هست → فوری می‌گیریمش و نوتیف می‌دیم. */
@@ -165,6 +224,14 @@ object NoticeClient {
     fun launchFilter(list: List<Notice>): List<Notice> = list.filter { !it.rep || "${it.worker}:${it.id}" !in shownThisLaunch }
 
     fun markShown(c: Context, n: Notice) {
+        if (n.ev == "connect") {
+            if (!n.rep) {
+                val p = prefs(c)
+                val set = HashSet(p.getStringSet("cseen", emptySet()) ?: emptySet()); set.add("${n.worker}:${n.id}")
+                p.edit().putStringSet("cseen", set).apply()
+            }
+            return
+        }
         if (n.rep) { shownThisLaunch.add("${n.worker}:${n.id}"); return }
         val p = prefs(c)
         if (n.id > p.getLong("shown_${n.worker}", 0L)) p.edit().putLong("shown_${n.worker}", n.id).apply()
@@ -208,9 +275,10 @@ object NoticeClient {
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ensureChannel(c)
         for (n in r.notices) {
+            if (n.ev == "connect") continue // این‌ها موقع وصل‌شدن به VPN نشون داده می‌شن
             // اعلان‌های «هر ورود» هر بار از سرور برمی‌گردن؛ نوتیف فقط یک بار برای هر اعلان
             val isNew = n.id > p.getLong("notif_${n.worker}", 0L)
-            if (isNew && canNotify && n.mode != "window") post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") })
+            if (isNew && canNotify && n.mode != "window") post(c, (n.worker * 1_000_000 + n.id.toInt()).coerceAtLeast(1), n.title, n.body.ifBlank { tr("Tap to open") }, n.url)
             if (isNew) p.edit().putLong("notif_${n.worker}", n.id).apply()
         }
         val u = r.update
@@ -220,9 +288,11 @@ object NoticeClient {
         }
     }
 
-    private fun post(c: Context, id: Int, title: String, text: String) {
+    private fun post(c: Context, id: Int, title: String, text: String, url: String = "") {
+        val tap = if (url.startsWith("http")) Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        else Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val open = PendingIntent.getActivity(
-            c, id, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            c, id, tap,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val n = NotificationCompat.Builder(c, CHANNEL_ID)
@@ -231,6 +301,7 @@ object NoticeClient {
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .build()
         runCatching { c.getSystemService(NotificationManager::class.java).notify(id, n) }
