@@ -77,6 +77,7 @@ fun RedeemCard(
     onDisconnect: () -> Unit,
     onUpgraded: () -> Unit,
     modifier: Modifier = Modifier,
+    inline: Boolean = false, // true = کارت بازوبسته‌شونده مثل «کد تخفیف» (صفحه‌ی پلن‌ها)
     showCard: Boolean = true, // false = فقط پنجره (برای بازکردن از تنظیمات بدون رفتن به صفحه‌ی دیگر)
 ) {
     val context = LocalContext.current
@@ -118,7 +119,32 @@ fun RedeemCard(
     // کارت جمع‌وجور؛ با لمس، پنجره‌ی کرکره‌ای (bottom sheet) برای وارد کردن کد باز می‌شه
     val shape = RoundedCornerShape(28.dp)
     val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.tween(260), label = "redeem-chev")
-    if (showCard) {
+    if (inline) {
+        Column(
+            modifier = modifier.fillMaxWidth().planCard(c, 28, c.card, c.cardBorder).padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { open = !open; msg = null }, verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(tr("Have a code?"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                    Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+                }
+                Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = open,
+                enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(280)),
+                exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(220)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)),
+            ) {
+                RedeemSheetContent(c, code, busy, msg, ok, { code = RedeemClient.formatCode(it); msg = null }, ::apply, compact = true)
+            }
+        }
+    } else if (showCard) {
     Row(
         modifier = modifier.fillMaxWidth().clip(shape).background(c.card).border(2.dp, c.accent.copy(alpha = 0.45f), shape)
             .clickable { msg = null; open = true }.padding(18.dp),
@@ -136,7 +162,7 @@ fun RedeemCard(
         Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
     }
     }
-    if (open) {
+    if (open && !inline) {
         @OptIn(ExperimentalMaterial3Api::class)
         ModalBottomSheet(
             onDismissRequest = { if (!busy) open = false },
@@ -158,17 +184,18 @@ private fun RedeemSheetContent(
     ok: Boolean,
     onCode: (String) -> Unit,
     onApply: () -> Unit,
+    compact: Boolean = false,
 ) {
     val context = LocalContext.current
     val err = MaterialTheme.colorScheme.error
     val focus = remember { FocusRequester() }
     // بعد از تموم شدن انیمیشن باز شدن پنجره، فیلد فوکوس می‌گیره و کیبورد میاد (بدون پرش)
-    LaunchedEffect(Unit) { delay(280); runCatching { focus.requestFocus() } }
+    if (!compact) LaunchedEffect(Unit) { delay(280); runCatching { focus.requestFocus() } }
     Column(
-        modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 22.dp).padding(bottom = 20.dp),
+        modifier = if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 22.dp).padding(bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (!compact) Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(c.accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
