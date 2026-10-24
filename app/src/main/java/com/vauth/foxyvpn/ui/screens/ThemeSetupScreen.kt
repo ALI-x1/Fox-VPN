@@ -1,110 +1,202 @@
-package com.vauth.foxyvpn.ui.theme
+package com.vauth.foxyvpn.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.view.View
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.Canvas
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ClipOp
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntSize
-import kotlin.math.hypot
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.vauth.foxyvpn.R
+import com.vauth.foxyvpn.i18n.tr
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
+import com.vauth.foxyvpn.ui.theme.ThemeController
+import com.vauth.foxyvpn.ui.theme.ThemeModeSelector
+import com.vauth.foxyvpn.ui.theme.ThemeSwatchRow
 
 /**
- * انیمیشن تغییر تم به روش «دایره‌ی باز‌شونده» (circular reveal).
- *
- * روش قبلی هر فریم تمام رنگ‌های برنامه را lerp می‌کرد و کل UI را ~۳۰ بار recompose می‌کرد (لگ).
- * اینجا قبل از تغییر، یک عکس نیم‌اندازه از صفحه‌ی فعلی گرفته می‌شود، تم جدید فوراً اعمال می‌شود
- * و عکس قدیمی فقط با alpha/scale (کار GPU، بدون recompose) محو می‌شود؛ نتیجه: نرم، ارزان و یکدست
- * برای همه‌ی صفحه‌ها (خانه، تنظیمات، ...) و هر دو حالت روشن/تیره.
+ * قدم دوم اولین اجرا (بعد از زبان): انتخاب تم با پیش‌نمایش زنده.
+ * کل صفحه از تم انتخاب‌شده رنگ می‌گیره؛ پس با هر انتخاب، پیش‌نمایش و دکمه همون لحظه عوض می‌شن.
  */
-object ThemeTransition {
-    internal var snapshot by mutableStateOf<Bitmap?>(null)
-    private var host: View? = null
-    /** آخرین نقطه‌ی لمس (px، مختصات همین view)؛ دایره‌ی تغییر تم از همین‌جا باز می‌شه. */
-    internal var origin: Offset? = null
+@Composable
+fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
+    val c = LocalFoxExtras.current
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    // ورود پله‌ای بخش‌ها
+    val ease = androidx.compose.animation.core.FastOutSlowInEasing
+    val a1 by animateFloatAsState(if (shown) 1f else 0f, tween(380, easing = ease), label = "a1")
+    val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 90, easing = ease), label = "a2")
+    val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 180, easing = ease), label = "a3")
+    val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 270, easing = ease), label = "a4")
+    var done by remember { mutableStateOf(false) } // دوبار لمس سریع دوبار ناوبری نکنه
+    val haptics = LocalHapticFeedback.current
+    val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
-    internal fun attach(v: View) { host = v }
-    internal fun detach(v: View) { if (host === v) host = null }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f).widthIn(max = 520.dp).align(Alignment.CenterHorizontally).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+                tr("Make it yours"), color = c.textPrimary, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center, modifier = Modifier.graphicsLayer { alpha = a1 },
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                tr("Pick a theme. You can change it any time in Settings."), color = c.textSecondary, fontSize = 15.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.graphicsLayer { alpha = a1 },
+            )
+            Spacer(Modifier.height(22.dp))
 
-    /** قبل از تغییر تم صدا زده می‌شود. هر خطایی بی‌صدا نادیده گرفته می‌شود (فقط انیمیشن حذف می‌شود). */
-    fun capture() {
-        val v = host ?: return
-        val w = v.width
-        val h = v.height
-        if (w <= 0 || h <= 0 || !v.isAttachedToWindow) return
-        runCatching {
-            val scale = 0.5f
-            val bmp = Bitmap.createBitmap((w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bmp)
-            canvas.scale(scale, scale)
-            v.draw(canvas)
-            snapshot = bmp
+            ThemePreviewCard(Modifier.graphicsLayer { alpha = a2; translationY = (1f - a2) * 24f })
+
+            Spacer(Modifier.height(22.dp))
+            Column(Modifier.graphicsLayer { alpha = a3; translationY = (1f - a3) * 24f }) {
+                ThemeModeSelector(themeController)
+                Spacer(Modifier.height(14.dp))
+                ThemeSwatchRow(themeController)
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+        val shape = RoundedCornerShape(20.dp)
+        Box(
+            modifier = Modifier
+                .graphicsLayer { alpha = a4 }
+                .padding(top = 8.dp, bottom = 18.dp)
+                .fillMaxWidth()
+                .widthIn(max = 520.dp)
+                .height(56.dp)
+                .softGlowRect(c.accent, 20f, 10f, 0.16f)
+                .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
+                .clickable {
+                    if (!done) {
+                        done = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onContinue()
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(tr("Continue"), color = onAccent, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
 
-private const val REVEAL_MS = 560
-private val RevealEasing = CubicBezierEasing(0.33f, 0f, 0.15f, 1f)
-
+/** مینیاتور صفحه‌ی اصلی: لوگو، حلقه‌ی اتصال و کارت دیتا؛ همه با رنگ‌های تم فعلی. */
 @Composable
-internal fun ThemeTransitionHost(content: @Composable () -> Unit) {
-    val view = LocalView.current
-    DisposableEffect(view) {
-        ThemeTransition.attach(view)
-        onDispose { ThemeTransition.detach(view) }
-    }
-    Box(
-        Modifier.fillMaxSize().pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val e = awaitPointerEvent(PointerEventPass.Initial)
-                    e.changes.firstOrNull()?.let { ThemeTransition.origin = it.position }
-                }
-            }
-        },
+private fun ThemePreviewCard(modifier: Modifier = Modifier) {
+    val c = LocalFoxExtras.current
+    val shape = RoundedCornerShape(28.dp)
+    val fill by animateFloatAsState(0.72f, tween(700, delayMillis = 350), label = "fill")
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .softGlowRect(c.accent, 28f, 12f, 0.10f)
+            .clip(shape)
+            .background(c.card)
+            .border(1.dp, c.cardBorder, shape)
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        content()
-        val snap = ThemeTransition.snapshot
-        if (snap != null) {
-            val progress = remember(snap) { Animatable(0f) }
-            LaunchedEffect(snap) {
-                withFrameNanos { } // اجازه بده فریمِ اول با تم جدید زیر عکس ساخته بشه (بدون پرش)
-                progress.animateTo(1f, tween(REVEAL_MS, easing = RevealEasing))
-                if (ThemeTransition.snapshot === snap) ThemeTransition.snapshot = null
-            }
-            val img = remember(snap) { snap.asImageBitmap() }
-            Canvas(Modifier.matchParentSize()) {
-                val o = ThemeTransition.origin ?: Offset(size.width / 2f, size.height / 2f)
-                val maxR = maxOf(
-                    hypot(o.x, o.y), hypot(size.width - o.x, o.y),
-                    hypot(o.x, size.height - o.y), hypot(size.width - o.x, size.height - o.y),
-                )
-                val r = maxR * progress.value
-                val hole = Path().apply { addOval(androidx.compose.ui.geometry.Rect(o, r)) }
-                clipPath(hole, ClipOp.Difference) {
-                    drawImage(img, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
-                }
-            }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
+                    withStyle(SpanStyle(color = c.accent)) { append("VPN") }
+                },
+                fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .softGlow(c.accent, 14f, 0.30f)
+                .clip(CircleShape)
+                .background(c.accent.copy(alpha = 0.12f))
+                .border(3.dp, c.accent, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(52.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(tr("READY TO CONNECT"), color = c.accentText, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Data remaining"), color = c.textSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            val pill = RoundedCornerShape(12.dp)
+            Box(
+                Modifier.clip(pill).background(c.accent.copy(alpha = 0.14f)).border(1.dp, c.accent.copy(alpha = 0.35f), pill)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            ) { Text("72%", color = c.accent, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp) }
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)).background(c.accent.copy(alpha = 0.15f))) {
+            Box(
+                Modifier.fillMaxHeight().fillMaxWidth(fill).clip(RoundedCornerShape(6.dp))
+                    .background(Brush.horizontalGradient(listOf(c.accent.copy(alpha = 0.55f), c.accent))),
+            )
         }
     }
 }
