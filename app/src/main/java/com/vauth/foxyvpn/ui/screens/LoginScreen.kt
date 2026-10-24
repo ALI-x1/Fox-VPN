@@ -184,14 +184,10 @@ private fun String.stripZeroWidth(): String = filterNot { isZeroWidth(it) }
 fun LoginScreen(
     authRepository: FxaAuthRepository,
     onSignedIn: () -> Unit,
-    onOpenAdmin: () -> Unit = {},
     onOpenSupport: () -> Unit = {},
 ) {
     // کد فعال‌سازی (قالب FOX-XXXX-XXXX-XXXX)
     var code by remember { mutableStateOf("") }
-    // ۵ بار ضربه‌ی پشت‌سرهم روی لوگو: ورود ادمین (فقط برای صاحب برنامه)
-    var logoTaps by remember { mutableStateOf(0) }
-    var lastLogoTap by remember { mutableStateOf(0L) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -293,19 +289,7 @@ fun LoginScreen(
                         .collapsible { heroExpand },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        modifier = Modifier.pointerInput(Unit) {
-                            detectTapGestures(onTap = {
-                                val now = System.currentTimeMillis()
-                                logoTaps = if (now - lastLogoTap < 1_500L) logoTaps + 1 else 1
-                                lastLogoTap = now
-                                if (logoTaps >= 5) {
-                                    logoTaps = 0
-                                    onOpenAdmin()
-                                }
-                            })
-                        },
-                    ) { LoginLogo() }
+                    LoginLogo()
 
                     Spacer(Modifier.height(14.dp))
 
