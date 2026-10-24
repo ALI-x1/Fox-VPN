@@ -312,7 +312,6 @@ fun PlansScreen(
                     val pi = cfg.plan(promo)
                     PromoStrip(c, trf("%s · %d%% off", tr(PLANS.first { it.key == promo }.title), pi.disc), nowState, pi.dend) { autoOpen = false; expanded = promo }
                 }
-                CompareTable(c, cfg, currentKey, applied, nowState)
 
                 DiscountBox(
                     c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
