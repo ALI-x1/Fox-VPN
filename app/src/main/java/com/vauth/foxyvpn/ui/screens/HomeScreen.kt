@@ -1354,6 +1354,7 @@ private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: B
             tint = c.download,
             speedBytes = t.downloadSpeed.toLong(),
             active = connected && t.downloadSpeed > 0,
+            connected = connected,
             down = true,
             numberColor = numberColor,
             total = formatBytes(t.totalDownload),
@@ -1372,6 +1373,7 @@ private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: B
             tint = c.upload,
             speedBytes = t.uploadSpeed.toLong(),
             active = connected && t.uploadSpeed > 0,
+            connected = connected,
             down = false,
             numberColor = numberColor,
             total = formatBytes(t.totalUpload),
@@ -1388,6 +1390,7 @@ private fun TrafficColumn(
     tint: Color,
     speedBytes: Long,
     active: Boolean,
+    connected: Boolean,
     down: Boolean,
     numberColor: Color,
     total: String,
@@ -1407,8 +1410,8 @@ private fun TrafficColumn(
         }
         Spacer(Modifier.height(4.dp))
         SmoothSpeedText(speedBytes = speedBytes, color = numberColor)
-        ActivityMeter(speedBytes = speedBytes, tint = tint, track = c.cardBorder)
-        Spacer(Modifier.height(3.dp))
+        ActivityMeter(speedBytes = speedBytes, connected = connected, tint = tint, track = c.cardBorder)
+        Spacer(Modifier.height(4.dp))
         Text(
             text = trf("Total  %s", total),
             fontSize = 12.sp,
@@ -1446,14 +1449,19 @@ private fun FlowArrow(icon: androidx.compose.ui.graphics.vector.ImageVector, tin
     }
 }
 
-/** نوار نازک فعالیت زیر سرعت (مقیاس لگاریتمی؛ از ۰ تا ~۲۰ MB/s). */
+/**
+ * نوار نازک فعالیت زیر سرعت (مقیاس لگاریتمی؛ ~۰ تا ۲۰ MB/s).
+ * وصل باشی و ترافیک نباشه هم یه ته‌رنگ کم‌رنگ پیداست (خالی دیده نمی‌شه)؛ قطع باشی نوار خیلی کم‌رنگ و خالیه.
+ */
 @Composable
-private fun ActivityMeter(speedBytes: Long, tint: Color, track: Color) {
-    val target = (kotlin.math.ln(1.0 + speedBytes / 1024.0) / kotlin.math.ln(1.0 + 20480.0)).toFloat().coerceIn(0f, 1f)
+private fun ActivityMeter(speedBytes: Long, connected: Boolean, tint: Color, track: Color) {
+    val live = (kotlin.math.ln(1.0 + speedBytes / 1024.0) / kotlin.math.ln(1.0 + 20480.0)).toFloat().coerceIn(0f, 1f)
+    val target = if (connected) maxOf(live, 0.06f) else 0f
     val f by animateFloatAsState(target, tween(450, easing = FastOutSlowInEasing), label = "meter")
+    val a by animateFloatAsState(if (connected) 1f else 0.5f, tween(450), label = "meter-a")
     Spacer(Modifier.height(5.dp))
-    Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(track.copy(alpha = 0.6f))) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(2.dp)).background(tint))
+    Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(track.copy(alpha = 0.6f * a))) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(2.dp)).background(tint.copy(alpha = if (speedBytes > 0) 1f else 0.45f)))
     }
 }
 
