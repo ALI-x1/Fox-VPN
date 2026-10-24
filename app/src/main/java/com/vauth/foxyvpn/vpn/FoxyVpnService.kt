@@ -93,9 +93,9 @@ private const val PROXY_PASS_RENEWAL_FALLBACK_MS = 4 * 60_000L
 
 private const val PROXY_PASS_RENEWAL_RETRY_MS = 30_000L
 
-private const val POST_TUN_SETTLE_MS = 250L
+private const val POST_TUN_SETTLE_MS = 80L
 
-private const val INITIAL_DIAL_SETTLE_MS = 600L
+private const val INITIAL_DIAL_SETTLE_MS = 250L
 
 private const val INITIAL_DIAL_MAX_ATTEMPTS = MAX_ALTERNATE_EDGES + 1
 private const val INITIAL_DIAL_BACKOFF_BASE_MS = 2_000L
