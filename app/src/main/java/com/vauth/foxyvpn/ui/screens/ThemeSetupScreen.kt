@@ -44,7 +44,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -72,10 +73,11 @@ fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     // ورود پله‌ای بخش‌ها
-    val a1 by animateFloatAsState(if (shown) 1f else 0f, tween(500), label = "a1")
-    val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 150), label = "a2")
-    val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 300), label = "a3")
-    val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(600, delayMillis = 450), label = "a4")
+    val ease = androidx.compose.animation.core.FastOutSlowInEasing
+    val a1 by animateFloatAsState(if (shown) 1f else 0f, tween(380, easing = ease), label = "a1")
+    val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 90, easing = ease), label = "a2")
+    val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 180, easing = ease), label = "a3")
+    val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(420, delayMillis = 270, easing = ease), label = "a4")
     var done by remember { mutableStateOf(false) } // دوبار لمس سریع دوبار ناوبری نکنه
     val haptics = LocalHapticFeedback.current
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
@@ -123,7 +125,7 @@ fun ThemeSetupScreen(themeController: ThemeController, onContinue: () -> Unit) {
                 .fillMaxWidth()
                 .widthIn(max = 520.dp)
                 .height(56.dp)
-                .shadow(10.dp, shape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                .softGlowRect(c.accent, 20f, 10f, 0.16f)
                 .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
                 .clickable {
                     if (!done) {
@@ -145,14 +147,14 @@ private fun ThemePreviewCard(modifier: Modifier = Modifier) {
     val c = LocalFoxExtras.current
     val shape = RoundedCornerShape(28.dp)
     val breathe by rememberInfiniteTransition(label = "preview").animateFloat(
-        initialValue = 0.94f, targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse), label = "breathe",
+        initialValue = 0.97f, targetValue = 1.03f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = androidx.compose.animation.core.FastOutSlowInEasing), RepeatMode.Reverse), label = "breathe",
     )
-    val fill by animateFloatAsState(0.72f, tween(1000, delayMillis = 500), label = "fill")
+    val fill by animateFloatAsState(0.72f, tween(700, delayMillis = 350), label = "fill")
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(14.dp, shape, ambientColor = c.accent.copy(alpha = 0.2f), spotColor = c.accent.copy(alpha = 0.2f))
+            .softGlowRect(c.accent, 28f, 12f, 0.10f)
             .clip(shape)
             .background(c.card)
             .border(1.dp, c.cardBorder, shape)
@@ -175,7 +177,7 @@ private fun ThemePreviewCard(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(92.dp)
                 .graphicsLayer { scaleX = breathe; scaleY = breathe }
-                .shadow(12.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.4f), spotColor = c.accent.copy(alpha = 0.4f))
+                .softGlow(c.accent, 14f, 0.30f)
                 .clip(CircleShape)
                 .background(c.accent.copy(alpha = 0.12f))
                 .border(3.dp, c.accent, CircleShape),
