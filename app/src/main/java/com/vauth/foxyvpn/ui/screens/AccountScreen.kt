@@ -207,28 +207,9 @@ fun AccountScreen(
                         QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
                     }
-                    QuickAction(c, Icons.Filled.ContentCopy, tr("Copy support info"), Modifier.fillMaxWidth()) {
-                        copyText(context, supportInfo(context), tr("Support info"))
-                    }
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
                 }
 
-                // جزئیات فنی (حساب Guardian)
-                entitlement?.let { info ->
-                    Column(Modifier.fillMaxWidth().accCard(c, 24).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(tr("Details"), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp, color = c.accentText)
-                        DetailRow(c, tr("Account ID"), info.uid.ifBlank { "—" })
-                        DetailRow(
-                            c, tr("Server quota"),
-                            when {
-                                !info.limitedBandwidth -> tr("Unlimited")
-                                info.quotaRemaining != null -> formatBytes(info.quotaRemaining)
-                                info.maxBytes != null -> trf("Limited to %s", formatBytes(info.maxBytes))
-                                else -> tr("Limited")
-                            },
-                        )
-                    }
-                }
                 Spacer(Modifier.height(8.dp))
             }
         }
