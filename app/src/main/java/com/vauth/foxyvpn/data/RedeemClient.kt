@@ -219,10 +219,10 @@ class RedeemClient(context: Context) {
     private fun noConnection() = RedeemException(tr("No connection. Check your internet and try again."))
     private fun serversBusy() = RedeemException(tr("All servers are busy right now. Please try again later or contact support."))
 
-    /** حالت ادمین (ورود با ایمیل و رمز از صفحه‌ی مخفی)؛ فقط برای صاحب برنامه. */
+    /** نسخه‌ی عمومی: حالت ادمین وجود ندارد (همیشه خاموش؛ تنظیمش اثری ندارد). */
     var adminMode: Boolean
-        get() = prefs.getBoolean(KEY_ADMIN, false)
-        set(value) { prefs.edit().putBoolean(KEY_ADMIN, value).apply() }
+        get() = false
+        set(@Suppress("UNUSED_PARAMETER") value) { prefs.edit().remove(KEY_ADMIN).apply() }
 
     /**
      * ورود با کد. اگه چند Worker تنظیم شده باشه، اول Workerی که کد قبلی روش بود و بعد بقیه امتحان می‌شن:
