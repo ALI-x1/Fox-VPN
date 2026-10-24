@@ -2,6 +2,7 @@ package com.vauth.foxyvpn.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -206,7 +207,7 @@ fun AccountScreen(
                         QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
                     }
-                    QuickAction(c, androidx.compose.material.icons.filled.ContentCopy, tr("Copy support info"), Modifier.fillMaxWidth()) {
+                    QuickAction(c, Icons.Filled.ContentCopy, tr("Copy support info"), Modifier.fillMaxWidth()) {
                         copyText(context, supportInfo(context), tr("Support info"))
                     }
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
