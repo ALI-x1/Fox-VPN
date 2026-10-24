@@ -20,7 +20,6 @@ import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.screens.AccountScreen
-import com.vauth.foxyvpn.ui.screens.AdminLoginScreen
 import com.vauth.foxyvpn.i18n.AppLanguage
 import com.vauth.foxyvpn.i18n.Lang
 import com.vauth.foxyvpn.ui.screens.HomeScreen
@@ -51,7 +50,6 @@ object FoxyRoutes {
     const val THEME_SETUP = "theme_setup"
     const val SPLASH = "splash"
     const val LOGIN = "login"
-    const val ADMIN_LOGIN = "admin_login"
     const val WELCOME = "welcome"
     const val UPGRADED = "upgraded"
     const val HOME = "home"
@@ -137,17 +135,7 @@ fun FoxyNavGraph(
                 onSignedIn = {
                     navController.navigate(FoxyRoutes.WELCOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
                 },
-                onOpenAdmin = { navController.navigate(FoxyRoutes.ADMIN_LOGIN) },
                 onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
-            )
-        }
-        composable(FoxyRoutes.ADMIN_LOGIN) {
-            AdminLoginScreen(
-                authRepository = app.authRepository,
-                onSignedIn = {
-                    RedeemClient(app).adminMode = true
-                    navController.navigate(FoxyRoutes.HOME) { popUpTo(FoxyRoutes.SPLASH) { inclusive = true } }
-                },
             )
         }
         composable(FoxyRoutes.WELCOME) {
