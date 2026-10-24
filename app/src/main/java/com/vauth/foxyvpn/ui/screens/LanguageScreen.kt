@@ -37,7 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -107,7 +108,7 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                     Box(
                         modifier = Modifier
                             .size(104.dp)
-                            .shadow(14.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                            .softGlow(c.accent, 12f, 0.30f)
                             .clip(CircleShape)
                             .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                         contentAlignment = Alignment.Center,
@@ -142,7 +143,7 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .shadow(10.dp, RoundedCornerShape(20.dp), ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                        .softGlowRect(c.accent, 20f, 10f, 0.16f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
                         .clickable { onConfirm(selected) },
@@ -246,10 +247,7 @@ private fun LanguageOptionCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                if (selected) 8.dp else 2.dp, shape,
-                ambientColor = c.accent.copy(alpha = 0.18f), spotColor = c.accent.copy(alpha = 0.18f),
-            )
+            .then(if (selected) Modifier.softGlowRect(c.accent, 22f, 8f, 0.12f) else Modifier)
             .clip(shape)
             .background(if (selected) c.accent.copy(alpha = 0.10f) else c.card)
             .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.cardBorder, shape)
