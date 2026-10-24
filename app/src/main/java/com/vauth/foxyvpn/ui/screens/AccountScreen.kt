@@ -2,6 +2,7 @@ package com.vauth.foxyvpn.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -184,7 +185,8 @@ fun AccountScreen(
                     isAdmin -> AdminCard(c, onAccent, entitlement, statusColors.connected)
                     license != null -> {
                         val lic = license!!
-                        PlanHero(c, onAccent, lic, cfg.plan(lic.plan ?: "").days, nowSec)
+                        PlanHero(c, onAccent, lic, cfg.plan(lic.plan ?: "").days, nowSec, if (isAdmin) null else onOpenPlans)
+                        LowAlert(c, lic, nowSec, onOpenPlans)
                         UsageRing(c, lic)
                         DailyAndTimeCards(c, lic, cfg.plan(lic.plan ?: "").days, nowSec)
                     }
@@ -203,6 +205,9 @@ fun AccountScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
+                    }
+                    QuickAction(c, androidx.compose.material.icons.filled.ContentCopy, tr("Copy support info"), Modifier.fillMaxWidth()) {
+                        copyText(context, supportInfo(context), tr("Support info"))
                     }
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
                 }
@@ -232,7 +237,7 @@ fun AccountScreen(
 // ───────────────────────── اجزای صفحه ─────────────────────────
 
 @Composable
-private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays: Int, nowSec: Long) {
+private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays: Int, nowSec: Long, onUpgrade: (() -> Unit)? = null) {
     val block = LicenseState.blockOf(lic, nowSec)
     val err = MaterialTheme.colorScheme.error
     val statusColors = LocalFoxyStatusColors.current
@@ -266,15 +271,37 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
                 when {
                     exp == null -> tr("No expiry")
                     exp <= nowSec -> tr("Expired")
-                    else -> trf("%s left", durationText(exp - nowSec))
+                    else -> trf("%s left", durationText(exp - nowSec)) + " · " +
+                        java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(exp * 1000))
                 },
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary,
             )
         }
-        Box(
-            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(statusColor.copy(alpha = 0.16f))
-                .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
-        ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (onUpgrade != null) {
+                val pillShape = RoundedCornerShape(12.dp)
+                if (lic.plan == "max") {
+                    Box(
+                        modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
+                            .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) { Text("👑 " + tr("Top plan"), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
+                } else {
+                    Row(
+                        modifier = Modifier.clip(pillShape).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
+                            .clickable(onClick = onUpgrade).padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.WorkspacePremium, null, tint = onAccent, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(tr("Upgrade"), fontSize = 13.sp, fontWeight = FontWeight.Black, color = onAccent)
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(statusColor.copy(alpha = 0.16f))
+                    .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+            ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
+        }
     }
     if (block != null) {
         Row(Modifier.fillMaxWidth().accCard(c, 20, err.copy(alpha = 0.45f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -286,6 +313,36 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     @Suppress("UNUSED_VARIABLE") val unused = planDays
 }
 
+/** هشدار پیشگیرانه: حجم ≤۱۰٪ یا ≤۳ روز تا پایان پلن، با دکمه‌ی تمدید/ارتقا. */
+@Composable
+private fun LowAlert(c: FoxExtras, lic: LicenseStatus, nowSec: Long, onOpenPlans: () -> Unit) {
+    if (LicenseState.blockOf(lic, nowSec) != null) return // پیام سقف/انقضا همین بالا تو کارت پلن هست
+    val total = lic.totalBytes?.takeIf { it > 0 }
+    val fracLeft = total?.let { ((it - lic.usedBytes).toFloat() / it.toFloat()).coerceIn(0f, 1f) }
+    val exp = lic.expiresAt
+    val expSoon = exp != null && exp > nowSec && exp - nowSec <= 3 * 86400L
+    val lowData = fracLeft != null && fracLeft <= 0.1f
+    if (!expSoon && !lowData) return
+    val warn = MaterialTheme.colorScheme.error
+    val shape = RoundedCornerShape(22.dp)
+    val text = if (lowData) trf("Only %d%% of your data is left.", ((fracLeft ?: 0f) * 100).toInt())
+    else trf("Your plan ends in %s.", durationText((exp ?: nowSec) - nowSec))
+    val onAcc = onAccentColor(c)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(warn.copy(alpha = 0.10f)).border(1.dp, warn.copy(alpha = 0.45f), shape).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Warning, null, tint = warn, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.clip(RoundedCornerShape(14.dp)).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
+                .clickable(onClick = onOpenPlans).padding(horizontal = 14.dp, vertical = 9.dp),
+        ) { Text(if (lic.plan == "free") tr("Upgrade") else tr("Renew"), fontSize = 13.sp, fontWeight = FontWeight.Black, color = onAcc) }
+    }
+}
+
 /** حلقه‌ی بزرگِ دیتای باقی‌مانده (ماهانه/کل) با انیمیشن. */
 @Composable
 private fun UsageRing(c: FoxExtras, lic: LicenseStatus) {
@@ -293,7 +350,12 @@ private fun UsageRing(c: FoxExtras, lic: LicenseStatus) {
     val unlimited = total == null || total <= 0
     val remaining = if (unlimited) 0L else (total!! - lic.usedBytes).coerceAtLeast(0)
     val fraction = if (unlimited) 1f else (remaining.toFloat() / total!!.toFloat()).coerceIn(0f, 1f)
-    val anim by animateFloatAsState(fraction, tween(1100), label = "ring")
+    // اولین باز شدن صفحه: حلقه و عددها از صفر پر می‌شن (شمارش نرم)
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
+    val anim by animateFloatAsState(if (started) fraction else 0f, tween(1300, easing = FastOutSlowInEasing), label = "ring")
+    val shownRemaining by animateFloatAsState(if (started) remaining.toFloat() else 0f, tween(1300, easing = FastOutSlowInEasing), label = "ring-num")
+    val shownUsed by animateFloatAsState(if (started) lic.usedBytes.toFloat() else 0f, tween(1300, easing = FastOutSlowInEasing), label = "used-num")
     val low = !unlimited && fraction <= 0.1f
     val err = MaterialTheme.colorScheme.error
     val track = c.cardBorder
@@ -319,7 +381,7 @@ private fun UsageRing(c: FoxExtras, lic: LicenseStatus) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Filled.DataUsage, null, tint = if (low) err else c.accent, modifier = Modifier.size(26.dp))
                 Text(
-                    if (unlimited) "∞" else formatBytes(remaining),
+                    if (unlimited) "∞" else formatBytes(shownRemaining.toLong()),
                     fontSize = if (unlimited) 44.sp else 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary, textAlign = TextAlign.Center,
                 )
                 Text(tr("Data remaining"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
@@ -327,8 +389,8 @@ private fun UsageRing(c: FoxExtras, lic: LicenseStatus) {
         }
         if (!unlimited) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MiniStat(c, tr("Used"), formatBytes(lic.usedBytes))
-                MiniStat(c, tr("Left"), "${(fraction * 100).toInt()}%")
+                MiniStat(c, tr("Used"), formatBytes(shownUsed.toLong()))
+                MiniStat(c, tr("Left"), "${(anim * 100).toInt()}%")
             }
         }
     }
