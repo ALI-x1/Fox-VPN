@@ -63,6 +63,7 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
 
     fun setPalette(next: ThemePalette) {
         if (next == paletteState) return
+        ThemeTransition.capture()
         paletteState = next
         palettePrefs.edit().putString(PALETTE_KEY, next.name).apply()
         refreshWidget()
@@ -70,6 +71,7 @@ class ThemeController(private val settingsStore: SettingsStore, context: Context
 
     fun set(next: ThemeMode) {
         if (next == mode) return
+        ThemeTransition.capture()
         mode = next
         settingsStore.themeMode = next
         refreshWidget()
