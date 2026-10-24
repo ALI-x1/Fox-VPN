@@ -1,6 +1,7 @@
 package com.vauth.foxyvpn.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -33,12 +34,21 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
 
     private class NoChallengePage : Exception()
 
+    private companion object {
+        val solveLock = kotlinx.coroutines.sync.Mutex()
+        @Volatile var lastSolvedAt = 0L
+    }
+
     suspend fun solveAndInstall() = withContext(Dispatchers.IO) {
+      // اتصال و رفرش حساب صفحه‌ی خانه هم‌زمان چالش می‌خوردند و هر دو جدا حلش می‌کردند؛ حالا یکی حل می‌کند و بقیه نتیجه‌اش را می‌گیرند
+      solveLock.withLock {
+        if (System.currentTimeMillis() - lastSolvedAt < 20_000L) return@withLock
         var lastError: Exception? = null
         for (base in listOf("https://api.accounts.firefox.com", "https://accounts.firefox.com")) {
             try {
                 solveOnHost(base)
-                return@withContext
+                lastSolvedAt = System.currentTimeMillis()
+                return@withLock
             } catch (_: NoChallengePage) {
                 continue
             } catch (e: FastlyChallengeError) {
@@ -46,6 +56,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
             }
         }
         throw lastError ?: FastlyChallengeError("host did not serve a Fastly challenge page")
+      }
     }
 
     private fun baseOrigin(prefixUrl: String): String {
