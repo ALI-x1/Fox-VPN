@@ -50,7 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -197,7 +197,7 @@ fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
                     .alpha(textAlpha)
                     .fillMaxWidth()
                     .height(56.dp)
-                    .shadow(10.dp, shape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                    .softGlowRect(c.accent, 20f, 10f, 0.16f)
                     .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
                     .clickable(onClick = onContinue),
                 contentAlignment = Alignment.Center,
