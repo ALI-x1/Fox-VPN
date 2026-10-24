@@ -1,5 +1,20 @@
 package com.vauth.foxyvpn.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.rotate
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +60,11 @@ import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
 
+/** از جاهای دیگه (مثل تنظیمات) می‌شه خواست که پنجره‌ی ردیم همون لحظه باز بشه. */
+object RedeemRequest {
+    var pending by mutableStateOf(false)
+}
+
 private fun planRank(key: String?): Int = when (key) { "free" -> 1; "pro" -> 2; "max" -> 3; else -> 0 }
 
 /**
@@ -67,6 +87,8 @@ fun RedeemCard(
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
     var ok by remember { mutableStateOf(false) }
+    var open by remember { mutableStateOf(false) }
+    LaunchedEffect(RedeemRequest.pending) { if (RedeemRequest.pending) { RedeemRequest.pending = false; open = true } }
 
     fun apply() {
         if (!RedeemClient.isComplete(code) || busy) return
@@ -84,7 +106,7 @@ fun RedeemCard(
             if (r.isSuccess) {
                 code = ""
                 if (redeem.activeCode != oldCode) releaseOld() // جای دستگاه روی کد قبلی آزاد بشه
-                if (planRank(LicenseState.status.value?.plan) > before) onUpgraded()
+                if (planRank(LicenseState.status.value?.plan) > before) { open = false; onUpgraded() }
                 else { ok = true; msg = tr("Your code was applied.") }
             } else {
                 ok = false; msg = tr("This code can't sign in right now. Please contact support.")
@@ -92,13 +114,40 @@ fun RedeemCard(
         }
     }
 
-    Box(modifier) {
-        RedeemBoxUi(c, code, busy, msg, ok, { code = RedeemClient.formatCode(it); msg = null }, ::apply)
+    // کارت جمع‌وجور؛ با لمس، پنجره‌ی کرکره‌ای (bottom sheet) برای وارد کردن کد باز می‌شه
+    val shape = RoundedCornerShape(28.dp)
+    val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.tween(260), label = "redeem-chev")
+    Row(
+        modifier = modifier.fillMaxWidth().clip(shape).background(c.card).border(2.dp, c.accent.copy(alpha = 0.45f), shape)
+            .clickable { msg = null; open = true }.padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tr("Have a code?"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+            Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+        }
+        Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
+    }
+    if (open) {
+        @OptIn(ExperimentalMaterial3Api::class)
+        ModalBottomSheet(
+            onDismissRequest = { if (!busy) open = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = c.bgBottom,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ) {
+            RedeemSheetContent(c, code, busy, msg, ok, { code = RedeemClient.formatCode(it); msg = null }, ::apply)
+        }
     }
 }
 
 @Composable
-private fun RedeemBoxUi(
+private fun RedeemSheetContent(
     c: FoxExtras,
     code: String,
     busy: Boolean,
@@ -107,20 +156,23 @@ private fun RedeemBoxUi(
     onCode: (String) -> Unit,
     onApply: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(28.dp)
+    val context = LocalContext.current
     val err = MaterialTheme.colorScheme.error
+    val focus = remember { FocusRequester() }
+    // بعد از تموم شدن انیمیشن باز شدن پنجره، فیلد فوکوس می‌گیره و کیبورد میاد (بدون پرش)
+    LaunchedEffect(Unit) { delay(280); runCatching { focus.requestFocus() } }
     Column(
-        modifier = Modifier.fillMaxWidth().planCard(c, 28, c.card, c.accent.copy(alpha = 0.45f), 2).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 22.dp).padding(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.accent.copy(alpha = 0.15f)),
+                modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(c.accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(24.dp)) }
+            ) { Icon(Icons.Filled.VpnKey, null, tint = c.accent, modifier = Modifier.size(26.dp)) }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(tr("Have a code?"), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Text(tr("Redeem a code"), fontSize = 22.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
                 Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
             }
         }
@@ -130,6 +182,14 @@ private fun RedeemBoxUi(
             singleLine = true,
             enabled = !busy,
             placeholder = { Text("FOX-XXXX-XXXX-XXXX", color = c.textSecondary.copy(alpha = 0.6f)) },
+            trailingIcon = {
+                TextButton(onClick = {
+                    val t = runCatching {
+                        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                    }.getOrNull()
+                    if (!t.isNullOrBlank()) onCode(t.trim())
+                }, enabled = !busy) { Text(tr("Paste"), color = c.accentText, fontWeight = FontWeight.Bold) }
+            },
             shape = RoundedCornerShape(18.dp),
             textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
@@ -139,7 +199,7 @@ private fun RedeemBoxUi(
                 focusedContainerColor = c.innerCard, unfocusedContainerColor = c.innerCard,
                 cursorColor = c.accent,
             ),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
         if (message != null) {
             Text(message, color = if (ok) c.accentText else err, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
@@ -150,4 +210,3 @@ private fun RedeemBoxUi(
         )
     }
 }
-
