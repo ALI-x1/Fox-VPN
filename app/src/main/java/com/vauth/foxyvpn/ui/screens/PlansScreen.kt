@@ -313,6 +313,10 @@ fun PlansScreen(
                     PromoStrip(c, trf("%s · %d%% off", tr(PLANS.first { it.key == promo }.title), pi.disc), nowState, pi.dend) { autoOpen = false; expanded = promo }
                 }
 
+                if (!isAdmin && authRepository != null) {
+                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded, inline = true)
+                }
+
                 DiscountBox(
                     c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
                     onCode = { discCode = it.uppercase(); discMsg = null },
@@ -338,10 +342,6 @@ fun PlansScreen(
                         onToggle = { autoOpen = false; expanded = if (expanded == plan.key) null else plan.key },
                         onGet = { onBuy(plan.key, if (applied.containsKey(plan.key)) appliedCode else "") },
                     )
-                }
-
-                if (!isAdmin && authRepository != null) {
-                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
                 }
 
                 Text(
