@@ -77,6 +77,7 @@ fun RedeemCard(
     onDisconnect: () -> Unit,
     onUpgraded: () -> Unit,
     modifier: Modifier = Modifier,
+    showCard: Boolean = true, // false = فقط پنجره (برای بازکردن از تنظیمات بدون رفتن به صفحه‌ی دیگر)
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
@@ -117,6 +118,7 @@ fun RedeemCard(
     // کارت جمع‌وجور؛ با لمس، پنجره‌ی کرکره‌ای (bottom sheet) برای وارد کردن کد باز می‌شه
     val shape = RoundedCornerShape(28.dp)
     val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.tween(260), label = "redeem-chev")
+    if (showCard) {
     Row(
         modifier = modifier.fillMaxWidth().clip(shape).background(c.card).border(2.dp, c.accent.copy(alpha = 0.45f), shape)
             .clickable { msg = null; open = true }.padding(18.dp),
@@ -132,6 +134,7 @@ fun RedeemCard(
             Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
         }
         Icon(Icons.Filled.ExpandMore, null, tint = c.textSecondary, modifier = Modifier.size(26.dp).rotate(rot))
+    }
     }
     if (open) {
         @OptIn(ExperimentalMaterial3Api::class)
