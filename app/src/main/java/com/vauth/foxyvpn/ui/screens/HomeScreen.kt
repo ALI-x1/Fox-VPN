@@ -148,6 +148,7 @@ import com.vauth.foxyvpn.vpn.PingUtil
 import com.vauth.foxyvpn.widget.WidgetQuotaCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import androidx.compose.ui.input.pointer.pointerInput
 import java.util.Locale
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -400,6 +401,8 @@ fun HomeScreen(
     var entitlement by remember { mutableStateOf<Entitlement?>(null) }
     LaunchedEffect(authRepository, state, isForeground) {
         if (authRepository == null || !isForeground || useLicense) return@LaunchedEffect
+        // وسط «در حال اتصال» درخواست نزن: با دریافت پروکسی‌پس سرویس رقابت می‌کرد و اتصال اول را کند می‌کرد
+        if (state == ConnectionState.CONNECTING) return@LaunchedEffect
         while (true) {
             try {
                 val token = authRepository.currentAccessToken()
@@ -467,31 +470,36 @@ fun HomeScreen(
     val daysLeft = if (useLicense) license?.expiresAt?.let { kotlin.math.ceil((it - System.currentTimeMillis() / 1000) / 86400.0).toLong() } else null
     val remainingPct = if (useLicense && !dataUnlimited && dataRemainingGb != null && dataTotalGb > 0.0) (dataRemainingGb / dataTotalGb * 100).toInt() else null
     val blockMsg = block?.message ?: ""
-    val homeBanner: HomeBanner? = run {
-        val sb = serverStatus?.banner
-        when {
-            sb != null -> {
-                val ok = LocalFoxyStatusColors.current.connected
-                val (ic, tone) = when (sb.kind) {
-                    "good" -> Icons.Filled.CheckCircle to ok
-                    "alert" -> Icons.Filled.ErrorOutline to bannerErr
-                    "info" -> Icons.Filled.Info to bannerAccent
-                    else -> Icons.Filled.Build to bannerWarn // maint / warn
-                }
-                HomeBanner(ic, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, tone, null)
-            }
-            block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
-            block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
-            block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
-            block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
-            block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
-            daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
-            remainingPct != null && remainingPct <= 10 -> HomeBanner(Icons.Filled.DataUsage, trf("Only %d%% of your data is left.", remainingPct), bannerWarn) { onOpenPlans() }
-            serverStatus?.update != null -> serverStatus?.update?.let { u ->
-                HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), bannerAccent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
-            }
-            else -> null
+    val okTone = LocalFoxyStatusColors.current.connected
+    val serverBars = serverStatus?.banners.orEmpty().ifEmpty { listOfNotNull(serverStatus?.banner) }
+    val localBanner: HomeBanner? = when {
+        block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
+        block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
+        block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
+        block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
+        block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
+        daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
+        remainingPct != null && remainingPct <= 10 -> HomeBanner(Icons.Filled.DataUsage, trf("Only %d%% of your data is left.", remainingPct), bannerWarn) { onOpenPlans() }
+        serverStatus?.update != null -> serverStatus?.update?.let { u ->
+            HomeBanner(Icons.Filled.SystemUpdate, tr("A new version is available. Tap to update."), bannerAccent) { if (u.url.isNotBlank()) uriHandler.openUri(u.url) }
         }
+        else -> null
+    }
+    // نوارهای سرور (چندتا می‌تونه باشه) + پیام محلی (حجم/انقضا/بلاک)؛ همه به‌نوبت نشون داده می‌شن
+    val homeBanners: List<HomeBanner> = serverBars.map { sb ->
+        val (ic, tone) = when (sb.kind) {
+            "good" -> Icons.Filled.CheckCircle to okTone
+            "alert" -> Icons.Filled.ErrorOutline to bannerErr
+            "info" -> Icons.Filled.Info to bannerAccent
+            else -> Icons.Filled.Build to bannerWarn // maint / warn
+        }
+        HomeBanner(ic, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, tone, null)
+    } + listOfNotNull(localBanner)
+    // افکت تمام‌صفحه‌ی نوار (برای هر نوار فقط یک بار)
+    var fxPlaying by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(serverBars) {
+        val pending = serverBars.firstOrNull { it.fx.isNotBlank() && it.fx != "none" && it.id.isNotBlank() && !NoticeClient.fxSeen(app, it.id) }
+        if (pending != null && fxPlaying == null) { NoticeClient.markFxSeen(app, pending.id); fxPlaying = pending.fx }
     }
 
     // پینگ فقط «بعد از اتصال» اندازه‌گیری می‌شه؛ قبل از اتصال (و تو حالت CONNECTING) null می‌مونه
@@ -692,14 +700,12 @@ fun HomeScreen(
                     Spacer(Modifier.height(10.dp))
 
                     AnimatedVisibility(
-                        visible = homeBanner != null,
+                        visible = homeBanners.isNotEmpty(),
                         enter = fadeIn() + expandVertically(),
                     ) {
-                        homeBanner?.let { b ->
-                            Column {
-                                StatusBannerBar(b, c)
-                                Spacer(Modifier.height(10.dp))
-                            }
+                        Column {
+                            BannerCarousel(homeBanners, c)
+                            Spacer(Modifier.height(10.dp))
                         }
                     }
 
@@ -921,6 +927,7 @@ fun HomeScreen(
                     bottomInset = padding.calculateBottomPadding(),
                 )
             }
+            fxPlaying?.let { fx -> com.vauth.foxyvpn.ui.components.FxOverlay(fx, onDone = { fxPlaying = null }) }
         }
     }
 }
@@ -1345,6 +1352,8 @@ private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: B
             icon = Icons.Filled.ArrowDownward,
             tint = c.download,
             speedBytes = t.downloadSpeed.toLong(),
+            active = connected && t.downloadSpeed > 0,
+            down = true,
             numberColor = numberColor,
             total = formatBytes(t.totalDownload),
         )
@@ -1361,6 +1370,8 @@ private fun TrafficCard(c: FoxExtras, traffic: State<TrafficState>, connected: B
             icon = Icons.Filled.ArrowUpward,
             tint = c.upload,
             speedBytes = t.uploadSpeed.toLong(),
+            active = connected && t.uploadSpeed > 0,
+            down = false,
             numberColor = numberColor,
             total = formatBytes(t.totalUpload),
         )
@@ -1375,20 +1386,14 @@ private fun TrafficColumn(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: Color,
     speedBytes: Long,
+    active: Boolean,
+    down: Boolean,
     numberColor: Color,
     total: String,
 ) {
     Column(modifier = modifier.padding(horizontal = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(tint.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
-            }
+            FlowArrow(icon = icon, tint = tint, down = down, active = active)
             Spacer(Modifier.width(6.dp))
             Text(
                 text = label,
@@ -1401,12 +1406,53 @@ private fun TrafficColumn(
         }
         Spacer(Modifier.height(4.dp))
         SmoothSpeedText(speedBytes = speedBytes, color = numberColor)
+        ActivityMeter(speedBytes = speedBytes, tint = tint, track = c.cardBorder)
+        Spacer(Modifier.height(3.dp))
         Text(
             text = trf("Total  %s", total),
             fontSize = 12.sp,
             color = c.textSecondary,
             maxLines = 1
         )
+    }
+}
+
+/** فلش دانلود/آپلود: وقتی داده در جریانه، فلش از داخل حباب «رد می‌شه» (فقط alpha/translation؛ بدون recompose). */
+@Composable
+private fun FlowArrow(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, down: Boolean, active: Boolean) {
+    Box(
+        modifier = Modifier.size(22.dp).clip(CircleShape).background(tint.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (active) {
+            val ph by rememberInfiniteTransition(label = "flow").animateFloat(
+                initialValue = 0f, targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(1100, easing = androidx.compose.animation.core.LinearEasing)),
+                label = "flow-phase",
+            )
+            Icon(
+                imageVector = icon, contentDescription = null, tint = tint,
+                modifier = Modifier.size(14.dp).graphicsLayer {
+                    val dir = if (down) 1f else -1f
+                    translationY = dir * (ph - 0.5f) * 14.dp.toPx()
+                    val k = 1f - (2f * kotlin.math.abs(ph - 0.5f)).let { it * it }
+                    alpha = k.coerceIn(0.1f, 1f)
+                },
+            )
+        } else {
+            Icon(imageVector = icon, contentDescription = null, tint = tint.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+/** نوار نازک فعالیت زیر سرعت (مقیاس لگاریتمی؛ از ۰ تا ~۲۰ MB/s). */
+@Composable
+private fun ActivityMeter(speedBytes: Long, tint: Color, track: Color) {
+    val target = (kotlin.math.ln(1.0 + speedBytes / 1024.0) / kotlin.math.ln(1.0 + 20480.0)).toFloat().coerceIn(0f, 1f)
+    val f by animateFloatAsState(target, tween(450, easing = FastOutSlowInEasing), label = "meter")
+    Spacer(Modifier.height(5.dp))
+    Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(track.copy(alpha = 0.6f))) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(2.dp)).background(tint))
     }
 }
 
@@ -1635,6 +1681,57 @@ private fun HeartHeaderButton(c: FoxExtras) {
 
 /** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
 private class HomeBanner(val icon: androidx.compose.ui.graphics.vector.ImageVector, val text: String, val tone: Color, val onClick: (() -> Unit)?)
+
+/** چند نوار به‌نوبت: هر ۵٫۵ ثانیه با اسلاید+محو عوض می‌شه؛ با کشیدن انگشت هم دستی عوض می‌شه؛ نقطه‌ها جای فعلی رو نشون می‌دن. */
+@Composable
+private fun BannerCarousel(items: List<HomeBanner>, c: FoxExtras) {
+    if (items.isEmpty()) return
+    var index by remember { mutableStateOf(0) }
+    var touchTick by remember { mutableStateOf(0) }
+    val cur = index.coerceIn(0, items.lastIndex)
+    if (items.size > 1) {
+        LaunchedEffect(items.size, touchTick, cur) {
+            delay(5500)
+            index = (cur + 1) % items.size
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        AnimatedContent(
+            targetState = cur,
+            transitionSpec = {
+                val dir = if (targetState >= initialState) 1 else -1
+                (androidx.compose.animation.slideInHorizontally(tween(380)) { it / 3 * dir } + fadeIn(tween(380))) togetherWith
+                    (androidx.compose.animation.slideOutHorizontally(tween(280)) { -it / 3 * dir } + fadeOut(tween(240)))
+            },
+            modifier = Modifier.pointerInput(items.size) {
+                var acc = 0f
+                androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+                    onDragStart = { acc = 0f },
+                    onDragEnd = {
+                        if (items.size > 1) {
+                            if (acc < -60f) index = (cur + 1) % items.size
+                            else if (acc > 60f) index = (cur - 1 + items.size) % items.size
+                        }
+                        touchTick++
+                    },
+                    onHorizontalDrag = { _, d -> acc += d },
+                )
+            },
+            label = "banner-carousel",
+        ) { i -> StatusBannerBar(items[i.coerceIn(0, items.lastIndex)], c) }
+        if (items.size > 1) {
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                items.indices.forEach { i ->
+                    Box(
+                        Modifier.size(if (i == cur) 14.dp else 6.dp, 6.dp).clip(CircleShape)
+                            .background(if (i == cur) c.accent else c.textSecondary.copy(alpha = 0.35f)),
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
