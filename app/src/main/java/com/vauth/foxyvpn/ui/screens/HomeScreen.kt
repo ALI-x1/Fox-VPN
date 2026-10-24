@@ -25,6 +25,7 @@ import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.StartOffsetType
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -1705,7 +1706,7 @@ private fun BannerCarousel(items: List<HomeBanner>, c: FoxExtras) {
             },
             modifier = Modifier.pointerInput(items.size) {
                 var acc = 0f
-                androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+                detectHorizontalDragGestures(
                     onDragStart = { acc = 0f },
                     onDragEnd = {
                         if (items.size > 1) {
