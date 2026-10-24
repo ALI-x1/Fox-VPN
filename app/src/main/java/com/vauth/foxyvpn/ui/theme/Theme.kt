@@ -121,8 +121,8 @@ fun FoxyVpnTheme(
         ThemeMode.DARK -> true
     }
     val targetSpec = remember(palette, darkTheme) { palette.spec(darkTheme) }
-    // تغییر تم/حالت: رنگ‌ها نرم از قبلی به جدید می‌رن (به‌جای پرش ناگهانی)
-    val spec = rememberAnimatedSpec(targetSpec, key = palette to darkTheme)
+    // انیمیشن تغییر تم: محو شدن عکس قبلی (ThemeTransition)؛ بدون lerp و recompose در هر فریم
+    val spec = targetSpec
 
     val context = LocalContext.current
     // رنگ داینامیک فقط وقتی کاربر خودش روشنش کنه و پالت پیش‌فرض باشه
@@ -157,7 +157,7 @@ fun FoxyVpnTheme(
             colorScheme = colorScheme,
             typography = FoxyTypography,
             motionScheme = MotionScheme.expressive(),
-            content = content,
+            content = { ThemeTransitionHost(content) },
         )
     }
 }
