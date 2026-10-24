@@ -259,6 +259,9 @@ fun FoxyNavGraph(
                 onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
                 onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
                 onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
+                authRepository = app.authRepository,
+                onDisconnect = onDisconnect,
+                onUpgraded = { navController.navigate(FoxyRoutes.UPGRADED) },
                 onSignOut = {
                     onDisconnect()
                     app.tokenStore.clear()
