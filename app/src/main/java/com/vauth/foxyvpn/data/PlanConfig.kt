@@ -27,6 +27,8 @@ data class PlanInfo(
     val price: Long = 0,
     val disc: Int = 0,
     val final: Long = 0,
+    /** پایان تخفیف (epoch ثانیه)؛ ۰ = بدون تایمر. */
+    val dend: Long = 0,
 )
 
 /** راه‌های پرداخت/ارتباط؛ هر چی خالی باشه تو اپ «به‌زودی» نشون داده می‌شه. */
@@ -70,7 +72,7 @@ object PlanConfigStore {
             val o = pj.optJSONObject(k) ?: return@associateWith PlanConfig.DEFAULT.plans.getValue(k)
             PlanInfo(
                 o.optInt("days"), o.optDouble("gb"), o.optDouble("daily"), o.optInt("devices", 1),
-                o.optLong("price"), o.optInt("disc"), o.optLong("final"),
+                o.optLong("price"), o.optInt("disc"), o.optLong("final"), o.optLong("dend"),
             )
         }
         val cj = j.optJSONObject("contacts") ?: JSONObject()
