@@ -160,7 +160,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val TELEGRAM_URL = "https://t.me/Ali_jahangirr"
-private const val TELEGRAM_HANDLE = "@Ali_jahangirr"
 
 /** صفحه‌های داخلی تنظیمات؛ بدون نیاز به route جدید تو NavGraph. */
 private enum class SettingsPage(val title: String, val subtitle: String) {
@@ -206,8 +205,10 @@ fun SettingsScreen(
     onOpenAccount: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
-    onOpenSupport: () -> Unit = {},
-    onOpenPlans: () -> Unit = {},
+    // پشتیبانی: اگه NavGraph چیزی نداد، تلگرام باز می‌شه (قبلاً ردیف Support بی‌عمل بود)
+    onOpenSupport: (() -> Unit)? = null,
+    // صفحه‌ی «کد و ارتقا»: اگه NavGraph چیزی نداد، مثل قبل صفحه‌ی حساب باز می‌شه
+    onOpenPlans: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
@@ -217,11 +218,19 @@ fun SettingsScreen(
     var checking by remember { mutableStateOf(false) }
     var checked by remember { mutableStateOf(false) }
     val updateScope = rememberCoroutineScope()
-    fun checkUpdate() {
+    // force = true وقتی کاربر خودش روی «Version» می‌زنه؛ وگرنه تا ۶۰ دقیقه از نتیجه‌ی قبلی استفاده می‌شه
+    fun checkUpdate(force: Boolean = false) {
         if (checking) return
+        if (!force && UpdateCheckCache.isFresh()) {
+            updateInfo = UpdateCheckCache.info
+            checked = true
+            return
+        }
         checking = true
         updateScope.launch {
-            updateInfo = runCatching { NoticeClient.fetchStatus(context).update }.getOrNull()
+            val result = runCatching { NoticeClient.fetchStatus(context).update }
+            if (result.isSuccess) UpdateCheckCache.put(result.getOrNull())
+            updateInfo = result.getOrNull() ?: UpdateCheckCache.info
             checking = false; checked = true
         }
     }
@@ -258,7 +267,7 @@ fun SettingsScreen(
     val adminScope = rememberCoroutineScope()
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
     val scrollState = rememberScrollState()
-    LaunchedEffect(page) { scrollState.scrollTo(0) }
+    LaunchedEffect(page) { if (scrollState.value != 0) scrollState.scrollTo(0) }
     BackHandler(enabled = page != SettingsPage.MAIN) { page = SettingsPage.MAIN }
     var showDohProviderDialog by rememberSaveable { mutableStateOf(false) }
     var showCustomDnsDialog by rememberSaveable { mutableStateOf(false) }
@@ -619,14 +628,28 @@ fun SettingsScreen(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         when (target) {
                             SettingsPage.MAIN -> {
-                                // ───── اکانت (اول صفحه) + تلگرام زیرش ─────
+                                // ───── اکانت (اول صفحه)؛ زیرش: وارد کردن کد، پشتیبانی ─────
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .settingsCard(c, 24.dp)
                                 ) {
                                     AccountHeaderRow(c = c, onClick = onOpenAccount)
-                                    TelegramCard(c = c, onClick = { openTelegram(context) })
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.CardGiftcard,
+                                        title = tr("Redeem a code"),
+                                        subtitle = tr("Upgrade your plan with a code"),
+                                        // صفحه‌ی «کد و ارتقا»، نه صفحه‌ی اشتراک حساب
+                                        onClick = { (onOpenPlans ?: onOpenAccount).invoke() },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.SupportAgent,
+                                        title = tr("Support"),
+                                        subtitle = tr("Bot, Telegram and help"),
+                                        onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
+                                    )
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 SettingsSection(c, tr("Theme & language")) {
@@ -724,21 +747,21 @@ fun SettingsScreen(
                                         subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else tr("Edge address and upstream proxy"),
                                         onClick = { page = SettingsPage.ADVANCED },
                                     )
-                                }
-
-                                SettingsSection(c, tr("About")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Description,
                                         title = tr("View logs"),
                                         subtitle = tr("Recent connection activity"),
-                                        divider = false,
                                         onClick = onOpenLogs,
                                     )
+                                }
+
+                                SettingsSection(c, tr("About")) {
                                     val upd = updateInfo
                                     SettingRow(
                                         c = c,
                                         icon = if (upd != null) Icons.Filled.SystemUpdate else Icons.Filled.Info,
+                                        divider = false,
                                         title = if (upd != null) tr("Update available") else tr("Version"),
                                         subtitle = when {
                                             upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
@@ -746,7 +769,7 @@ fun SettingsScreen(
                                             checked -> BuildConfig.VERSION_NAME + " · " + tr("You're up to date")
                                             else -> BuildConfig.VERSION_NAME
                                         },
-                                        onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate() },
+                                        onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate(force = true) },
                                         trailing = {
                                             if (upd != null) {
                                                 Box(
@@ -754,20 +777,6 @@ fun SettingsScreen(
                                                 ) { Text(tr("Update"), fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White) }
                                             }
                                         },
-                                    )
-                                    SettingRow(
-                                        c = c,
-                                        icon = Icons.Filled.CardGiftcard,
-                                        title = tr("Redeem a code"),
-                                        subtitle = tr("Upgrade your plan with a code"),
-                                        onClick = onOpenAccount,
-                                    )
-                                    SettingRow(
-                                        c = c,
-                                        icon = Icons.Filled.SupportAgent,
-                                        title = tr("Support"),
-                                        subtitle = tr("Bot, Telegram and help"),
-                                        onClick = onOpenSupport,
                                     )
                                     if (isAdmin) {
                                         SettingRow(
@@ -1363,72 +1372,6 @@ private val TelegramPlane: ImageVector by lazy {
     ).build()
 }
 
-/** کارت تلگرام؛ رنگ‌ها از تم فعال (accent) می‌آید و فقط لوگوی تلگرام ثابت است. */
-@Composable
-private fun TelegramCard(c: FoxExtras, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(22.dp)
-    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(c.accent.copy(alpha = 0.14f), c.innerCard.copy(alpha = 0.7f))
-                    )
-                )
-                .border(1.dp, c.accent.copy(alpha = 0.45f), shape)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .shadow(10.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = TelegramPlane,
-                    contentDescription = tr("Telegram"),
-                    tint = Color.White,
-                    modifier = Modifier.size(30.dp),
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = tr("Support & updates"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.textSecondary,
-                )
-                Text(
-                    text = TELEGRAM_HANDLE,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = c.accentText,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(c.accent.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = c.accentText,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-    }
-}
-
 // ───────────────────────── دیالوگ‌ها ─────────────────────────
 
 @Composable
@@ -1895,6 +1838,30 @@ private class InstalledAppEntry(val packageName: String, val label: String) {
     val labelLower: String = label.lowercase()
 }
 
+/** نتیجه‌ی آخرین چک آپدیت؛ ۶۰ دقیقه معتبره (فقط تو حافظه، با بستن برنامه پاک می‌شه). */
+private object UpdateCheckCache {
+    @Volatile var info: UpdateInfo? = null
+        private set
+    @Volatile private var checkedAt = 0L
+    fun isFresh(): Boolean = checkedAt != 0L && System.currentTimeMillis() - checkedAt < 60 * 60_000L
+    fun put(update: UpdateInfo?) { info = update; checkedAt = System.currentTimeMillis() }
+}
+
+/** فهرست برنامه‌های نصب‌شده؛ ۵ دقیقه کش می‌شه تا باز کردن دوباره‌ی Split tunneling فوری باشه. */
+private object InstalledAppsCache {
+    @Volatile private var apps: List<InstalledAppEntry>? = null
+    @Volatile private var loadedAt = 0L
+    fun get(): List<InstalledAppEntry>? =
+        apps?.takeIf { System.currentTimeMillis() - loadedAt < 5 * 60_000L }
+    fun put(list: List<InstalledAppEntry>) { apps = list; loadedAt = System.currentTimeMillis() }
+}
+
+/** برنامه‌های انتخاب‌شده‌ی قبلی بالا، بقیه الفبایی. */
+private fun sortInstalledApps(apps: List<InstalledAppEntry>, selected: Set<String>): List<InstalledAppEntry> =
+    apps.sortedWith(
+        compareByDescending<InstalledAppEntry> { it.packageName in selected }.thenBy { it.labelLower }
+    )
+
 /** کش کوچک آیکون برنامه‌ها تا اسکرول لیست روان بماند. */
 private object AppIconCache {
     private val cache = android.util.LruCache<String, ImageBitmap>(160)
@@ -1946,22 +1913,24 @@ private fun SplitTunnelDialog(
     var searchQuery by remember { mutableStateOf("") }
     val initiallySelected = remember { current }
 
-    val installedApps by produceState<List<InstalledAppEntry>?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) {
-            val packageManager = context.packageManager
-            packageManager.getInstalledApplications(0)
-                .asSequence()
-                .filter { it.packageName != context.packageName }
-                .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
-                .map { info: android.content.pm.ApplicationInfo ->
-                    InstalledAppEntry(info.packageName, info.loadLabel(packageManager).toString())
-                }
-                // برنامه‌هایی که از قبل انتخاب شده بالا می‌آیند، بقیه الفبایی
-                .sortedWith(
-                    compareByDescending<InstalledAppEntry> { it.packageName in initiallySelected }
-                        .thenBy { it.labelLower }
-                )
-                .toList()
+    val installedApps by produceState<List<InstalledAppEntry>?>(
+        initialValue = InstalledAppsCache.get()?.let { sortInstalledApps(it, initiallySelected) },
+    ) {
+        if (value == null) {
+            val base = withContext(Dispatchers.IO) {
+                val packageManager = context.packageManager
+                packageManager.getInstalledApplications(0)
+                    .asSequence()
+                    .filter { it.packageName != context.packageName }
+                    .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
+                    .map { info: android.content.pm.ApplicationInfo ->
+                        InstalledAppEntry(info.packageName, info.loadLabel(packageManager).toString())
+                    }
+                    .toList()
+            }
+            InstalledAppsCache.put(base)
+            // برنامه‌هایی که از قبل انتخاب شده بالا می‌آیند، بقیه الفبایی
+            value = sortInstalledApps(base, initiallySelected)
         }
     }
     val filteredApps = remember(installedApps, searchQuery) {
