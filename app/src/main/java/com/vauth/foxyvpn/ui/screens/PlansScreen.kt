@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -244,44 +245,8 @@ fun PlansScreen(
         }
     }
 
-    val barPlan = PLANS.firstOrNull { it.key == expanded && it.key != "free" && rank(it.key) >= rank(currentKey) }
     Scaffold(
         containerColor = Color.Transparent,
-        bottomBar = {
-            AnimatedVisibility(visible = barPlan != null, enter = expandVertically(tween(260)) + fadeIn(tween(260)), exit = shrinkVertically(tween(200)) + fadeOut(tween(140))) {
-                val bp = barPlan ?: PLANS[1]
-                val info = cfg.plan(bp.key)
-                val nowS = if (info.dend > 0) nowState.value else 0L
-                val (pct, fin) = effPrice(info, applied[bp.key], nowS)
-                val finalP = if (fin > 0) fin else info.price
-                val cur = PlanConfigStore.cached(context).contacts.cur.ifBlank { tr("Toman") }
-                val label = when {
-                    bp.key == currentKey -> trf("Renew %s", tr(bp.title))
-                    rank(currentKey) > 0 -> trf("Upgrade to %s", tr(bp.title))
-                    else -> trf("Buy %s", tr(bp.title))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().background(c.bgBottom)
-                        .border(1.dp, c.cardBorder, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                        .navigationBarsPadding().padding(horizontal = 18.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr(bp.title), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.textSecondary)
-                        if (finalP > 0) {
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(formatMoney(finalP), fontSize = 20.sp, fontWeight = FontWeight.Black, color = c.accentText)
-                                Spacer(Modifier.width(5.dp))
-                                Text(cur, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.padding(bottom = 2.dp))
-                                if (pct > 0) { Spacer(Modifier.width(8.dp)); OffBadge(c, pct) }
-                            }
-                        }
-                    }
-                    PlanButton(label, c, modifier = Modifier.weight(1.3f)) { onBuy(bp.key, if (applied.containsKey(bp.key)) appliedCode else "") }
-                }
-            }
-        },
     ) { padding ->
         Box(
             modifier = Modifier
@@ -498,7 +463,7 @@ private fun PlanCard(
         }
 
         if (info.dend > 0 && info.disc > 0 && plan.key != "free" && info.dend > nowState.value) {
-            DiscountTimer(c, info.dend - nowState.value)
+            DiscountTimer(c, info.dend - nowState.value, Modifier.offset(y = (-8).dp))
         }
 
         AnimatedVisibility(
@@ -540,13 +505,14 @@ private fun PlanCard(
             }
         }
 
-        // دکمه‌ی پایین کارت
+        // دکمه‌ی پایین هر کارت: خرید / ارتقا / تمدید
         when {
             active && plan.key == "free" -> PlanButton("${tr(plan.title)} · ${tr("Active")}", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            active -> {} // تمدید از نوار پایین صفحه
+            active -> PlanButton(trf("Renew %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
             lowerThanCurrent -> PlanButton(tr("Included in your plan"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
             plan.key == "free" -> PlanButton(tr("Free"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
-            else -> {} // خرید/ارتقا از نوار ثابت پایین صفحه
+            hasPlan -> PlanButton(trf("Upgrade to %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
+            else -> PlanButton(trf("Buy %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
         }
         }
         }
@@ -656,21 +622,22 @@ internal fun PlanButton(
 // ───────────────────────── اجزای جدید ─────────────────────────
 
 @Composable
-private fun DiscountTimer(c: FoxExtras, remainSec: Long) {
+private fun DiscountTimer(c: FoxExtras, remainSec: Long, modifier: Modifier = Modifier) {
     val err = MaterialTheme.colorScheme.error
     val urgent = remainSec < 3600
     val tint = if (urgent) err else c.accentText
     val shape = RoundedCornerShape(14.dp)
     Row(
-        modifier = Modifier.fillMaxWidth().clip(shape).background(tint.copy(alpha = 0.10f)).border(1.dp, tint.copy(alpha = 0.35f), shape)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+        modifier = modifier.clip(shape).background(tint.copy(alpha = 0.10f)).border(1.dp, tint.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Filled.Timer, null, tint = tint, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(tr("Offer ends in"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.weight(1f))
+        Text(tr("Offer ends in"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary)
+        Spacer(Modifier.width(8.dp))
         Text(
-            countdownText(remainSec), fontSize = 15.sp, fontWeight = FontWeight.Black, color = tint,
+            countdownText(remainSec), fontSize = 14.sp, fontWeight = FontWeight.Black, color = tint,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
         )
     }
