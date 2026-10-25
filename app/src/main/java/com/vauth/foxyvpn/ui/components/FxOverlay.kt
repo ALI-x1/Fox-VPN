@@ -1,84 +1,331 @@
 package com.vauth.foxyvpn.ui.components
 
-import android.graphics.Paint
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * افکت تمام‌صفحه‌ی ایموجی (بدون گرفتن لمس): fx = confetti | fireworks | hearts | snow.
- * confetti/hearts/snow می‌ریزن پایین، fireworks چند بار می‌ترکه. بعد از [durationMs] خودش تموم می‌شه و [onDone] صدا زده می‌شه.
+ * افکت تمام‌صفحه‌ی جدید (بدون ایموجی؛ همه‌چیز با شکل‌های برداری کشیده می‌شه و بدون گرفتن لمس):
+ *  confetti  = دو توپِ کاغذرنگی از گوشه‌های پایین (برگه‌های سه‌بعدیِ چرخان با رنگ تم) + بارانِ آرام
+ *  snow      = دانه‌برف‌های شش‌پر در سه عمق + گلوله‌های برفیِ نرم
+ *  fireworks = موشک‌هایی که بالا می‌رن و با جرقه‌های دنباله‌دار می‌ترکن
+ *  hearts    = قلب‌هایی که آروم بالا می‌رن
+ * [durationMs]: -1 = مدت پیش‌فرضِ هر افکت، 0 = تکرار تا وقتی صفحه بازه، >0 = همون مدت. بعدش [onDone].
+ * فقط مرحله‌ی draw دوباره اجرا می‌شه (بدون recompose در هر فریم).
  */
 @Composable
-fun FxOverlay(fx: String, modifier: Modifier = Modifier, durationMs: Int = 4200, onDone: () -> Unit = {}) {
-    val emojis = remember(fx) {
-        when (fx) {
-            "fireworks" -> listOf("🎆", "🎇", "✨", "🎉")
-            "hearts" -> listOf("💖", "💗", "💕", "❤️")
-            "snow" -> listOf("❄️", "❄️", "✨", "☃️")
-            else -> listOf("🎉", "🎊", "✨", "🎈")
+fun FxOverlay(fx: String, modifier: Modifier = Modifier, durationMs: Int = -1, onDone: () -> Unit = {}) {
+    val c = LocalFoxExtras.current
+    val kind = when (fx) { "fireworks", "hearts", "snow" -> fx; else -> "confetti" }
+    val total = if (durationMs >= 0) durationMs else when (kind) { "snow" -> 9000; "hearts" -> 7000; "fireworks" -> 7500; else -> 5200 }
+    val palette = remember(c) {
+        listOf(c.accent, c.accentLight, Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color(0xFF4CC9F0), Color.White)
+    }
+    var tSec by remember(kind) { mutableStateOf(0f) }
+    val done by rememberUpdatedState(onDone)
+    LaunchedEffect(kind, total) {
+        val t0 = withFrameNanos { it }
+        while (true) {
+            val e = (withFrameNanos { it } - t0) / 1_000_000_000f
+            tSec = e
+            if (total > 0 && e * 1000f >= total) { done(); break }
         }
     }
-    val burst = fx == "fireworks"
-    val prog = remember(fx) { Animatable(0f) }
-    LaunchedEffect(fx) {
-        prog.animateTo(1f, tween(durationMs, easing = LinearEasing))
-        onDone()
+    val engine = remember(kind, palette) {
+        when (kind) {
+            "snow" -> SnowFx()
+            "hearts" -> HeartsFx(palette)
+            "fireworks" -> FireworksFx(palette)
+            else -> ConfettiFx(palette)
+        }
     }
-    class P(val a: Float, val b: Float, val c: Float, val d: Float, val e: Int, val g: Float)
-    val parts = remember(fx) {
-        val r = Random(fx.hashCode() + 11)
-        if (burst) List(84) { i -> P((i / 21).toFloat(), r.nextFloat() * 2f * PI.toFloat(), 0.45f + r.nextFloat() * 0.55f, 0.8f + r.nextFloat() * 0.6f, r.nextInt(emojis.size), r.nextFloat()) }
-        else List(48) { P(r.nextFloat(), r.nextFloat() * 0.55f, 0.6f + r.nextFloat() * 0.8f, 0.6f + r.nextFloat() * 0.9f, r.nextInt(emojis.size), r.nextFloat() * 6f) }
-    }
-    val centers = remember(fx) { val r = Random(fx.hashCode() + 5); List(4) { Pair(0.15f + r.nextFloat() * 0.7f, 0.12f + r.nextFloat() * 0.38f) } }
-    val paint = remember { Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER } }
+    Canvas(
+        modifier.fillMaxSize().graphicsLayer {
+            val e = tSec
+            val fin = (e / 0.35f).coerceIn(0f, 1f)
+            val fout = if (total > 0) ((total / 1000f - e) / 0.9f).coerceIn(0f, 1f) else 1f
+            alpha = fin * fout
+        },
+    ) { engine.draw(this, tSec) }
+}
 
-    Canvas(modifier.fillMaxSize()) {
-        val p = prog.value
-        val w = size.width
-        val h = size.height
-        val base = w / 13f
-        drawIntoCanvas { cv ->
-            val nc = cv.nativeCanvas
-            if (burst) {
-                parts.forEach { pt ->
-                    val bi = pt.a.toInt().coerceIn(0, 3)
-                    val start = bi * 0.17f
-                    val t = ((p - start) / 0.5f).coerceIn(0f, 1f)
-                    if (t <= 0f || t >= 1f) return@forEach
-                    val ease = 1f - (1f - t) * (1f - t)
-                    val (cx, cy) = centers[bi]
-                    val dist = w * 0.42f * pt.c * ease
-                    val x = cx * w + cos(pt.b) * dist
-                    val y = cy * h + sin(pt.b) * dist + h * 0.18f * t * t
-                    paint.textSize = base * pt.d * (1f - 0.35f * t)
-                    paint.alpha = ((1f - t * t) * 255).toInt().coerceIn(0, 255)
-                    nc.drawText(emojis[pt.e], x, y, paint)
+private interface FxEngine { fun draw(s: DrawScope, t: Float) }
+
+private fun fmod(a: Float, b: Float): Float = a - b * floor(a / b)
+private fun easeOut(x: Float): Float { val v = (1f - x.coerceIn(0f, 1f)); return 1f - v * v * v }
+
+// ───────────────────────── کاغذرنگی ─────────────────────────
+
+private class ConfettiFx(private val palette: List<Color>) : FxEngine {
+    private class Cannon(
+        val side: Int, val wave: Float, val ang: Float, val spd: Float, val size: Float, val color: Int, val shape: Int,
+        val flip: Float, val rot0: Float, val rotSp: Float, val sway: Float, val phase: Float, val vt: Float,
+    )
+    private class Drizzle(val x: Float, val delay: Float, val period: Float, val size: Float, val color: Int, val shape: Int, val flip: Float, val phase: Float, val rot0: Float)
+
+    private val cycle = 4.4f
+    private val life = 3.6f
+    private val cannons: List<Cannon>
+    private val drizzle: List<Drizzle>
+
+    init {
+        val r = Random(21)
+        val list = ArrayList<Cannon>()
+        for (side in 0..1) for (w in 0..1) repeat(42) {
+            list += Cannon(
+                side, if (w == 0) 0f else 0.5f,
+                (48f + r.nextFloat() * 38f) * (PI.toFloat() / 180f), 1.0f + r.nextFloat() * 1.35f,
+                5f + r.nextFloat() * 6f, r.nextInt(palette.size), r.nextInt(3),
+                4f + r.nextFloat() * 8f, r.nextFloat() * 360f, (r.nextFloat() - 0.5f) * 520f,
+                0.5f + r.nextFloat() * 1.2f, r.nextFloat() * 6.28f, 0.13f + r.nextFloat() * 0.16f,
+            )
+        }
+        cannons = list
+        drizzle = List(46) {
+            Drizzle(r.nextFloat(), r.nextFloat() * 5f, 3.6f + r.nextFloat() * 2f, 4.5f + r.nextFloat() * 5f, r.nextInt(palette.size), r.nextInt(3), 3f + r.nextFloat() * 5f, r.nextFloat() * 6.28f, r.nextFloat() * 360f)
+        }
+    }
+
+    private fun DrawScope.piece(x: Float, y: Float, sizePx: Float, shape: Int, color: Color, flipArg: Float, rotDeg: Float) {
+        val fl = cos(flipArg)
+        val sy = if (abs(fl) < 0.08f) 0.08f else fl
+        val shade = 0.62f + 0.38f * abs(fl)
+        val col = color.copy(alpha = color.alpha * shade)
+        val pivot = Offset(x, y)
+        when (shape) {
+            1 -> drawCircle(col, sizePx * 0.42f, pivot)
+            else -> withTransform({ rotate(rotDeg, pivot); scale(1f, sy, pivot) }) {
+                if (shape == 2) drawRect(col, Offset(x - sizePx * 0.16f, y - sizePx * 1.05f), Size(sizePx * 0.32f, sizePx * 2.1f))
+                else drawRect(col, Offset(x - sizePx * 0.7f, y - sizePx * 0.35f), Size(sizePx * 1.4f, sizePx * 0.7f))
+            }
+        }
+    }
+
+    override fun draw(s: DrawScope, t: Float) = with(s) {
+        val w = size.width; val h = size.height
+        val dp = density
+        val tc = fmod(t, cycle)
+        val k = 1.9f
+        for (p in cannons) {
+            val tau = tc - p.wave
+            if (tau < 0f || tau > life) continue
+            val u = (1f - exp(-k * tau)) / k
+            val dirx = if (p.side == 0) cos(p.ang) else -cos(p.ang)
+            val diry = -sin(p.ang)
+            val x0 = if (p.side == 0) -0.02f * w else 1.02f * w
+            val y0 = 1.03f * h
+            val x = x0 + dirx * p.spd * h * u + sin(p.phase + tau * 2.6f) * 0.018f * w * (tau / (tau + 0.6f))
+            val y = y0 + diry * p.spd * h * u + p.vt * h * (tau - u)
+            if (y > h + 40f || x < -40f || x > w + 40f) continue
+            val a = (1f - (tau - (life - 0.8f)) / 0.8f).coerceIn(0f, 1f)
+            piece(x, y, p.size * dp, p.shape, palette[p.color].copy(alpha = a), p.flip * tau + p.phase, p.rot0 + p.rotSp * tau)
+        }
+        for (d in drizzle) {
+            val tau = fmod(t + d.delay, d.period)
+            val pr = tau / d.period
+            val y = -0.05f * h + pr * 1.15f * h
+            val x = d.x * w + sin(d.phase + tau * 2.2f) * 0.04f * w
+            val a = if (pr < 0.08f) pr / 0.08f else if (pr > 0.9f) (1f - pr) / 0.1f else 1f
+            piece(x, y, d.size * dp, d.shape, palette[d.color].copy(alpha = 0.95f * a), d.flip * tau + d.phase, d.rot0 + tau * 90f)
+        }
+    }
+}
+
+// ───────────────────────── برف ─────────────────────────
+
+private class SnowFx : FxEngine {
+    private class Flake(val x: Float, val y: Float, val z: Int, val f: Float, val ph: Float, val rs: Float, val amp: Float)
+    private class Ball(val x: Float, val y: Float, val r: Float, val sp: Float, val ph: Float)
+    private val flakes: List<Flake>
+    private val balls: List<Ball>
+
+    init {
+        val r = Random(5)
+        flakes = List(86) { i -> val z = if (i < 44) 0 else if (i < 70) 1 else 2; Flake(r.nextFloat(), r.nextFloat(), z, 0.5f + r.nextFloat(), r.nextFloat() * 6.28f, (r.nextFloat() - 0.5f) * 40f, 10f + r.nextFloat() * 22f) }
+        balls = List(7) { Ball(r.nextFloat(), r.nextFloat(), 16f + r.nextFloat() * 14f, 0.16f + r.nextFloat() * 0.1f, r.nextFloat() * 6.28f) }
+    }
+
+    override fun draw(s: DrawScope, t: Float) = with(s) {
+        val w = size.width; val h = size.height
+        val dp = density
+        val cyc = h * 1.12f
+        for (f in flakes) {
+            val sp = when (f.z) { 0 -> 0.055f; 1 -> 0.095f; else -> 0.15f }
+            val r = when (f.z) { 0 -> 2.2f; 1 -> 4.5f; else -> 8f } * dp
+            val al = when (f.z) { 0 -> 0.55f; 1 -> 0.78f; else -> 0.95f }
+            val y = fmod(f.y * cyc + t * sp * h, cyc) - 0.06f * h
+            val x = f.x * w + sin(t * 0.8f * f.f + f.ph) * f.amp * dp
+            val col = Color.White.copy(alpha = al)
+            if (f.z == 0) drawCircle(col, r, Offset(x, y))
+            else {
+                val rot = f.ph * 57f + t * f.rs
+                withTransform({ rotate(rot, Offset(x, y)) }) {
+                    val sw = (r * 0.22f).coerceAtLeast(1.2f)
+                    for (i in 0..2) {
+                        val a = i * (PI.toFloat() / 3f)
+                        val dx = cos(a) * r; val dy = sin(a) * r
+                        drawLine(col, Offset(x - dx, y - dy), Offset(x + dx, y + dy), sw, StrokeCap.Round)
+                        // شاخه‌های کوچک روی هر بازو
+                        for (sgn in intArrayOf(-1, 1)) {
+                            val bx = x + dx * 0.6f * sgn; val by = y + dy * 0.6f * sgn
+                            val ba = a + PI.toFloat() / 2f
+                            val ex = cos(ba) * r * 0.22f; val ey = sin(ba) * r * 0.22f
+                            drawLine(col, Offset(bx - ex, by - ey), Offset(bx + ex, by + ey), sw * 0.8f, StrokeCap.Round)
+                        }
+                    }
+                    drawCircle(col, sw * 0.9f, Offset(x, y))
+                }
+            }
+        }
+        // گلوله‌های برفیِ نرم و درشت (نزدیک به دوربین)
+        for (b in balls) {
+            val y = fmod(b.y * cyc + t * b.sp * h, cyc) - 0.06f * h
+            val x = b.x * w + sin(t * 0.5f + b.ph) * 26f * dp
+            val rr = b.r * dp
+            drawCircle(
+                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.45f), Color.Transparent), Offset(x, y), rr),
+                rr, Offset(x, y),
+            )
+        }
+    }
+}
+
+// ───────────────────────── قلب ─────────────────────────
+
+private class HeartsFx(private val palette: List<Color>) : FxEngine {
+    private class H(val x: Float, val sp: Float, val ph: Float, val size: Float, val color: Int, val f: Float, val o: Float)
+    private val hearts: List<H>
+    private val cols = listOf(Color(0xFFFF5A8A), Color(0xFFFF8FB1), Color(0xFFE63946), Color(0xFFFFB3C7), palette.first())
+
+    init {
+        val r = Random(9)
+        hearts = List(34) { H(r.nextFloat(), 0.10f + r.nextFloat() * 0.14f, r.nextFloat() * 6.28f, 14f + r.nextFloat() * 28f, r.nextInt(5), 0.6f + r.nextFloat(), r.nextFloat()) }
+    }
+
+    private fun heart(cx: Float, cy: Float, s: Float): Path = Path().apply {
+        moveTo(cx, cy + s * 0.45f)
+        cubicTo(cx - s * 0.78f, cy - s * 0.02f, cx - s * 0.62f, cy - s * 0.72f, cx, cy - s * 0.25f)
+        cubicTo(cx + s * 0.62f, cy - s * 0.72f, cx + s * 0.78f, cy - s * 0.02f, cx, cy + s * 0.45f)
+        close()
+    }
+
+    override fun draw(s: DrawScope, t: Float) = with(s) {
+        val w = size.width; val h = size.height
+        for (e in hearts) {
+            val pr = fmod(t * e.sp + e.o, 1f)
+            val y = h * (1.08f - pr * 1.25f)
+            val x = e.x * w + sin(t * e.f + e.ph) * 0.045f * w
+            val a = (if (pr < 0.1f) pr / 0.1f else if (pr > 0.78f) (1f - pr) / 0.22f else 1f) * 0.92f
+            val sz = e.size * density
+            val tilt = sin(t * e.f + e.ph) * 14f
+            val col = cols[e.color]
+            withTransform({ rotate(tilt, Offset(x, y)) }) {
+                drawCircle(col.copy(alpha = a * 0.18f), sz * 0.9f, Offset(x, y))
+                drawPath(heart(x, y, sz), col.copy(alpha = a))
+                drawCircle(Color.White.copy(alpha = a * 0.55f), sz * 0.07f, Offset(x - sz * 0.3f, y - sz * 0.28f))
+            }
+        }
+    }
+}
+
+// ───────────────────────── آتش‌بازی ─────────────────────────
+
+private class FireworksFx(private val palette: List<Color>) : FxEngine {
+    private class Rocket(val launch: Float, val x0: Float, val tx: Float, val ty: Float, val c1: Color, val c2: Color, val ring: Boolean, val ang0: Float)
+    private class Spark(val a: Float, val sp: Float, val col: Int, val sz: Float, val ph: Float)
+
+    private val cycle = 6.6f
+    private val rise = 0.78f
+    private val life = 2.0f
+    private val rockets: List<Rocket>
+    private val sparks: List<Spark>
+
+    init {
+        val r = Random(33)
+        val times = floatArrayOf(0f, 0.55f, 1.2f, 1.85f, 2.5f, 3.2f, 3.9f)
+        val pairs = listOf(
+            palette[0] to palette[1], palette[2] to Color.White, palette[3] to palette[5], palette[4] to palette[2],
+            palette[5] to Color.White, palette[1] to palette[2], palette[3] to palette[4],
+        )
+        rockets = times.mapIndexed { i, tm ->
+            val tx = 0.14f + r.nextFloat() * 0.72f
+            Rocket(tm, (tx + (r.nextFloat() - 0.5f) * 0.25f).coerceIn(0.05f, 0.95f), tx, 0.16f + r.nextFloat() * 0.3f, pairs[i].first, pairs[i].second, i % 3 == 1, r.nextFloat() * 6.28f)
+        }
+        sparks = List(56) { j -> Spark((j / 56f) * 2f * PI.toFloat() + r.nextFloat() * 0.25f, 0.55f + r.nextFloat() * 0.45f, r.nextInt(3), 1.6f + r.nextFloat() * 1.6f, r.nextFloat() * 6.28f) }
+    }
+
+    override fun draw(s: DrawScope, t: Float) = with(s) {
+        val w = size.width; val h = size.height
+        val dp = density
+        val tc = fmod(t, cycle)
+        for (rk in rockets) {
+            val tl = tc - rk.launch
+            if (tl < 0f || tl > rise + life) continue
+            if (tl < rise) {
+                // بالا رفتن با دنباله‌ی طلایی
+                for (j in 0..6) {
+                    val pj = easeOut((tl - j * 0.028f) / rise)
+                    if (tl - j * 0.028f < 0f) continue
+                    val x = (rk.x0 + (rk.tx - rk.x0) * pj) * w + sin(pj * 18f + rk.ang0) * 3f * dp
+                    val y = h * 1.02f + (rk.ty * h - h * 1.02f) * pj
+                    val a = (1f - j / 7f)
+                    drawCircle(Color(0xFFFFD166).copy(alpha = 0.85f * a), (3.2f - j * 0.35f).coerceAtLeast(0.8f) * dp, Offset(x, y))
                 }
             } else {
-                parts.forEach { pt ->
-                    val delay = pt.b
-                    val t = ((p - delay * 0.5f) / (1f - delay * 0.5f)).coerceIn(0f, 1f)
-                    if (t <= 0f || t >= 1f) return@forEach
-                    val rise = fx == "hearts"
-                    val y = if (rise) h * (1.05f - t * (0.5f + pt.c * 0.6f)) else -base + t * (h + 2 * base)
-                    val x = (pt.a * w + sin(pt.g + t * 6f) * w * 0.05f * pt.d).coerceIn(0f, w)
-                    paint.textSize = base * pt.c
-                    paint.alpha = (if (t > 0.85f) (1f - t) / 0.15f * 255 else 255f).toInt().coerceIn(0, 255)
-                    nc.drawText(emojis[pt.e], x, y, paint)
+                val tau = tl - rise
+                val cx = rk.tx * w; val cy = rk.ty * h
+                if (tau < 0.25f) {
+                    val f = tau / 0.25f
+                    val rr = 0.2f * w * easeOut(f)
+                    drawCircle(Brush.radialGradient(listOf(rk.c1.copy(alpha = 0.5f * (1f - f)), Color.Transparent), Offset(cx, cy), rr.coerceAtLeast(1f)), rr.coerceAtLeast(1f), Offset(cx, cy))
+                }
+                val k = 2.4f
+                val maxR = 0.3f * w
+                for (sp in sparks) {
+                    val col = when (sp.col) { 0 -> rk.c1; 1 -> rk.c2; else -> if (rk.ring) rk.c1 else Color.White }
+                    val rad = maxR * (if (rk.ring) (0.9f + 0.1f * sp.sp) else sp.sp)
+                    for (j in 0..3) {
+                        val tj = tau - j * 0.05f
+                        if (tj < 0f) continue
+                        val dist = rad * (1f - exp(-k * tj))
+                        val x = cx + cos(sp.a) * dist
+                        val y = cy + sin(sp.a) * dist + 0.07f * h * tj * tj
+                        val fade = (1f - tj / life).coerceIn(0f, 1f).pow(1.3f)
+                        val tw = 0.78f + 0.22f * sin(tj * 38f + sp.ph)
+                        val a = fade * tw * (1f - j * 0.24f)
+                        if (a <= 0.01f) continue
+                        val rr = sp.sz * dp * (1f - j * 0.18f)
+                        if (j == 0) drawCircle(col.copy(alpha = a * 0.22f), rr * 2.6f, Offset(x, y))
+                        drawCircle(col.copy(alpha = a), rr, Offset(x, y))
+                    }
                 }
             }
         }
