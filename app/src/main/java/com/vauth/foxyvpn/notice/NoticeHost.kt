@@ -133,8 +133,8 @@ fun NoticeHost() {
         shape = RoundedCornerShape(28.dp),
         titleContentColor = c.textPrimary,
         textContentColor = c.textPrimary,
-        title = { Text(n.title, fontWeight = FontWeight.ExtraBold) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) { if (n.body.isNotBlank()) Text(n.body) } },
+        title = { Text(com.vauth.foxyvpn.i18n.bidi(n.title), fontWeight = FontWeight.ExtraBold) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { if (n.body.isNotBlank()) Text(com.vauth.foxyvpn.i18n.bidi(n.body)) } },
         confirmButton = {
             if (n.url.isNotBlank()) TextButton(onClick = { open(n.url); next() }, colors = btn) { Text(tr("Open"), fontWeight = FontWeight.Bold) }
             else TextButton(onClick = { next() }, colors = btn) { Text(tr("OK"), fontWeight = FontWeight.Bold) }
