@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -46,8 +47,10 @@ fun FxOverlay(fx: String, modifier: Modifier = Modifier, durationMs: Int = -1, o
     val c = LocalFoxExtras.current
     val kind = when (fx) { "fireworks", "hearts", "snow" -> fx; else -> "confetti" }
     val total = if (durationMs >= 0) durationMs else when (kind) { "snow" -> 9000; "hearts" -> 7000; "fireworks" -> 7500; else -> 5200 }
-    val palette = remember(c) {
-        listOf(c.accent, c.accentLight, Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color(0xFF4CC9F0), Color.White)
+    // تم روشن: برف سفید روی زمینه‌ی سفید دیده نمی‌شه؛ برف خط‌دور مشکی می‌گیره و رنگ «سفید» پالت تیره می‌شه
+    val light = remember(c) { c.bgTop.luminance() > 0.55f }
+    val palette = remember(c, light) {
+        listOf(c.accent, c.accentLight, Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color(0xFF4CC9F0), if (light) Color(0xFF455A64) else Color.White)
     }
     var tSec by remember(kind) { mutableStateOf(0f) }
     val done by rememberUpdatedState(onDone)
@@ -59,9 +62,9 @@ fun FxOverlay(fx: String, modifier: Modifier = Modifier, durationMs: Int = -1, o
             if (total > 0 && e * 1000f >= total) { done(); break }
         }
     }
-    val engine = remember(kind, palette) {
+    val engine = remember(kind, palette, light) {
         when (kind) {
-            "snow" -> SnowFx()
+            "snow" -> SnowFx(light)
             "hearts" -> HeartsFx(palette)
             "fireworks" -> FireworksFx(palette)
             else -> ConfettiFx(palette)
@@ -161,7 +164,7 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
 
 // ───────────────────────── برف ─────────────────────────
 
-private class SnowFx : FxEngine {
+private class SnowFx(private val light: Boolean) : FxEngine {
     private class Flake(val x: Float, val y: Float, val z: Int, val f: Float, val ph: Float, val rs: Float, val amp: Float)
     private class Ball(val x: Float, val y: Float, val r: Float, val sp: Float, val ph: Float)
     private val flakes: List<Flake>
@@ -184,24 +187,33 @@ private class SnowFx : FxEngine {
             val y = fmod(f.y * cyc + t * sp * h, cyc) - 0.06f * h
             val x = f.x * w + sin(t * 0.8f * f.f + f.ph) * f.amp * dp
             val col = Color.White.copy(alpha = al)
-            if (f.z == 0) drawCircle(col, r, Offset(x, y))
-            else {
+            val ink = Color(0xFF111111).copy(alpha = (al + 0.1f).coerceAtMost(1f))
+            val ol = 1.3f * dp // ضخامت خط‌دور (فقط تم روشن)
+            if (f.z == 0) {
+                if (light) drawCircle(ink, r + ol, Offset(x, y))
+                drawCircle(col, r, Offset(x, y))
+            } else {
                 val rot = f.ph * 57f + t * f.rs
                 withTransform({ rotate(rot, Offset(x, y)) }) {
                     val sw = (r * 0.22f).coerceAtLeast(1.2f)
-                    for (i in 0..2) {
-                        val a = i * (PI.toFloat() / 3f)
-                        val dx = cos(a) * r; val dy = sin(a) * r
-                        drawLine(col, Offset(x - dx, y - dy), Offset(x + dx, y + dy), sw, StrokeCap.Round)
-                        // شاخه‌های کوچک روی هر بازو
-                        for (sgn in intArrayOf(-1, 1)) {
-                            val bx = x + dx * 0.6f * sgn; val by = y + dy * 0.6f * sgn
-                            val ba = a + PI.toFloat() / 2f
-                            val ex = cos(ba) * r * 0.22f; val ey = sin(ba) * r * 0.22f
-                            drawLine(col, Offset(bx - ex, by - ey), Offset(bx + ex, by + ey), sw * 0.8f, StrokeCap.Round)
+                    // پاس اول: خط‌دور مشکی (کلفت‌تر)، پاس دوم: داخل سفید
+                    for (pass in (if (light) 0..1 else 1..1)) {
+                        val c2 = if (pass == 0) ink else col
+                        val extra = if (pass == 0) ol * 2f else 0f
+                        for (i in 0..2) {
+                            val a = i * (PI.toFloat() / 3f)
+                            val dx = cos(a) * r; val dy = sin(a) * r
+                            drawLine(c2, Offset(x - dx, y - dy), Offset(x + dx, y + dy), sw + extra, StrokeCap.Round)
+                            // شاخه‌های کوچک روی هر بازو
+                            for (sgn in intArrayOf(-1, 1)) {
+                                val bx = x + dx * 0.6f * sgn; val by = y + dy * 0.6f * sgn
+                                val ba = a + PI.toFloat() / 2f
+                                val ex = cos(ba) * r * 0.22f; val ey = sin(ba) * r * 0.22f
+                                drawLine(c2, Offset(bx - ex, by - ey), Offset(bx + ex, by + ey), sw * 0.8f + extra, StrokeCap.Round)
+                            }
                         }
+                        drawCircle(c2, sw * 0.9f + extra / 2f, Offset(x, y))
                     }
-                    drawCircle(col, sw * 0.9f, Offset(x, y))
                 }
             }
         }
@@ -210,10 +222,16 @@ private class SnowFx : FxEngine {
             val y = fmod(b.y * cyc + t * b.sp * h, cyc) - 0.06f * h
             val x = b.x * w + sin(t * 0.5f + b.ph) * 26f * dp
             val rr = b.r * dp
-            drawCircle(
-                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.45f), Color.Transparent), Offset(x, y), rr),
-                rr, Offset(x, y),
-            )
+            if (light) {
+                // تم روشن: گلوله‌ی سفید با لبه‌ی مشکیِ نازک
+                drawCircle(Color.White.copy(alpha = 0.92f), rr * 0.78f, Offset(x, y))
+                drawCircle(Color(0xFF111111).copy(alpha = 0.7f), rr * 0.78f, Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * dp))
+            } else {
+                drawCircle(
+                    Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.45f), Color.Transparent), Offset(x, y), rr),
+                    rr, Offset(x, y),
+                )
+            }
         }
     }
 }
