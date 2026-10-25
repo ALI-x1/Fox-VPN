@@ -42,7 +42,17 @@ data class ContactInfo(
     val cur: String = "",
 )
 
-data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo) {
+/** کشورهایی که ادمین موقتاً برای همه باز کرده؛ [untilMs] با ساعت گوشی (لحظه‌ی دریافت + مدت باقی‌مانده‌ی سرور). */
+data class TempOpen(val codes: Set<String>, val untilMs: Long) {
+    fun active(nowMs: Long = System.currentTimeMillis()): Boolean = codes.isNotEmpty() && untilMs > nowMs
+    fun covers(code: String?, nowMs: Long = System.currentTimeMillis()): Boolean =
+        active(nowMs) && code != null && code.uppercase().replace("UK", "GB") in codes
+}
+
+/** تخفیف خودکار تمدید: وقتی [days] روز یا کمتر به انقضا مانده، کد [code] با [pct]٪ خودکار اعمال می‌شود. */
+data class RenewOffer(val pct: Int, val days: Int, val code: String)
+
+data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null) {
     fun plan(key: String): PlanInfo = plans[key] ?: DEFAULT.plans.getValue(key)
 
     companion object {
@@ -65,7 +75,7 @@ object PlanConfigStore {
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).build()
 
-    private fun parse(text: String): PlanConfig? = runCatching {
+    private fun parse(text: String, at: Long): PlanConfig? = runCatching {
         val j = JSONObject(text)
         val pj = j.getJSONObject("plans")
         val map = DEFAULT_KEYS.associateWith { k ->
@@ -82,6 +92,12 @@ object PlanConfigStore {
                 cj.optString("card"), cj.optString("crypto"), cj.optString("donate"), cj.optString("tg"),
                 cj.optString("bot"), cj.optString("note"), cj.optString("cur"),
             ),
+            j.optJSONObject("temp")?.let { t ->
+                val arr = t.optJSONArray("codes")
+                val codes = (0 until (arr?.length() ?: 0)).map { arr!!.getString(it).uppercase() }.toSet()
+                TempOpen(codes, at + t.optLong("left") * 1000L)
+            },
+            j.optJSONObject("renew")?.let { r -> r.optInt("pct").takeIf { it > 0 }?.let { RenewOffer(it, r.optInt("days", 3), r.optString("code", "RENEW")) } },
         )
     }.getOrNull()
 
@@ -89,7 +105,8 @@ object PlanConfigStore {
 
     fun cached(context: Context): PlanConfig {
         val t = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
-        return t?.let(::parse) ?: PlanConfig.DEFAULT
+        val at = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("at", 0L)
+        return t?.let { parse(it, at) } ?: PlanConfig.DEFAULT
     }
 
     /** از اولین Workerِ جوابگو می‌گیره و کش می‌کنه؛ اگه نشد همون کش قبلی برمی‌گرده. */
@@ -98,8 +115,9 @@ object PlanConfigStore {
             val text = runCatching {
                 http.newCall(Request.Builder().url("$base/v1/config").build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
             }.getOrNull() ?: continue
-            val cfg = parse(text) ?: continue
-            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, text).apply()
+            val at = System.currentTimeMillis()
+            val cfg = parse(text, at) ?: continue
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, text).putLong("at", at).apply()
             return@withContext cfg
         }
         cached(context)
