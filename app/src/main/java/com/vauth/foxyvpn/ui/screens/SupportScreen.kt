@@ -31,6 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.CurrencyBitcoin
 import androidx.compose.material.icons.filled.Info
@@ -215,6 +217,10 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
     val c = LocalFoxExtras.current
     val cfg by rememberPlanConfig()
     val msg = "Hi, I need help with Fox-VPN.\n${supportInfo(context)}"
+    var showDiag by remember { mutableStateOf(false) }
+    if (showDiag) DiagnoseDialog(onDismiss = { showDiag = false })
+    var showRef by remember { mutableStateOf(false) }
+    if (showRef) ReferralDialog(onDismiss = { showRef = false })
     Scaffold(containerColor = Color.Transparent) { padding ->
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))) {
             Column(
@@ -228,6 +234,14 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
                     c, Icons.Filled.Receipt, tr("Copy support info"), tr("Version, plan and device ID — paste it in the chat"),
                     enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 2,
                 ) { copyText(context, supportInfo(context), tr("Support info")) }
+                ContactOption(
+                    c, Icons.Filled.Share, tr("Invite friends"), tr("You and your friend both get free days"),
+                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 1,
+                ) { showRef = true }
+                ContactOption(
+                    c, Icons.Filled.NetworkCheck, tr("Check my connection"), tr("Finds the problem in a few seconds"),
+                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 1,
+                ) { showDiag = true }
                 ContactOption(
                     c, Icons.Filled.LocalOffer, tr("Plans & prices"), tr("See what each plan includes"),
                     enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 3,
