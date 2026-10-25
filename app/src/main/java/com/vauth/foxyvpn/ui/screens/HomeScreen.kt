@@ -1701,7 +1701,12 @@ private fun HeartHeaderButton(c: FoxExtras) {
 
 
 /** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
- {
+private class HomeBanner(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val text: String,
+    val tone: Color,
+    val onClick: (() -> Unit)?,
+) {
     /** اگه > 0 باشه این نوار «آفر محدود» با شمارش معکوسه (epoch ثانیه‌ی پایان). */
     var offerEnd: Long = 0L
 }
