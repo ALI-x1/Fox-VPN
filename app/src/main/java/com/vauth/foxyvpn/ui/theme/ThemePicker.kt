@@ -167,6 +167,8 @@ fun ThemePickerSection(
     themeController: ThemeController,
     modifier: Modifier = Modifier,
     showTitle: Boolean = true,
+    unlocked: Boolean = true,
+    onLocked: () -> Unit = {},
 ) {
     val c = LocalFoxExtras.current
     val selected = themeController.palette
@@ -185,10 +187,10 @@ fun ThemePickerSection(
             )
         }
         GroupLabel(tr("Light & dark themes"), c)
-        PaletteGrid(dual, selected, isDark, themeController)
+        PaletteGrid(dual, selected, isDark, themeController, unlocked, onLocked)
         Spacer(Modifier.height(4.dp))
         GroupLabel(tr("Single-style themes"), c)
-        PaletteGrid(fixed, selected, isDark, themeController)
+        PaletteGrid(fixed, selected, isDark, themeController, unlocked, onLocked)
     }
 }
 
@@ -209,6 +211,8 @@ private fun PaletteGrid(
     selected: ThemePalette,
     isDark: Boolean,
     themeController: ThemeController,
+    unlocked: Boolean,
+    onLocked: () -> Unit,
 ) {
     items.chunked(2).forEach { rowItems ->
         Row(
@@ -221,7 +225,8 @@ private fun PaletteGrid(
                     selected = palette == selected,
                     previewDark = isDark,
                     modifier = Modifier.weight(1f),
-                    onClick = { themeController.setPalette(palette) }
+                    locked = !unlocked && !palette.isFree,
+                    onClick = { if (!unlocked && !palette.isFree) onLocked() else themeController.setPalette(palette) }
                 )
             }
             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
@@ -236,6 +241,7 @@ private fun PaletteCard(
     selected: Boolean,
     previewDark: Boolean,
     modifier: Modifier = Modifier,
+    locked: Boolean = false,
     onClick: () -> Unit,
 ) {
     val dual = palette.supportsLightDark
@@ -287,7 +293,9 @@ private fun PaletteCard(
                     )
                 }
             }
-            if (dual) {
+            if (locked) {
+                com.vauth.foxyvpn.ui.components.ProBadge()
+            } else if (dual) {
                 // نشانه‌ی «هم روشن هم تیره»
                 Icon(
                     imageVector = if (useDark) Icons.Filled.DarkMode else Icons.Filled.LightMode,
@@ -325,25 +333,19 @@ fun ThemeSwatchRow(
 ) {
     val c = LocalFoxExtras.current
     val selected = themeController.palette
-    val all = ThemePalette.values().filter { it.supportsLightDark } + ThemePalette.values().filter { !it.supportsLightDark }
-    val scroll = rememberScrollState()
+    // اولین اجرا: فقط ۵ تم اصلی (لایت/دارک‌دار و آزاد برای همه)، همه توی یک ردیف و بدون اسکرول افقی
+    val all = remember { ThemePalette.values().filter { it.isFree } }
     val haptics = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    // ردیف سوئچ‌ها وقتی تم انتخاب‌شده بیرون از دیده‌ست (مثلاً بعد از برگشتن) خودش می‌لغزه تا اون دیده بشه
-    LaunchedEffect(selected) {
-        val slot = with(density) { (56.dp + 12.dp).toPx() }
-        val target = (all.indexOf(selected) * slot - slot).toInt().coerceAtLeast(0)
-        scroll.animateScrollTo(target)
-    }
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 4.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             all.forEach { p ->
                 val sel = p == selected
                 // اندازه‌ی ثابت ۵۶: انتخاب‌شده فقط داخل خودش بزرگ می‌شه، پس ارتفاع ردیف نمی‌پره
-                val dia by animateDpAsState(if (sel) 54.dp else 44.dp, tween(220), label = "swatch-size")
+                val dia by animateDpAsState(if (sel) 52.dp else 42.dp, tween(220), label = "swatch-size")
                 val ring by animateColorAsState(if (sel) c.textPrimary else c.cardBorder, tween(220), label = "swatch-ring")
                 val checkTint = if (p.swatch.luminance() > 0.55f) Color(0xFF1B1B1B) else Color.White
                 Box(
