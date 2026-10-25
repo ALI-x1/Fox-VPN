@@ -229,7 +229,8 @@ fun PlansScreen(
     val lic0 = license
     val fracLeft = lic0?.totalBytes?.takeIf { it > 0 }?.let { t -> ((t - (lic0?.usedBytes ?: 0L)).toFloat() / t.toFloat()).coerceIn(0f, 1f) }
     val lowData = !isAdmin && fracLeft != null && fracLeft <= 0.2f
-    val expSoon = !isAdmin && (lic0?.expiresAt ?: Long.MAX_VALUE) - nowBase in 0L..(3 * 86400L)
+    val renewOffer = cfg.renew
+    val expSoon = !isAdmin && (lic0?.expiresAt ?: Long.MAX_VALUE) - nowBase in 0L..((renewOffer?.days ?: 3) * 86400L)
     val nextKey = when (currentKey) { "free" -> "pro"; "pro" -> "max"; else -> null }
     val suggestKey: String? = when {
         isAdmin || lic0 == null -> null
@@ -255,6 +256,15 @@ fun PlansScreen(
             discBusy = false
             if (r.isEmpty()) { discOk = false; discMsg = tr("This discount code isn't valid."); applied = emptyMap(); appliedCode = "" }
             else { discOk = true; applied = r; appliedCode = code.uppercase(); discMsg = trf("Discount applied: %d%% off", r.values.maxOf { it.first }) }
+        }
+    }
+
+    // تخفیف خودکار تمدید برای کاربری که نزدیک انقضاست (کد RENEW از سرور)
+    LaunchedEffect(expSoon, renewOffer?.code, currentKey) {
+        val ro = renewOffer
+        if (expSoon && ro != null && currentKey != null && currentKey != "free" && appliedCode.isEmpty()) {
+            val r = listOf("pro", "max").mapNotNull { k -> PlanConfigStore.checkDiscount(ro.code, k)?.let { k to it } }.toMap()
+            if (r.isNotEmpty()) { discOk = true; applied = r; appliedCode = ro.code; discMsg = trf("Renewal discount applied: %d%% off", r.values.maxOf { it.first }) }
         }
     }
 
@@ -656,7 +666,7 @@ private fun DiscountTimer(c: FoxExtras, remainSec: Long, modifier: Modifier = Mo
 }
 
 @Composable
-internal fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end: Long, onClick: () -> Unit) {
+internal fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end: Long, label: String? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
     val left = (end - nowState.value).coerceAtLeast(0)
@@ -668,7 +678,7 @@ internal fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end:
         Icon(Icons.Filled.LocalFireDepartment, null, tint = onAccent, modifier = Modifier.size(28.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(tr("Limited-time offer"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = onAccent.copy(alpha = 0.85f))
+            Text(label ?: tr("Limited-time offer"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = onAccent.copy(alpha = 0.85f))
             Text(title, fontSize = 18.sp, fontWeight = FontWeight.Black, color = onAccent)
         }
         Text(
