@@ -148,7 +148,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 
 /** نوار افقی و کشویی انتخاب آیکون برنامه (مثل تلگرام). */
 @Composable
-fun AppIconPickerSection() {
+fun AppIconPickerSection(unlocked: Boolean = true, onLocked: () -> Unit = {}) {
     val context = LocalContext.current
     val view = LocalView.current
     val c = LocalFoxExtras.current
@@ -181,7 +181,10 @@ fun AppIconPickerSection() {
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
                         .clickable {
-                            if (selected != icon) {
+                            if (!unlocked && icon.ordinal >= com.vauth.foxyvpn.ui.components.Perks.FREE_ICONS) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onLocked()
+                            } else if (selected != icon) {
                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                 selected = icon
                                 AppIconManager.request(context, icon)
@@ -208,6 +211,10 @@ fun AppIconPickerSection() {
                                 .fillMaxSize()
                                 .graphicsLayer(scaleX = icon.zoom, scaleY = icon.zoom),
                         )
+                        if (!unlocked && icon.ordinal >= com.vauth.foxyvpn.ui.components.Perks.FREE_ICONS) {
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
+                            com.vauth.foxyvpn.ui.components.ProBadge(Modifier.align(Alignment.BottomEnd).padding(4.dp))
+                        }
                         androidx.compose.animation.AnimatedVisibility(
                             visible = isSelected,
                             modifier = Modifier.align(Alignment.BottomEnd),
