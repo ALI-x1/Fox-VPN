@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,10 @@ import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.AirplanemodeActive
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -62,6 +67,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -499,6 +505,13 @@ fun HomeScreen(
         HomeBanner(Icons.Filled.LocalFireDepartment, trf("%s · %d%% off", tr(k.replaceFirstChar { it.uppercase() }), i.disc), bannerAccent) { PlanFocus.key = k; onOpenPlans() }
             .also { it.offerEnd = i.dend }
     }
+    // سرورِ موقتِ باز برای همه (ادمین از ربات می‌ذاره): فقط برای کسی که قفل داره، تا پایان تایمر
+    val perksOpen = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
+    val tempBanner: HomeBanner? = planCfg.temp?.takeIf { !perksOpen && it.active(nowOffer * 1000) }?.let { tmp ->
+        val names = tmp.codes.joinToString(" · ") { code -> (com.vauth.foxyvpn.data.CountryUtil.flagEmoji(code) + " " + (com.vauth.foxyvpn.data.CountryUtil.countryName(code) ?: code)).trim() }
+        HomeBanner(Icons.Filled.LocalFireDepartment, trf("%s is open for everyone", names), bannerAccent) { onOpenServers() }
+            .also { it.offerEnd = tmp.untilMs / 1000; it.promoLabel = tr("Free for a limited time") }
+    }
     val homeBanners: List<HomeBanner> = serverBars.map { sb ->
         val (ic, tone) = when (sb.kind) {
             "good" -> Icons.Filled.CheckCircle to okTone
@@ -507,7 +520,7 @@ fun HomeScreen(
             else -> Icons.Filled.Build to bannerWarn // maint / warn
         }
         HomeBanner(ic, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, tone, null)
-    }.let { listOfNotNull(offerBanner) + it } + listOfNotNull(localBanner)
+    }.let { listOfNotNull(tempBanner, offerBanner) + it } + listOfNotNull(localBanner)
     // افکت تمام‌صفحه‌ی نوار (برای هر نوار فقط یک بار)
     var fxPlaying by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(serverBars) {
@@ -575,6 +588,10 @@ fun HomeScreen(
     // دلیل خطا: با ✕ بسته می‌شه؛ خطای جدید (متن متفاوت) دوباره نشون داده می‌شه
     var dismissedError by remember { mutableStateOf<String?>(null) }
     val visibleError = lastError?.takeIf { it.isNotBlank() && it != dismissedError }
+    // پایش اینترنت گوشی: اگه آنتن/اینترنت مشکل داره، به کاربر بگو (نه اینکه فکر کنه VPN خرابه)
+    val netIssue = com.vauth.foxyvpn.vpn.rememberNetIssue(state)
+    var showDiag by remember { mutableStateOf(false) }
+    if (showDiag) DiagnoseDialog(onDismiss = { showDiag = false })
     // لرزش خطا فقط برای خطای تازه؛ نه هر بار که صفحه از نو ساخته می‌شه و خطای قدیمی هنوز تو سرویس مونده
     val initialError = remember { lastError }
     LaunchedEffect(lastError) {
@@ -875,6 +892,20 @@ fun HomeScreen(
                         }
                     }
 
+                    // ───── راهنمای اینترنت ضعیف/قطع (هوشمند؛ فقط وقتی مشکل از اینترنت گوشی باشه) ─────
+                    AnimatedVisibility(
+                        visible = netIssue != com.vauth.foxyvpn.vpn.NetIssue.NONE,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        var shownIssue by remember { mutableStateOf(netIssue) }
+                        if (netIssue != com.vauth.foxyvpn.vpn.NetIssue.NONE) shownIssue = netIssue
+                        Column {
+                            Spacer(Modifier.height(10.dp))
+                            NetHintBanner(shownIssue, state == ConnectionState.CONNECTED, statusColors.connecting)
+                        }
+                    }
+
                     // ───── دلیل خطا / هشدار اتصال (فقط وقتی هست) ─────
                     AnimatedVisibility(
                         visible = visibleError != null,
@@ -886,7 +917,7 @@ fun HomeScreen(
                         if (visibleError != null) shown = visibleError
                         Column {
                             Spacer(Modifier.height(10.dp))
-                            ErrorBanner(message = shown, onDismiss = { dismissedError = lastError })
+                            ErrorBanner(message = shown, onDismiss = { dismissedError = lastError }, onDiagnose = { showDiag = true })
                         }
                     }
                 }
@@ -1256,8 +1287,37 @@ private fun hapticError(view: android.view.View) {
 }
 
 /** نوار دلیل خطا / هشدار اتصال زیر کارت اصلی؛ با ضربه روی ✕ بسته می‌شه. */
+/** نوار راهنمای «اینترنت گوشی»؛ رنگ نارنجیِ آروم، بدون دکمه‌ی بستن (خودش با درست شدن اینترنت می‌ره). */
 @Composable
-private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+private fun NetHintBanner(issue: com.vauth.foxyvpn.vpn.NetIssue, connected: Boolean, tone: Color) {
+    val c = LocalFoxExtras.current
+    val (icon, text) = when (issue) {
+        com.vauth.foxyvpn.vpn.NetIssue.AIRPLANE -> Icons.Filled.AirplanemodeActive to tr("Airplane mode is on. Turn it off to connect.")
+        com.vauth.foxyvpn.vpn.NetIssue.OFFLINE -> Icons.Filled.WifiOff to
+            if (connected) tr("Internet connection lost. Waiting for it to come back…") else tr("No internet connection. Check your mobile data or Wi-Fi.")
+        com.vauth.foxyvpn.vpn.NetIssue.NO_INTERNET -> Icons.Filled.WifiOff to tr("Your network is connected but has no internet access. Switch networks or check your data plan.")
+        com.vauth.foxyvpn.vpn.NetIssue.WEAK_WIFI -> Icons.Filled.NetworkCheck to tr("Wi-Fi signal is weak. Move closer to the router.")
+        com.vauth.foxyvpn.vpn.NetIssue.UNSTABLE -> Icons.Filled.SignalCellularAlt to tr("Your internet keeps dropping — the signal may be weak. Please try again in a few moments.")
+        else -> Icons.Filled.NetworkCheck to tr("Connecting is taking longer than usual. Your signal may be weak — please wait a few moments.")
+    }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(tone.copy(alpha = 0.12f))
+            .border(1.dp, tone.copy(alpha = 0.40f), shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text = text, style = MaterialTheme.typography.bodySmall, color = c.textPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier, onDiagnose: (() -> Unit)? = null) {
     val tone = MaterialTheme.colorScheme.error
     val shape = RoundedCornerShape(16.dp)
     val c = LocalFoxExtras.current
@@ -1280,6 +1340,9 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifi
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (onDiagnose != null) TextButton(onClick = onDiagnose, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Text(tr("Check"), color = c.accent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
         IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Filled.Close, contentDescription = tr("Dismiss"), tint = c.textSecondary, modifier = Modifier.size(18.dp))
         }
@@ -1704,11 +1767,13 @@ private fun HeartHeaderButton(c: FoxExtras) {
 private class HomeBanner(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
     val text: String,
-    val tone: Color,
+    val tone: androidx.compose.ui.graphics.Color,
     val onClick: (() -> Unit)?,
 ) {
     /** اگه > 0 باشه این نوار «آفر محدود» با شمارش معکوسه (epoch ثانیه‌ی پایان). */
     var offerEnd: Long = 0L
+    /** عنوان کوچک نوار تایمردار (پیش‌فرض «آفر محدود»). */
+    var promoLabel: String? = null
 }
 
 /** چند نوار به‌نوبت: هر ۵٫۵ ثانیه با اسلاید+محو عوض می‌شه؛ با کشیدن انگشت هم دستی عوض می‌شه؛ نقطه‌ها جای فعلی رو نشون می‌دن. */
@@ -1768,7 +1833,7 @@ private fun BannerCarousel(items: List<HomeBanner>, c: FoxExtras) {
 private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
     if (b.offerEnd > 0L) {
         val now = rememberNowSec(true)
-        PromoStrip(c, b.text, now, b.offerEnd) { b.onClick?.invoke() }
+        PromoStrip(c, b.text, now, b.offerEnd, label = b.promoLabel) { b.onClick?.invoke() }
         return
     }
     val shape = RoundedCornerShape(20.dp)
