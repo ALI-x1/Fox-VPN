@@ -216,6 +216,17 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val c = LocalFoxExtras.current
+    // قفل تم/آیکون برای فری: ۵ مورد اول آزاد، بقیه Pro و Max
+    val perksUnlocked = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
+    var lockKind by remember { mutableStateOf<String?>(null) }
+    lockKind?.let { kind ->
+        com.vauth.foxyvpn.ui.components.ProLockSheet(
+            text = if (kind == "icon") tr("More app icons are available on Pro and Max. Upgrade to unlock them all.")
+            else tr("More themes are available on Pro and Max. Upgrade to unlock all themes."),
+            onSeePlans = { lockKind = null; (onOpenPlans ?: onOpenAccount).invoke() },
+            onDismiss = { lockKind = null },
+        )
+    }
 
     // آپدیت جدید؟ (از ربات یا گیت‌هاب)
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -663,8 +674,8 @@ fun SettingsScreen(
                                         title = if (upd != null) tr("Update available") else tr("Version"),
                                         subtitle = when {
                                             upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
-                                            checking -> BuildConfig.VERSION_NAME + " · " + tr("Checking…")
-                                            checked -> BuildConfig.VERSION_NAME + " · " + tr("You're up to date")
+                                            checking -> com.vauth.foxyvpn.i18n.bidi((BuildConfig.VERSION_NAME + " · " + tr("Checking…")).replace("\u202B", "").replace("\u202C", ""))
+                                            checked -> com.vauth.foxyvpn.i18n.bidi((BuildConfig.VERSION_NAME + " · " + tr("You're up to date")).replace("\u202B", "").replace("\u202C", ""))
                                             else -> BuildConfig.VERSION_NAME
                                         },
                                         onClick = { if (upd != null && upd.url.isNotBlank()) runCatching { uriHandler.openUri(upd.url) } else checkUpdate(force = true) },
@@ -864,17 +875,19 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
+                                SettingsSection(c, tr("App icon")) {
+                                    Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+                                        AppIconPickerSection(unlocked = perksUnlocked, onLocked = { lockKind = "icon" })
+                                    }
+                                }
                                 SettingsSection(c, tr("Themes")) {
                                     Box(modifier = Modifier.padding(12.dp)) {
                                         ThemePickerSection(
                                             themeController = themeController,
                                             showTitle = false,
+                                            unlocked = perksUnlocked,
+                                            onLocked = { lockKind = "theme" },
                                         )
-                                    }
-                                }
-                                SettingsSection(c, tr("App icon")) {
-                                    Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
-                                        AppIconPickerSection()
                                     }
                                 }
                             }
