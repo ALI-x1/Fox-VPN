@@ -394,6 +394,7 @@ fun ServerListScreen(
     proxyStateStore: ProxyStateStore,
     onServerSelected: () -> Unit,
     onBack: () -> Unit,
+    onOpenPlans: () -> Unit = {},
 ) {
     var countries by remember { mutableStateOf<List<VpnCountry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -475,6 +476,22 @@ fun ServerListScreen(
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             errorMessage = null
         }
+    }
+
+    // قفل لوکیشن‌ها: ۵ لوکیشن اول لیستِ سرور برای همه آزاده، بقیه فقط Pro و Max («خودکار/پیشنهادی» همیشه آزاده)
+    val perksUnlocked = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
+    var showLock by remember { mutableStateOf(false) }
+    val freeKeys = remember(countries) {
+        countries.filter { it.code != RECOMMENDED_COUNTRY_CODE }
+            .flatMap { co -> co.cities.map { CityEntry(co, it).key } }
+            .take(com.vauth.foxyvpn.ui.components.Perks.FREE_SERVERS).toSet()
+    }
+    if (showLock) {
+        com.vauth.foxyvpn.ui.components.ProLockSheet(
+            text = tr("More locations are available on Pro and Max. Upgrade to unlock every server."),
+            onSeePlans = { showLock = false; onOpenPlans() },
+            onDismiss = { showLock = false },
+        )
     }
 
     val recommended = remember(countries) { countries.firstOrNull { it.code == RECOMMENDED_COUNTRY_CODE } }
@@ -691,7 +708,10 @@ fun ServerListScreen(
 
     // انتخاب لوکیشن: از بین سرورهاش سریع‌ترین انتخاب می‌شه (نه تصادفی)
     val selectCity: (CityEntry) -> Unit = { entry ->
-        if (!isPicking) {
+        if (!perksUnlocked && entry.key !in freeKeys) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            showLock = true
+        } else if (!isPicking) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             isPicking = true
             scope.launch {
@@ -752,6 +772,7 @@ fun ServerListScreen(
                 null
             },
             isFavorite = entry.key in favorites,
+            locked = !perksUnlocked && entry.key !in freeKeys,
             onClick = { selectCity(entry) },
             onToggleFavorite = { toggleFavorite(entry.key) },
         )
@@ -1027,10 +1048,11 @@ private fun CityCard(
     isSelected: Boolean,
     status: CardStatus?,
     isFavorite: Boolean,
+    locked: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    LocationCardShell(modifier = modifier, c = c, isSelected = isSelected, onClick = onClick) {
+    LocationCardShell(modifier = if (locked) modifier.alpha(0.72f) else modifier, c = c, isSelected = isSelected, onClick = onClick) {
         // پرچم کشور (نشان انتخاب‌شده روی گوشه‌ی پرچمه تا جای اسم کشور تنگ نشه)
         val context = LocalContext.current
         val flagRes = remember(countryCode) { flagResId(context, countryCode) }
@@ -1104,9 +1126,11 @@ private fun CityCard(
                 )
             }
             // نشان‌ها تو خط جدا می‌آن تا اسم شهر کوتاه نشه (وضعیت اتصال اولویت داره)
-            if (status != null || isFastest) {
+            if (status != null || isFastest || locked) {
                 Spacer(Modifier.height(4.dp))
-                if (status != null) StatusChip(status = status, c = c) else FastestChip()
+                if (status != null) StatusChip(status = status, c = c)
+                else if (locked) com.vauth.foxyvpn.ui.components.ProBadge()
+                else FastestChip()
             }
         }
 
