@@ -128,6 +128,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.ui.platform.LocalUriHandler
 import com.vauth.foxyvpn.notice.NoticeClient
@@ -487,6 +488,17 @@ fun HomeScreen(
         else -> null
     }
     // نوارهای سرور (چندتا می‌تونه باشه) + پیام محلی (حجم/انقضا/بلاک)؛ همه به‌نوبت نشون داده می‌شن
+    // آفر/تخفیفِ زمان‌دار (فقط وقتی از ربات با تایمر گذاشته شده): همان ظاهر نوار صفحه‌ی پلن‌ها + لمس = باز شدن همان پلن
+    val planCfg by com.vauth.foxyvpn.data.rememberPlanConfig()
+    val nowOffer = System.currentTimeMillis() / 1000
+    val offerKey = listOf("pro", "max").filter { k ->
+        val i = planCfg.plan(k); i.disc > 0 && i.dend > nowOffer && rank(k) >= rank(license?.plan)
+    }.minByOrNull { planCfg.plan(it).dend }
+    val offerBanner: HomeBanner? = offerKey?.let { k ->
+        val i = planCfg.plan(k)
+        HomeBanner(Icons.Filled.LocalFireDepartment, trf("%s · %d%% off", tr(k.replaceFirstChar { it.uppercase() }), i.disc), bannerAccent) { PlanFocus.key = k; onOpenPlans() }
+            .also { it.offerEnd = i.dend }
+    }
     val homeBanners: List<HomeBanner> = serverBars.map { sb ->
         val (ic, tone) = when (sb.kind) {
             "good" -> Icons.Filled.CheckCircle to okTone
@@ -495,7 +507,7 @@ fun HomeScreen(
             else -> Icons.Filled.Build to bannerWarn // maint / warn
         }
         HomeBanner(ic, sb.text.ifBlank { tr("The server is being updated. Please try again in a few minutes.") }, tone, null)
-    } + listOfNotNull(localBanner)
+    }.let { listOfNotNull(offerBanner) + it } + listOfNotNull(localBanner)
     // افکت تمام‌صفحه‌ی نوار (برای هر نوار فقط یک بار)
     var fxPlaying by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(serverBars) {
@@ -1689,7 +1701,10 @@ private fun HeartHeaderButton(c: FoxExtras) {
 
 
 /** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
-private class HomeBanner(val icon: androidx.compose.ui.graphics.vector.ImageVector, val text: String, val tone: Color, val onClick: (() -> Unit)?)
+ {
+    /** اگه > 0 باشه این نوار «آفر محدود» با شمارش معکوسه (epoch ثانیه‌ی پایان). */
+    var offerEnd: Long = 0L
+}
 
 /** چند نوار به‌نوبت: هر ۵٫۵ ثانیه با اسلاید+محو عوض می‌شه؛ با کشیدن انگشت هم دستی عوض می‌شه؛ نقطه‌ها جای فعلی رو نشون می‌دن. */
 @Composable
@@ -1712,18 +1727,20 @@ private fun BannerCarousel(items: List<HomeBanner>, c: FoxExtras) {
                 (androidx.compose.animation.slideInHorizontally(tween(380)) { it / 3 * dir } + fadeIn(tween(380))) togetherWith
                     (androidx.compose.animation.slideOutHorizontally(tween(280)) { -it / 3 * dir } + fadeOut(tween(240)))
             },
-            modifier = Modifier.pointerInput(items.size) {
+            // کلید pointerInput باید cur هم باشد؛ وگرنه lambda قدیمی با index کهنه کار می‌کرد (فقط یک جهت جواب می‌داد)
+            modifier = Modifier.pointerInput(items.size, cur) {
                 var acc = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { acc = 0f },
+                    onDragCancel = { acc = 0f },
                     onDragEnd = {
                         if (items.size > 1) {
-                            if (acc < -60f) index = (cur + 1) % items.size
-                            else if (acc > 60f) index = (cur - 1 + items.size) % items.size
+                            if (acc < -50f) index = (cur + 1) % items.size
+                            else if (acc > 50f) index = (cur - 1 + items.size) % items.size
                         }
                         touchTick++
                     },
-                    onHorizontalDrag = { _, d -> acc += d },
+                    onHorizontalDrag = { change, d -> change.consume(); acc += d },
                 )
             },
             label = "banner-carousel",
@@ -1744,6 +1761,11 @@ private fun BannerCarousel(items: List<HomeBanner>, c: FoxExtras) {
 
 @Composable
 private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
+    if (b.offerEnd > 0L) {
+        val now = rememberNowSec(true)
+        PromoStrip(c, b.text, now, b.offerEnd) { b.onClick?.invoke() }
+        return
+    }
     val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier
@@ -1761,7 +1783,7 @@ private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
         ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
         Spacer(Modifier.width(10.dp))
         Text(
-            text = b.text,
+            text = com.vauth.foxyvpn.i18n.bidi(b.text),
             modifier = Modifier.weight(1f),
             color = c.textPrimary,
             fontSize = 14.sp,
