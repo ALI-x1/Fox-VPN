@@ -48,6 +48,20 @@ object Perks {
     const val FREE_ICONS = 5
     const val FREE_SERVERS = 5
 
+    /** کشورهای رایگان: آلمان، فنلاند، بریتانیا، ایالات متحده، کره‌ی جنوبی (همه‌ی شهرهاشون برای همه آزاده). */
+    val FREE_COUNTRIES = setOf("DE", "FI", "GB", "UK", "US", "KR")
+    fun isFreeCountry(code: String?): Boolean = code != null && code.uppercase() in FREE_COUNTRIES
+
+    /** برای کدهای غیر-Compose (مثلاً سرویس VPN): آیا این کاربر مجازه به این کشور وصل بشه؟ (Pro/Max/ادمین، کشور رایگان، یا باز موقت) */
+    fun canUseCountry(context: android.content.Context, code: String?): Boolean {
+        val app = context.applicationContext
+        if (runCatching { RedeemClient(app).adminMode }.getOrDefault(false)) return true
+        LicenseState.load(app)
+        val plan = LicenseState.status.value?.plan
+        if (plan == null || plan == "pro" || plan == "max") return true
+        return isFreeCountry(code) || com.vauth.foxyvpn.data.PlanConfigStore.cached(app).temp?.covers(code) == true
+    }
+
     /**
      * آیا موارد قفل‌دار باز هستن؟ true برای Pro/Max و ادمین؛ تا وقتی وضعیت لایسنس لود نشده (null)
      * هم true می‌مونه که کاربر پولی موقع بالا آمدن اپ لحظه‌ای قفل نبینه.
@@ -93,8 +107,16 @@ fun ProLockSheet(text: String, onSeePlans: () -> Unit, onDismiss: () -> Unit) {
 
 /** نشان کوچک قفل + «PRO» برای گوشه‌ی کارت‌های قفل‌دار. */
 @Composable
-fun ProBadge(modifier: Modifier = Modifier) {
+fun ProBadge(modifier: Modifier = Modifier, compact: Boolean = false) {
     val c = LocalFoxExtras.current
+    if (compact) {
+        // فقط یه قفل کوچکِ گرد؛ روی لوگو نمی‌افته
+        androidx.compose.foundation.layout.Box(
+            modifier = modifier.size(18.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.accent.copy(alpha = 0.95f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Filled.Lock, null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(11.dp)) }
+        return
+    }
     androidx.compose.foundation.layout.Row(
         modifier = modifier.clip(RoundedCornerShape(10.dp)).background(c.accent.copy(alpha = 0.92f)).padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
