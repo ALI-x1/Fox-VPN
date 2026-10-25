@@ -113,6 +113,9 @@ fun FoxyVpnTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    // کاربر فری با تم قفل‌دار (مثلاً بعد از تموم شدن پلن) موقتاً تم پیش‌فرض رو می‌بینه؛ انتخابش پاک نمی‌شه و با تمدید برمی‌گرده
+    val unlocked = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
+    val palette = if (palette.isFree || unlocked) palette else ThemePalette.ORANGE_WHITE
     val systemInDarkTheme = isSystemInDarkTheme()
     // بعضی پالت‌ها ذاتاً تیره/روشنن (fixedDark) و ThemeMode روشون اثر نداره
     val darkTheme = palette.fixedDark ?: when (themeMode) {
