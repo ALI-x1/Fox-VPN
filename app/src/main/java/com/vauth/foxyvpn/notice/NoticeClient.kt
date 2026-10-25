@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
 data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false, val ev: String = "open", val fx: String = "", val ccode: String = "")
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
-data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean)
+data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean, val fx: String = "confetti")
 
 /** بنر وضعیت سرور: kind = "maint" (در حال به‌روزرسانی) یا "info"؛ [text] خالی یعنی متن پیش‌فرض اپ. */
 data class StatusBanner(val kind: String, val text: String, val id: String = "", val fx: String = "")
@@ -41,6 +41,8 @@ data class StatusBanner(val kind: String, val text: String, val id: String = "",
 data class NoticeResult(
     val notices: List<Notice>, val update: UpdateInfo?, val banner: StatusBanner? = null, val updSrc: String = "both", val pm: Int = 60,
     val banners: List<StatusBanner> = emptyList(), val whatsNew: String? = null,
+    /** false = هیچ سروری جواب نداد (آفلاین)؛ نتیجه‌ی خالی رو «آپدیتی نیست» حساب نکن. */
+    val ok: Boolean = true,
 )
 
 /**
@@ -90,7 +92,7 @@ object NoticeClient {
                     Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1, o.optString("ev", "open"), o.optString("fx"), o.optString("ccode"))
                 }
                 val u = j.optJSONObject("update")?.let {
-                    UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"))
+                    UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"), it.optString("fx", "confetti"))
                 }
                 val b = j.optJSONObject("banner")?.let { StatusBanner(it.optString("kind"), it.optString("text")) }
                 val bArr = j.optJSONArray("banners")
@@ -150,7 +152,7 @@ object NoticeClient {
             val p = prefs(c)
             if (p.getInt("job_pm", 60) != pm) { p.edit().putInt("job_pm", pm).apply(); schedule(c) }
         }
-        return NoticeResult(notices, update, banner, updSrc, if (pm > 0) pm else 60, banners, whatsNew)
+        return NoticeResult(notices, update, banner, updSrc, if (pm > 0) pm else 60, banners, whatsNew, anyOk || gh != null)
     }
 
     /** فقط بنر وضعیت و آپدیت (برای نوار بالای صفحه‌ی اصلی)؛ اعلان‌ها رو مصرف نمی‌کنه. */
@@ -161,7 +163,8 @@ object NoticeClient {
         val r = queryAll(c, "shown")
         val dismissed = prefs(c).getInt("upd_dismissed", 0)
         val u = r.update?.takeIf { it.force || it.versionCode > dismissed }
-        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" }), u, whatsNew = r.whatsNew)
+        if (r.ok) cacheForce(c, r.update)
+        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" }), u, whatsNew = r.whatsNew, ok = r.ok)
     }
 
     /**
@@ -236,6 +239,29 @@ object NoticeClient {
         val p = prefs(c)
         if (n.id > p.getLong("shown_${n.worker}", 0L)) p.edit().putLong("shown_${n.worker}", n.id).apply()
     }
+
+    // ───────── آپدیت اجباری: کش، تا از همون لحظه‌ی باز شدن اپ (قبل از جواب شبکه) صفحه‌ی آپدیت بیاد و اتصال قفل باشه ─────────
+
+    private fun cacheForce(c: Context, u: UpdateInfo?) {
+        val e = prefs(c).edit()
+        if (u != null && u.force && u.versionCode > versionCode(c)) {
+            e.putInt("force_vc", u.versionCode).putString("force_name", u.versionName).putString("force_notes", u.notes)
+                .putString("force_url", u.url).putString("force_fx", u.fx)
+        } else {
+            e.remove("force_vc").remove("force_name").remove("force_notes").remove("force_url").remove("force_fx")
+        }
+        e.apply()
+    }
+
+    /** آپدیت اجباریِ ذخیره‌شده‌ی دفعه‌ی قبل (اگه هنوز نصب نشده)؛ وگرنه null. */
+    fun cachedForce(c: Context): UpdateInfo? {
+        val p = prefs(c)
+        val vc = p.getInt("force_vc", 0)
+        if (vc <= versionCode(c)) return null
+        return UpdateInfo(vc, p.getString("force_name", "").orEmpty(), p.getString("force_notes", "").orEmpty(), p.getString("force_url", "").orEmpty(), true, p.getString("force_fx", "confetti").orEmpty())
+    }
+
+    fun forcePending(c: Context): Boolean = cachedForce(c) != null
 
     fun dismissUpdate(c: Context, u: UpdateInfo) {
         if (!u.force) prefs(c).edit().putInt("upd_dismissed", u.versionCode).apply()
