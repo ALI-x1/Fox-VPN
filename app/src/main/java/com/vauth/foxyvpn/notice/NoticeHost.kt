@@ -63,14 +63,17 @@ import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 fun NoticeHost() {
     val ctx = LocalContext.current
     val c = LocalFoxExtras.current
-    var update by remember { mutableStateOf<UpdateInfo?>(null) }
+    // اگه دفعه‌ی قبل آپدیت اجباری دیده بودیم، از همون اول (قبل از جواب شبکه) صفحه‌ی آپدیت میاد؛ هوم دیده نمی‌شه و کانکت هم قفله
+    var update by remember { mutableStateOf<UpdateInfo?>(NoticeClient.cachedForce(ctx)) }
     var queue by remember { mutableStateOf<List<Notice>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         NoticeClient.schedule(ctx)
         NoticeClient.ensureChannel(ctx)
         val r = NoticeClient.fetchForDialog(ctx)
-        update = r.update
+        if (r.ok || r.update != null) update = r.update
+        // آپدیت اجباری تازه رسید ولی کاربر زودتر وصل شده بود: قطعش کن
+        if (r.update?.force == true && FoxyVpnService.state.value != ConnectionState.DISCONNECTED) FoxyVpnService.stop(ctx)
         // بعد از آپدیت اپ: صفحه‌ی «تبریک نسخه‌ی جدید» (یک‌بار)
         val congrats = if (NoticeClient.justUpdated(ctx)) listOf(
             Notice(-1, -1L, tr("Updated to the new version!"), r.whatsNew?.takeIf { it.isNotBlank() } ?: tr("Enjoy the new features and improvements."), "", "screen", false, "open", "fireworks", ""),
@@ -104,6 +107,7 @@ fun NoticeHost() {
             badge = u.versionName.takeIf { it.isNotBlank() }?.let { trf("Version %s", it) },
             body = (u.notes.ifBlank { tr("Enjoy the new features and improvements.") }) +
                 if (u.force) "\n\n" + tr("You need to install this update to keep using the app.") else "",
+            fx = u.fx,
             primary = tr("Install"),
             onPrimary = { if (u.url.isNotBlank()) open(u.url) },
             secondary = if (u.force) null else tr("Later"),
