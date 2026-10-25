@@ -149,7 +149,7 @@ fun LogsScreen(onBack: () -> Unit) {
                         selected = filter == option,
                         onClick = { filter = option },
 
-                        label = { Text("${tr(option.label)} ($count)") },
+                        label = { Text(com.vauth.foxyvpn.i18n.bidi("${tr(option.label)} ($count)".replace("\u202B", "").replace("\u202C", ""))) },
                     )
                 }
             }
