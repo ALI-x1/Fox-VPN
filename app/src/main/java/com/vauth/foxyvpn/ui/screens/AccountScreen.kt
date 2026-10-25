@@ -253,8 +253,10 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
                 when {
                     exp == null -> tr("No expiry")
                     exp <= nowSec -> tr("Expired")
-                    else -> trf("%s left", durationText(exp - nowSec)) + " · " +
-                        java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(exp * 1000))
+                    else -> com.vauth.foxyvpn.i18n.bidi(
+                        trf("%s left", durationText(exp - nowSec)).replace("\u202B", "").replace("\u202C", "") + " · " +
+                            java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(exp * 1000)),
+                    )
                 },
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary,
             )
@@ -266,7 +268,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
                     Box(
                         modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
                             .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) { Text("👑 " + tr("Top plan"), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
+                    ) { Text(com.vauth.foxyvpn.i18n.bidi(("👑 " + tr("Top plan")).replace("\u202B", "").replace("\u202C", "")), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
                 } else {
                     Row(
                         modifier = Modifier.clip(pillShape).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
