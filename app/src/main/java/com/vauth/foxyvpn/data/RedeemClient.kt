@@ -89,13 +89,22 @@ object LicenseState {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences("foxvpn_redeem", Context.MODE_PRIVATE)
 
+    /** زمان آخرین وضعیتِ تازه‌ی سرور (ثانیه)؛ برای اینکه «نگهداری»ِ قدیمی کاربر رو برای همیشه قفل نکنه. */
+    @Volatile private var setAtSec = 0L
+
     fun load(context: Context) {
-        if (_status.value == null) _status.value = LicenseStatus.parse(prefs(context).getString("license", null))
+        if (_status.value == null) {
+            val p = prefs(context)
+            _status.value = LicenseStatus.parse(p.getString("license", null))
+            setAtSec = p.getLong("license_at", 0L)
+        }
     }
 
     fun set(context: Context, value: LicenseStatus) {
         _status.value = value
-        prefs(context).edit().putString("license", value.toJson()).apply()
+        setAtSec = System.currentTimeMillis() / 1000
+        prefs(context).edit().putString("license", value.toJson()).putLong("license_at", setAtSec).remove("miss404").apply()
+        runCatching { UsageAlerts.check(context, value) }
     }
 
     fun clear(context: Context) {
@@ -112,7 +121,8 @@ object LicenseState {
         "revoked" -> LicenseBlock.REVOKED
         "device_removed" -> LicenseBlock.DEVICE
         "frozen" -> LicenseBlock.FROZEN
-        "maintenance" -> LicenseBlock.MAINT
+        // نگهداریِ ذخیره‌شده بیش از ۱۵ دقیقه معتبر نیست (شاید سرور از قبل درست شده و ما بی‌اینترنت بودیم)
+        "maintenance" -> if (setAtSec > 0 && nowSec - setAtSec > 900) null else LicenseBlock.MAINT
         else -> null
     }
 
@@ -149,6 +159,31 @@ class RedeemClient(context: Context) {
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS)
         .build()
+
+    /** آدرس Worker اصلی این دستگاه (برای عیب‌یابی)؛ null اگه تنظیم نشده. */
+    fun diagBase(): String? = homeWorker?.takeIf { it in workers } ?: workers.firstOrNull()
+
+    /** گزارش عیب‌یابی رو برای پشتیبانی می‌فرسته (بدون خودِ کد). */
+    suspend fun sendReport(text: String, info: String): Boolean = withContext(Dispatchers.IO) {
+        val base = diagBase() ?: return@withContext false
+        val r = post(base, "/v1/report", JSONObject().put("deviceId", deviceId).put("info", info).put("text", text.take(1500)))
+        r.code == 200
+    }
+
+    /** دعوت دوستان: بدون [friend] فقط اطلاعات؛ با [friend] ثبت کد دوست. null = خطای شبکه/سرور. */
+    suspend fun referral(friend: String? = null): RefInfo? = withContext(Dispatchers.IO) {
+        runCatching {
+            val code = activeCode ?: return@runCatching null
+            val base = diagBase() ?: return@runCatching null
+            val body = JSONObject().put("code", code).put("deviceId", deviceId)
+            if (!friend.isNullOrBlank()) body.put("friend", friend.trim())
+            val r = post(base, "/v1/ref", body)
+            if (r.code != 200) return@runCatching null
+            val j = JSONObject(r.text)
+            if (!friend.isNullOrBlank() && j.optBoolean("ok")) runCatching { reportUsage(0) }
+            RefInfo(j.optBoolean("ok"), j.optString("error"), j.optBoolean("on", true), j.optString("refCode"), j.optInt("count"), j.optInt("max", 10), j.optInt("inviterDays"), j.optInt("inviteeDays"), j.optInt("gained"))
+        }.getOrNull()
+    }
 
     /** شناسه‌ی ثابت این نصب برنامه؛ برای محدود کردن کد به تعداد مشخصی دستگاه. */
     val deviceId: String
@@ -219,10 +254,10 @@ class RedeemClient(context: Context) {
     private fun noConnection() = RedeemException(tr("No connection. Check your internet and try again."))
     private fun serversBusy() = RedeemException(tr("All servers are busy right now. Please try again later or contact support."))
 
-    /** نسخه‌ی عمومی: حالت ادمین وجود ندارد (همیشه خاموش؛ تنظیمش اثری ندارد). */
+    /** حالت ادمین (ورود با ایمیل و رمز از صفحه‌ی مخفی)؛ فقط برای صاحب برنامه. */
     var adminMode: Boolean
-        get() = false
-        set(@Suppress("UNUSED_PARAMETER") value) { prefs.edit().remove(KEY_ADMIN).apply() }
+        get() = prefs.getBoolean(KEY_ADMIN, false)
+        set(value) { prefs.edit().putBoolean(KEY_ADMIN, value).apply() }
 
     /**
      * ورود با کد. اگه چند Worker تنظیم شده باشه، اول Workerی که کد قبلی روش بود و بعد بقیه امتحان می‌شن:
@@ -374,7 +409,10 @@ class RedeemClient(context: Context) {
                     NoticeClient.onHint(appContext, it.nn)
                 }
                 r.code == 404 -> {
-                    // کد دیگه روی سرور وجود نداره (حذف/لغو شده)
+                    // کد روی سرور نیست؛ ولی یک ۴۰۴ تکی (اختلال/دیتابیس در حال بالا آمدن) کاربر رو قفل نکنه: باید دو بار پشت‌سرهم باشه
+                    val misses = prefs.getInt("miss404", 0) + 1
+                    prefs.edit().putInt("miss404", misses).apply()
+                    if (misses < 2) throw RedeemException(trf("Server error (%s)", r.code))
                     val old = LicenseState.status.value ?: LicenseStatus("revoked", null, null, null, 0, null, 0, 0)
                     old.copy(state = "revoked").also { LicenseState.set(appContext, it) }
                 }
@@ -426,3 +464,6 @@ class RedeemClient(context: Context) {
         fun isComplete(code: String): Boolean = code.length == 18
     }
 }
+
+/** جواب /v1/ref؛ [error] خالی یعنی موفق. */
+data class RefInfo(val ok: Boolean, val error: String, val on: Boolean, val refCode: String, val count: Int, val max: Int, val inviterDays: Int, val inviteeDays: Int, val gained: Int)
