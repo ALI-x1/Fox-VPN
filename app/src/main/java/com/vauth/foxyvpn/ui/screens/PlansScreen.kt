@@ -99,6 +99,8 @@ import com.vauth.foxyvpn.data.formatMoney
 import com.vauth.foxyvpn.data.gbLabel
 import com.vauth.foxyvpn.data.rememberPlanConfig
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.ui.text.style.TextDecoration
 import com.vauth.foxyvpn.data.RedeemClient
 import com.vauth.foxyvpn.ui.theme.FoxExtras
@@ -115,6 +117,11 @@ private data class PlanSpec(
     val badge: String?,
 )
 
+/** از جاهای دیگه (مثل نوار صفحه‌ی اصلی) می‌شه خواست که پلنِ مشخصی همین لحظه در صفحه‌ی پلن‌ها باز بشه. */
+object PlanFocus {
+    var key by mutableStateOf<String?>(null)
+}
+
 private val PLANS = listOf(
     PlanSpec("free", "Free", "Try it out", Icons.Filled.CardGiftcard, null),
     PlanSpec("pro", "Pro", "For everyday use", Icons.Filled.Star, "POPULAR"),
@@ -125,6 +132,8 @@ private val PLANS = listOf(
 private fun groupsFor(key: String, p: PlanInfo): List<Pair<String, List<String>>> = listOf(
     "Data" to listOf(trf("%s per month", gbLabel(p.gb)), trf("%s per day", gbLabel(p.daily))),
     "Access" to listOf(if (p.days > 0) trf("%d days", p.days) else tr("No expiry"), if (p.devices > 1) trf("Up to %d devices", p.devices) else tr("1 device")),
+    "Extras" to (if (key == "free") listOf(tr("5 free themes"), tr("5 app icons"), tr("5 locations"))
+    else listOf(tr("All themes"), tr("All app icons"), tr("All locations incl. VIP servers"))),
     "Support" to listOf(if (key == "free") tr("Telegram support") else tr("Priority support")),
 )
 
@@ -135,10 +144,13 @@ private fun featureIcon(group: String, index: Int, item: String): ImageVector = 
     group == "Data" -> Icons.Filled.Today
     group == "Access" && index == 0 -> Icons.Filled.Timer
     group == "Access" -> Icons.Filled.PhoneAndroid
+    group == "Extras" && index == 0 -> Icons.Filled.Palette
+    group == "Extras" && index == 1 -> Icons.Filled.Apps
+    group == "Extras" -> Icons.Filled.Public
     else -> Icons.Filled.SupportAgent
 }
 
-private fun rank(key: String?): Int = when (key) {
+internal fun rank(key: String?): Int = when (key) {
     "free" -> 1
     "pro" -> 2
     "max" -> 3
@@ -148,7 +160,7 @@ private fun rank(key: String?): Int = when (key) {
 // ───────────────────────── قیمت، تایمر، پیشنهاد ─────────────────────────
 
 @Composable
-private fun rememberNowSec(enabled: Boolean): State<Long> {
+internal fun rememberNowSec(enabled: Boolean): State<Long> {
     val st = remember { mutableStateOf(System.currentTimeMillis() / 1000) }
     LaunchedEffect(enabled) {
         if (enabled) while (true) { st.value = System.currentTimeMillis() / 1000; delay(1000) }
@@ -167,11 +179,11 @@ private fun effPrice(info: PlanInfo, coupon: Pair<Int, Long>?, nowS: Long): Pair
     return maxOf(planPct, coupon?.first ?: 0) to (if (couponBetter) coupon!!.second else planFinal)
 }
 
-private fun countdownText(sec: Long): String {
+internal fun countdownText(sec: Long): String {
     val s = sec.coerceAtLeast(0)
     val d = s / 86400
     val hms = String.format(java.util.Locale.US, "%02d:%02d:%02d", (s % 86400) / 3600, (s % 3600) / 60, s % 60)
-    return if (d > 0) trf("%d days", d) + " " + hms else hms
+    return if (d > 0) com.vauth.foxyvpn.i18n.bidi((trf("%d days", d) + " " + hms).replace("\u202B", "").replace("\u202C", "")) else hms
 }
 
 // ───────────────────────── صفحه ─────────────────────────
@@ -209,6 +221,7 @@ fun PlansScreen(
     // آکاردئون: فقط یک کارت باز؛ اول پلن فعلی (یا Pro) باز است و با لمس هدر عوض می‌شود
     var expanded by remember { mutableStateOf<String?>(null) }
     var autoOpen by remember { mutableStateOf(true) }
+    LaunchedEffect(PlanFocus.key) { PlanFocus.key?.let { k -> autoOpen = false; expanded = k; PlanFocus.key = null } }
     val nowBase = System.currentTimeMillis() / 1000
     val anyTimed = listOf("pro", "max").any { cfg.plan(it).dend > nowBase && cfg.plan(it).disc > 0 }
     val nowState = rememberNowSec(anyTimed)
@@ -506,7 +519,7 @@ private fun PlanCard(
 
         // دکمه‌ی پایین هر کارت: خرید / ارتقا / تمدید
         when {
-            active && plan.key == "free" -> PlanButton("${tr(plan.title)} · ${tr("Active")}", c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            active && plan.key == "free" -> PlanButton(com.vauth.foxyvpn.i18n.bidi("${tr(plan.title)} · ${tr("Active")}".replace("\u202B", "").replace("\u202C", "")), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
             active -> PlanButton(trf("Renew %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
             lowerThanCurrent -> PlanButton(tr("Included in your plan"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
             plan.key == "free" -> PlanButton(tr("Free"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
@@ -643,7 +656,7 @@ private fun DiscountTimer(c: FoxExtras, remainSec: Long, modifier: Modifier = Mo
 }
 
 @Composable
-private fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end: Long, onClick: () -> Unit) {
+internal fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end: Long, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
     val left = (end - nowState.value).coerceAtLeast(0)
