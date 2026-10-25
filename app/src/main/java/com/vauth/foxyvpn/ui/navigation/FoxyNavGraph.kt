@@ -234,6 +234,7 @@ fun FoxyNavGraph(
             ServerListScreen(
                 serverListClient = app.serverListClient,
                 proxyStateStore = app.proxyStateStore,
+                onOpenPlans = { navController.navigate(FoxyRoutes.PLANS) },
                 onServerSelected = {
                     navController.popBackStack()
                     // با انتخاب سرور، خودکار وصل شو (اگه از قبل وصل بود، اول قطع و بعد به سرور جدید)
