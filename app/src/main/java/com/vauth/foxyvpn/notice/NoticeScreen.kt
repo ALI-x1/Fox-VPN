@@ -16,6 +16,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,10 +79,9 @@ import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
 
-private class Bit(val x: Float, val phase: Float, val speed: Float, val size: Float, val sway: Float, val spin: Float, val color: Int, val round: Boolean)
-
 /**
- * صفحه‌ی تمام‌صفحه‌ی اعلان/آپدیت/تبریک؛ هم‌سبک «ارتقا به پرو» (WelcomeScreen).
+ * صفحه‌ی تمام‌صفحه‌ی اعلان/آپدیت/تبریک (نسخه‌ی ۲، از نو نوشته‌شده): پس‌زمینه‌ی زنده با دو هاله‌ی شناور، لوگوی با حلقه‌ی چرخان،
+ * کارت شیشه‌ایِ متن، دکمه‌ی درخشان و افکت‌های برداری جدید (FxOverlay: کاغذرنگی، برف، آتش‌بازی، قلب).
  * داخل خود درخت Compose کشیده می‌شه (نه Dialog) پس تا بالای صفحه و پشت ناچ می‌ره و لبه‌به‌لبه‌ست.
  * فقط alpha/translation/scale با graphicsLayer انیمیت می‌شه (بدون recompose در هر فریم).
  */
@@ -113,14 +115,11 @@ fun NoticeScreen(
     val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(450, 480, ease), label = "n-a4")
     val inf = rememberInfiniteTransition(label = "n-inf")
     val pulse by inf.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(1600, easing = ease), RepeatMode.Reverse), label = "n-pulse")
-    val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Restart), label = "n-t")
 
-    val emojiFx = fx == "fireworks" || fx == "hearts" || fx == "snow"
-    val bits = remember(fx) {
-        if (emojiFx || fx == "none" || fx.isBlank()) emptyList()
-        else { val r = Random(7); List(90) { Bit(r.nextFloat(), r.nextFloat(), 0.6f + r.nextFloat() * 0.9f, 6f + r.nextFloat() * 8f, 0.02f + r.nextFloat() * 0.05f, r.nextFloat() * 360f, r.nextInt(6), r.nextBoolean()) } }
-    }
-    val palette = remember(c) { listOf(c.accent, c.accentLight, c.accentText, Color(0xFFFFD166), Color(0xFF06D6A0), Color.White) }
+    val drift by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(11000, easing = LinearEasing), RepeatMode.Reverse), label = "n-drift")
+    val spin by inf.animateFloat(0f, 360f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart), label = "n-spin")
+    val shimmer by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart), label = "n-shimmer")
+    val fxKind = if (fx.isBlank() || fx == "none") "" else fx
 
     Box(
         modifier = modifier
@@ -128,27 +127,32 @@ fun NoticeScreen(
             .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
             .pointerInput(Unit) { detectTapGestures { } }, // لمس به صفحه‌ی زیرش نرسه
     ) {
-        Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.24f), Color.Transparent), center = Offset(540f, 650f), radius = 950f)))
-        if (bits.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
-                bits.forEach { p ->
-                    val prog = (p.phase + t * p.speed) % 1f
-                    val y = -30f + prog * (size.height + 60f)
-                    val x = p.x * size.width + sin((prog * 6f + p.phase * 6f) * PI.toFloat()) * p.sway * size.width
-                    val col = palette[p.color].copy(alpha = 0.9f)
-                    if (p.round) drawCircle(col, p.size * 0.7f, Offset(x, y))
-                    else rotate(p.spin + prog * 540f, Offset(x, y)) { drawRect(col, Offset(x - p.size / 2f, y - p.size / 4f), Size(p.size * 1.3f, p.size * 0.6f)) }
-                }
-            }
-        }
+        // دو هاله‌ی رنگیِ شناور پشت صفحه (فقط translation با graphicsLayer؛ بدون recompose)
+        Box(
+            Modifier.fillMaxSize().graphicsLayer { translationX = (drift - 0.5f) * 140f; translationY = (0.5f - drift) * 90f }
+                .background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.26f), Color.Transparent), center = Offset(300f, 520f), radius = 820f)),
+        )
+        Box(
+            Modifier.fillMaxSize().graphicsLayer { translationX = (0.5f - drift) * 120f; translationY = (drift - 0.5f) * 110f }
+                .background(Brush.radialGradient(listOf(c.accentLight.copy(alpha = 0.16f), Color.Transparent), center = Offset(820f, 1500f), radius = 900f)),
+        )
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.graphicsLayer { scaleX = logo; scaleY = logo; alpha = logo.coerceIn(0f, 1f) }) {
-                Box(Modifier.size(190.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }.background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.30f), Color.Transparent)), CircleShape))
-                Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(112.dp))
+                Box(Modifier.size(200.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }.background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.32f), Color.Transparent)), CircleShape))
+                Canvas(Modifier.size(150.dp).graphicsLayer { rotationZ = spin }) {
+                    val sw = 3.dp.toPx()
+                    drawArc(
+                        brush = Brush.sweepGradient(listOf(Color.Transparent, c.accent, c.accentLight, Color.Transparent)),
+                        startAngle = 0f, sweepAngle = 300f, useCenter = false,
+                        topLeft = Offset(sw, sw), size = Size(size.width - 2 * sw, size.height - 2 * sw),
+                        style = Stroke(sw, cap = StrokeCap.Round),
+                    )
+                }
+                Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(104.dp))
             }
             Spacer(Modifier.height(22.dp))
             if (badge != null) {
@@ -161,18 +165,23 @@ fun NoticeScreen(
                 ) {
                     Icon(Icons.Filled.Bolt, null, tint = c.accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text(badge, color = c.accentText, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    Text(com.vauth.foxyvpn.i18n.bidi(badge), color = c.accentText, fontWeight = FontWeight.Black, fontSize = 16.sp)
                 }
                 Spacer(Modifier.height(14.dp))
             }
             Text(
-                title, color = c.textPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
+                com.vauth.foxyvpn.i18n.bidi(title), color = c.textPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
                 modifier = Modifier.graphicsLayer { alpha = a2; translationY = (1f - a2) * 24f },
             )
             if (body.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                Column(Modifier.weight(1f, fill = false).widthIn(max = 520.dp).verticalScroll(rememberScrollState()).graphicsLayer { alpha = a3; translationY = (1f - a3) * 24f }) {
-                    Text(body, color = c.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, lineHeight = 24.sp, modifier = Modifier.fillMaxWidth())
+                val glass = RoundedCornerShape(24.dp)
+                Column(
+                    Modifier.weight(1f, fill = false).widthIn(max = 520.dp).graphicsLayer { alpha = a3; translationY = (1f - a3) * 24f }
+                        .clip(glass).background(c.card.copy(alpha = 0.55f)).border(1.dp, c.cardBorder, glass)
+                        .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+                ) {
+                    Text(com.vauth.foxyvpn.i18n.bidi(body), color = c.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, lineHeight = 24.sp, modifier = Modifier.fillMaxWidth())
                 }
             }
             if (code.isNotBlank()) {
@@ -199,7 +208,13 @@ fun NoticeScreen(
                 modifier = Modifier.graphicsLayer { alpha = a4; translationY = (1f - a4) * 20f }
                     .fillMaxWidth().widthIn(max = 520.dp).height(56.dp)
                     .softGlowRect(c.accent, 20f, 10f, 0.16f)
+                    .clip(shape)
                     .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
+                    .drawWithContent {
+                        drawContent()
+                        val x = -160f + shimmer * (size.width + 320f)
+                        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f), Color.Transparent), startX = x - 80f, endX = x + 80f))
+                    }
                     .clickable(onClick = onPrimary),
                 contentAlignment = Alignment.Center,
             ) { Text(primary, color = onAccent, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) }
@@ -208,6 +223,6 @@ fun NoticeScreen(
                 TextButton(onClick = onSecondary, modifier = Modifier.graphicsLayer { alpha = a4 }) { Text(secondary, color = c.textSecondary, fontWeight = FontWeight.Bold) }
             }
         }
-        if (emojiFx) FxOverlay(fx, durationMs = 5200)
+        if (fxKind.isNotEmpty()) FxOverlay(fxKind, durationMs = 0)
     }
 }
