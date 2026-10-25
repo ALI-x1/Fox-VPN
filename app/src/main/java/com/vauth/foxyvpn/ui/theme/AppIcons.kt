@@ -212,8 +212,8 @@ fun AppIconPickerSection(unlocked: Boolean = true, onLocked: () -> Unit = {}) {
                                 .graphicsLayer(scaleX = icon.zoom, scaleY = icon.zoom),
                         )
                         if (!unlocked && icon.ordinal >= com.vauth.foxyvpn.ui.components.Perks.FREE_ICONS) {
-                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
-                            com.vauth.foxyvpn.ui.components.ProBadge(Modifier.align(Alignment.BottomEnd).padding(4.dp))
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.16f)))
+                            com.vauth.foxyvpn.ui.components.ProBadge(Modifier.align(Alignment.BottomEnd).padding(4.dp), compact = true)
                         }
                         androidx.compose.animation.AnimatedVisibility(
                             visible = isSelected,
