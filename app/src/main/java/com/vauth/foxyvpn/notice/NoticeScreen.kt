@@ -80,6 +80,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
+ * افکت‌ها مدت پیش‌فرض خودشون رو دارن (کاغذرنگی ~۵ ثانیه، برف ~۹ ثانیه …) و آروم محو می‌شن؛ حلقه‌ی بی‌پایان نداریم.
  * صفحه‌ی تمام‌صفحه‌ی اعلان/آپدیت/تبریک (نسخه‌ی ۲، از نو نوشته‌شده): پس‌زمینه‌ی زنده با دو هاله‌ی شناور، لوگوی با حلقه‌ی چرخان،
  * کارت شیشه‌ایِ متن، دکمه‌ی درخشان و افکت‌های برداری جدید (FxOverlay: کاغذرنگی، برف، آتش‌بازی، قلب).
  * داخل خود درخت Compose کشیده می‌شه (نه Dialog) پس تا بالای صفحه و پشت ناچ می‌ره و لبه‌به‌لبه‌ست.
@@ -223,6 +224,6 @@ fun NoticeScreen(
                 TextButton(onClick = onSecondary, modifier = Modifier.graphicsLayer { alpha = a4 }) { Text(secondary, color = c.textSecondary, fontWeight = FontWeight.Bold) }
             }
         }
-        if (fxKind.isNotEmpty()) FxOverlay(fxKind, durationMs = 0)
+        if (fxKind.isNotEmpty()) FxOverlay(fxKind)
     }
 }
