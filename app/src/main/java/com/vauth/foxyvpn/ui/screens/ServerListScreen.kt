@@ -46,6 +46,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -353,37 +355,47 @@ private class ListSections(
     val favorites: List<CityEntry>,
     val recent: List<CityEntry>,
     val others: List<CityEntry>,
+    val free: List<CityEntry> = emptyList(),
+    val temp: List<CityEntry> = emptyList(),
 ) {
-    val hasSections: Boolean get() = current.isNotEmpty() || favorites.isNotEmpty() || recent.isNotEmpty()
+    val hasSections: Boolean get() = current.isNotEmpty() || temp.isNotEmpty() || free.isNotEmpty() || favorites.isNotEmpty() || recent.isNotEmpty()
 }
 
-/** هر لوکیشن فقط یک جا میاد: Current > Favorites > Recent > All. */
+/** هر لوکیشن فقط یک جا میاد: Current > Free (رایگان‌ها همیشه بالا) > Favorites > Recent > VIP. cat: 0 همه، 1 رایگان، 2 VIP */
 private fun buildSections(
     sorted: List<CityEntry>,
     rawQuery: String,
     favorites: Set<String>,
     recents: List<String>,
     currentEntry: CityEntry?,
+    freeKeys: Set<String> = emptySet(),
+    cat: Int = 0,
+    tempKeys: Set<String> = emptySet(),
 ): ListSections {
     val query = rawQuery.trim()
     val searching = query.isNotEmpty()
-    val visible = if (searching) sorted.filter { it.matches(query) } else sorted
+    val byCat = when (cat) { 1 -> sorted.filter { it.key in freeKeys }; 2 -> sorted.filter { it.key !in freeKeys }; else -> sorted }
+    val visible = if (searching) byCat.filter { it.matches(query) } else byCat
     val current = if (!searching && currentEntry != null) listOf(currentEntry) else emptyList()
     val currentKey = current.firstOrNull()?.key
-    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key != currentKey }
+    val temp = if (searching) emptyList() else visible.filter { it.key in tempKeys && it.key != currentKey }
+    val free = if (searching) emptyList() else visible.filter { it.key in freeKeys && it.key !in tempKeys && it.key != currentKey }
+    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key !in freeKeys && it.key != currentKey }
     val byKey = if (searching) emptyMap() else visible.associateBy { it.key }
     val recent = if (searching) {
         emptyList()
     } else {
-        recents.mapNotNull { byKey[it] }.filter { it.key !in favorites && it.key != currentKey }
+        recents.mapNotNull { byKey[it] }.filter { it.key !in favorites && it.key !in freeKeys && it.key != currentKey }
     }
     val pinned = HashSet<String>().apply {
         currentKey?.let { add(it) }
+        temp.forEach { add(it.key) }
+        free.forEach { add(it.key) }
         favs.forEach { add(it.key) }
         recent.forEach { add(it.key) }
     }
     val others = if (searching) visible else visible.filter { it.key !in pinned }
-    return ListSections(searching, query, visible, current, favs, recent, others)
+    return ListSections(searching, query, visible, current, favs, recent, others, free, temp)
 }
 
 // ───────────────────────── صفحه ─────────────────────────
@@ -478,13 +490,26 @@ fun ServerListScreen(
         }
     }
 
-    // قفل لوکیشن‌ها: ۵ لوکیشن اول لیستِ سرور برای همه آزاده، بقیه فقط Pro و Max («خودکار/پیشنهادی» همیشه آزاده)
+    // قفل لوکیشن‌ها: ۵ کشور (آلمان، فنلاند، بریتانیا، آمریکا، کره‌ی جنوبی) برای همه آزاده، بقیه فقط Pro و Max؛ «پیشنهادی» برای کاربر رایگان فقط بین همین‌ها انتخاب می‌کنه
     val perksUnlocked = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
     var showLock by remember { mutableStateOf(false) }
-    val freeKeys = remember(countries) {
-        countries.filter { it.code != RECOMMENDED_COUNTRY_CODE }
+    var cat by remember { mutableStateOf(0) }
+    // کشورهایی که ادمین موقتاً برای همه باز کرده (با تایمر)؛ بعد از پایان تایمر خودکار دوباره قفل می‌شن
+    val planCfg by com.vauth.foxyvpn.data.rememberPlanConfig()
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    val tempActive = planCfg.temp?.active(nowMs) == true
+    LaunchedEffect(tempActive) {
+        while (tempActive) { nowMs = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) }
+    }
+    val tempOpen = planCfg.temp?.takeIf { it.active(nowMs) }
+    val tempKeys = remember(countries, tempOpen) {
+        if (tempOpen == null) emptySet() else countries.filter { it.code != RECOMMENDED_COUNTRY_CODE && tempOpen.covers(it.code, nowMs) }
+            .flatMap { co -> co.cities.map { CityEntry(co, it).key } }.toSet()
+    }
+    val freeKeys = remember(countries, tempKeys) {
+        countries.filter { it.code != RECOMMENDED_COUNTRY_CODE && com.vauth.foxyvpn.ui.components.Perks.isFreeCountry(it.code) }
             .flatMap { co -> co.cities.map { CityEntry(co, it).key } }
-            .take(com.vauth.foxyvpn.ui.components.Perks.FREE_SERVERS).toSet()
+            .toSet() + tempKeys
     }
     if (showLock) {
         com.vauth.foxyvpn.ui.components.ProLockSheet(
@@ -687,8 +712,11 @@ fun ServerListScreen(
     // ───── بخش‌های لیست ─────
     // فقط وقتی ترتیب، جستجو، علاقه‌مندی‌ها، اخیراً‌ها یا لوکیشن فعلی عوض بشن دوباره ساخته می‌شه
     // (نه با هر recompose، و نه با هر نتیجه‌ی پینگ که ترتیب رو عوض نمی‌کنه)
+    // freeKeys/tempKeys بعد از لود لیست عوض می‌شن؛ باید State باشن تا derivedStateOf نسخه‌ی اولِ (خالی) رو نگه نداره
+    val freeKeysState = rememberUpdatedState(freeKeys)
+    val tempKeysState = rememberUpdatedState(tempKeys)
     val sections by remember {
-        derivedStateOf { buildSections(sortedCitiesState.value, searchQuery, favorites, recents, currentEntryState.value) }
+        derivedStateOf { buildSections(sortedCitiesState.value, searchQuery, favorites, recents, currentEntryState.value, freeKeysState.value, cat, tempKeysState.value) }
     }
     val query = sections.query
     val searching = sections.searching
@@ -697,6 +725,8 @@ fun ServerListScreen(
     val favoriteCities = sections.favorites
     val recentCities = sections.recent
     val otherCities = sections.others
+    val freeCities = sections.free
+    val tempCities = sections.temp
     val hasSections = sections.hasSections
 
     // ───── اکشن‌ها ─────
@@ -735,7 +765,13 @@ fun ServerListScreen(
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             isPicking = true
             scope.launch {
-                val candidates = ServerListClient.candidatesForCountry(countries, rec.code)
+                // کاربر رایگان فقط بین سرورهای رایگان؛ Pro/Max بین همه
+                val candidates = if (perksUnlocked) {
+                    ServerListClient.candidatesForCountry(countries, rec.code)
+                } else {
+                    countries.filter { it.code != RECOMMENDED_COUNTRY_CODE && (com.vauth.foxyvpn.ui.components.Perks.isFreeCountry(it.code) || tempOpen?.covers(it.code, nowMs) == true) }
+                        .flatMap { co -> co.cities.flatMap { ci -> ServerListClient.candidatesForCity(countries, co.code, ci.code) } }
+                }
                 val chosen = pickFastest(candidates) { it.host to it.port }
                 isPicking = false
                 if (chosen != null) {
@@ -864,6 +900,10 @@ fun ServerListScreen(
                     }
                 }
 
+                if (locationCount > 0) {
+                    CategoryChips(c = c, cat = cat, onSelect = { cat = it })
+                }
+
                 Box(Modifier.fillMaxSize()) {
                     when {
                         isLoading -> CircularProgressIndicator(
@@ -910,12 +950,18 @@ fun ServerListScreen(
                                 }
                             } else {
                                 citySection("current", tr("Current location"), Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
+                                citySection(
+                                    "temp",
+                                    "🎁 " + tr("Free for a limited time") + tempOpen?.let { "  ·  " + formatLeft(it.untilMs - nowMs) }.orEmpty(),
+                                    Icons.Filled.CardGiftcard, StarGold, c, tempCities, renderCity,
+                                )
+                                citySection("free", tr("Free locations"), Icons.Filled.CardGiftcard, c.accent, c, freeCities, renderCity)
                                 citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
                                 citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
                                 citySection(
                                     id = "all",
-                                    title = tr("All locations"),
-                                    icon = null,
+                                    title = if (freeCities.isNotEmpty() || cat == 2) tr("VIP locations") else tr("All locations"),
+                                    icon = if (freeCities.isNotEmpty() || cat == 2) Icons.Filled.WorkspacePremium else null,
                                     iconTint = c.accentText,
                                     c = c,
                                     entries = otherCities,
@@ -935,6 +981,37 @@ fun ServerListScreen(
 }
 
 // ───────────────────────── کامپوننت‌ها ─────────────────────────
+
+private fun formatLeft(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+    return String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, sec)
+}
+
+/** فیلتر دسته: همه / رایگان / VIP */
+@Composable
+private fun CategoryChips(c: FoxExtras, cat: Int, onSelect: (Int) -> Unit) {
+    val labels = listOf(tr("All"), tr("Free"), tr("VIP"))
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        labels.forEachIndexed { i, label ->
+            val on = cat == i
+            val shape = RoundedCornerShape(50)
+            Box(
+                modifier = Modifier
+                    .clip(shape)
+                    .background(if (on) c.accent.copy(alpha = 0.18f) else c.card)
+                    .border(1.dp, if (on) c.accent else c.cardBorder, shape)
+                    .clickable { onSelect(i) }
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            ) {
+                Text(label, color = if (on) c.accentText else c.textSecondary, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
 
 @Composable
 private fun CircleIconButton(
