@@ -80,6 +80,9 @@ private const val RECONNECT_FAILURES_BEFORE_EDGE_ROTATION = 2
 
 private const val MAX_ALTERNATE_EDGES = 3
 
+/** اتصال به هیچ سروری ممکن نشد؛ message همون متن ساده‌ی قابل‌نمایش به کاربره. */
+private class ConnectUnreachable(message: String) : IllegalStateException(message)
+
 private const val UNHEALTHY_REDIAL_COOLDOWN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FRACTION = 0.5
@@ -333,6 +336,15 @@ class FoxyVpnService : VpnService() {
             }
             if (intent == null) {
                 AppLogger.i(TAG, "the service was restarted by the system; bringing the tunnel back up")
+            }
+            // آپدیت اجباری منتشر شده و هنوز نصب نشده: وصل نمی‌شیم (قبل از باز شدن هم صفحه‌ی آپدیت جلوی همه‌چیزه)
+            if (com.vauth.foxyvpn.notice.NoticeClient.forcePending(this)) {
+                AppLogger.i(TAG, "connect refused: forced update pending")
+                _lastError.value = tr("You need to install this update to keep using the app.")
+                enterForeground(tr("Update required"))
+                exitForeground()
+                stopSelf()
+                return START_NOT_STICKY
             }
             // سقف روزانه/کل پر شده یا کد منقضی/لغو شده: وصل نمی‌شیم
             LicenseState.blockNow(this)?.let { block ->
@@ -811,19 +823,21 @@ class FoxyVpnService : VpnService() {
                         )
                     }
                     val failure = lastDialFailure
-                    if (failure != null) {
-                        error(
-                            trf(
-                                "Could not reach a VPN server after %s attempts across %s server(s). Last error: %s",
-                                dialAttempt, candidates.size, friendlyErrorMessage(failure),
-                            ),
-                        )
+                    // جزئیات فنیِ خطا فقط تو لاگ می‌ره؛ به کاربر پیام ساده و راهنما نشون داده می‌شه
+                    AppLogger.w(
+                        TAG,
+                        "could not reach a VPN server after $dialAttempt attempts across ${candidates.size} server(s): " +
+                            (failure?.let { friendlyErrorMessage(it) } ?: "closed immediately"),
+                    )
+                    val certProblem = failure != null && generateSequence(failure) { it.cause }.take(8).any {
+                        it is java.security.cert.CertPathValidatorException || it is java.security.cert.CertificateException
                     }
-                    error(
-                        trf(
-                            "The VPN server closed the connection immediately, %s times in a row. Try again shortly or pick a different location.",
-                            dialAttempt,
-                        ),
+                    throw ConnectUnreachable(
+                        when {
+                            !hasUsableNetwork() -> tr("No internet connection. Check your mobile data or Wi-Fi.")
+                            certProblem -> tr("This device does not trust the server's certificate. Check the date and time on your phone.")
+                            else -> tr("Could not connect. The server may be busy or your signal weak. Try again in a moment, or pick another location.")
+                        },
                     )
                 }
 
@@ -837,6 +851,13 @@ class FoxyVpnService : VpnService() {
 
             if (establishedCandidate.authority == primaryCandidate.authority) {
                 proxyStateStore.save(primaryCandidate)
+            } else if (!establishedCandidate.countryCode.equals(primaryCandidate.countryCode, ignoreCase = true)) {
+                // به کشور دیگه‌ای منتقل شدیم؛ کاربر باید بدونه (فقط یک پیام کوتاه، نه خطا)
+                val nm = CountryUtil.countryName(establishedCandidate.countryCode) ?: establishedCandidate.countryCode
+                val msg = trf("Switched to %s for a more reliable connection", nm)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    runCatching { android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_LONG).show() }
+                }
             }
 
             val connectedText = connectedLabel()
@@ -1002,7 +1023,10 @@ class FoxyVpnService : VpnService() {
         proxyStateStore.load()?.let { return it }
         AppLogger.i(TAG, "connect: no server previously selected; auto-selecting recommended location")
         val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
-        val recommended = ServerListClient.candidatesForCountry(countries, RECOMMENDED_COUNTRY_CODE).randomOrNull()
+        // پیش‌فرضِ اولین اتصال: از بین کشورهای رایگان (تا کاربر رایگان ناخواسته به سرور VIP وصل نشه)؛ اگه نبود، پیشنهادی
+        val freePick = countries.filter { com.vauth.foxyvpn.ui.components.Perks.isFreeCountry(it.code) }
+            .flatMap { ServerListClient.candidatesForCountry(countries, it.code) }.randomOrNull()
+        val recommended = freePick ?: ServerListClient.candidatesForCountry(countries, RECOMMENDED_COUNTRY_CODE).randomOrNull()
         val chosen = recommended ?: countries.firstOrNull { it.code.isNotBlank() }?.let { country ->
             ServerListClient.candidatesForCountry(countries, country.code).randomOrNull()
         } ?: error(tr("No server selected and no servers are available. Choose a location first."))
@@ -1016,9 +1040,18 @@ class FoxyVpnService : VpnService() {
             val countries = withTimeout(SERVER_LIST_FETCH_TIMEOUT_MS) { ServerListClient().fetchCountries() }
             val sameCity = ServerListClient.candidatesForCity(countries, primary.countryCode, primary.cityCode)
             val sameCountry = ServerListClient.candidatesForCountry(countries, primary.countryCode)
-            (sameCity + sameCountry)
+            val local = (sameCity + sameCountry)
                 .distinctBy { it.authority }
                 .filter { it.authority != primary.authority }
+            // اتصال خودکار هوشمند: اگه کل اون کشور جواب نداد، به کشورهای دیگه‌ای که برای این کاربر مجازه برو
+            // (اول رایگان‌ها؛ از هر کشور یک سرور) تا کاربر دستی دنبال سرور نگرده
+            val abroad = countries
+                .filter { it.code.isNotBlank() && it.code != RECOMMENDED_COUNTRY_CODE && !it.code.equals(primary.countryCode, true) &&
+                    com.vauth.foxyvpn.ui.components.Perks.canUseCountry(this, it.code) }
+                .sortedByDescending { com.vauth.foxyvpn.ui.components.Perks.isFreeCountry(it.code) }
+                .mapNotNull { ServerListClient.candidatesForCountry(countries, it.code).randomOrNull() }
+            // سقف کل MAX_ALTERNATE_EDGES: اول یکی از همون کشور، بعد کشورهای دیگه
+            local.take(1) + abroad.take(MAX_ALTERNATE_EDGES - 1) + local.drop(1)
         }
         val failure = attempt.exceptionOrNull()
         if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
