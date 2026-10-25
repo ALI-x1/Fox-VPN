@@ -103,6 +103,9 @@ enum class ThemePalette(
     /** آیا این تم هم روشن و هم تیره داره (و کلید لایت/دارک روش اثر می‌ذاره)؟ */
     val supportsLightDark: Boolean get() = fixedDark == null
 
+    /** ۵ تم اولِ لیست برای همه آزاده؛ بقیه فقط Pro و Max. */
+    val isFree: Boolean get() = ordinal < 5
+
     companion object {
         fun fromName(name: String?): ThemePalette =
             values().firstOrNull { it.name == name } ?: ORANGE_WHITE
