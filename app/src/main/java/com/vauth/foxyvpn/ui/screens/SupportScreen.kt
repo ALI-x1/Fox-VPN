@@ -307,7 +307,7 @@ fun PurchaseScreen(planKey: String, discountCode: String = "", onBack: () -> Uni
                     if (code.isNotEmpty()) Text(trf("Discount code: %s", code.uppercase()), fontWeight = FontWeight.Bold, color = c.accentText)
                 }
                 if (ct.note.isNotBlank()) {
-                    Text(ct.note, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    Text(com.vauth.foxyvpn.i18n.bidi(ct.note), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
 
                 ContactOption(
