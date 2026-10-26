@@ -102,7 +102,7 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
     init {
         val r = Random(21)
         val list = ArrayList<Cannon>()
-        for (side in 0..1) for (w in 0..1) repeat(42) {
+        for (side in 0..1) for (w in 0..1) repeat(28) {
             list += Cannon(
                 side, if (w == 0) 0f else 0.5f,
                 (48f + r.nextFloat() * 38f) * (PI.toFloat() / 180f), 1.0f + r.nextFloat() * 1.35f,
@@ -112,7 +112,7 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
             )
         }
         cannons = list
-        drizzle = List(46) {
+        drizzle = List(30) {
             Drizzle(r.nextFloat(), r.nextFloat() * 5f, 3.6f + r.nextFloat() * 2f, 4.5f + r.nextFloat() * 5f, r.nextInt(palette.size), r.nextInt(3), 3f + r.nextFloat() * 5f, r.nextFloat() * 6.28f, r.nextFloat() * 360f)
         }
     }
