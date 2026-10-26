@@ -93,6 +93,7 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Invites are turned off right now." to "دعوت دوستان فعلاً خاموش است.",
     "This code isn't valid." to "این کد معتبر نیست.",
     "Try Fox-VPN! Enter my invite code %s in the app to get free extra days." to "Fox-VPN را امتحان کن! کد دعوت من %s را در برنامه وارد کن تا روز رایگان بگیری.",
+    "This server is no longer available for your plan. Switched to a free server." to "این سرور دیگر برای اشتراک شما در دسترس نیست. به یک سرور رایگان منتقل شدید.",
     "All locations" to "همه موقعیت‌ها",
     "Android's own kill switch blocks all traffic if the VPN drops, so nothing leaks. In the VPN settings, tap the gear next to Fox-VPN and turn on \"Always-on VPN\" and \"Block connections without VPN\"." to "کیل‌سوییچ خود اندروید در صورت قطع شدن VPN تمام ترافیک را مسدود می‌کند تا چیزی نشت نکند. در تنظیمات VPN روی چرخ‌دنده کنار Fox-VPN بزنید و «Always-on VPN» و «Block connections without VPN» را روشن کنید.",
     "Appearance" to "ظاهر",
