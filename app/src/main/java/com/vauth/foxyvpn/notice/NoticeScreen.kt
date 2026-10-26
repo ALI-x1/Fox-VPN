@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -81,8 +82,8 @@ import kotlin.random.Random
 
 /**
  * افکت‌ها مدت پیش‌فرض خودشون رو دارن (کاغذرنگی ~۵ ثانیه، برف ~۹ ثانیه …) و آروم محو می‌شن؛ حلقه‌ی بی‌پایان نداریم.
- * صفحه‌ی تمام‌صفحه‌ی اعلان/آپدیت/تبریک (نسخه‌ی ۲، از نو نوشته‌شده): پس‌زمینه‌ی زنده با دو هاله‌ی شناور، لوگوی با حلقه‌ی چرخان،
- * کارت شیشه‌ایِ متن، دکمه‌ی درخشان و افکت‌های برداری جدید (FxOverlay: کاغذرنگی، برف، آتش‌بازی، قلب).
+ * صفحه‌ی تمام‌صفحه‌ی اعلان/آپدیت/تبریک (نسخه‌ی ۳، هم‌شکل صفحه‌ی «ارتقای پلن»): لوگوی فنری با هاله‌ی نبض‌دار،
+ * قرص نشان، کارت شیشه‌ایِ متن، دکمه‌ی گرادیانی و افکت‌های برداری (FxOverlay: کاغذرنگی، برف، آتش‌بازی، قلب).
  * داخل خود درخت Compose کشیده می‌شه (نه Dialog) پس تا بالای صفحه و پشت ناچ می‌ره و لبه‌به‌لبه‌ست.
  * فقط alpha/translation/scale با graphicsLayer انیمیت می‌شه (بدون recompose در هر فریم).
  */
@@ -109,84 +110,71 @@ fun NoticeScreen(
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val ease = FastOutSlowInEasing
+    // همان حس صفحه‌ی «ارتقای پلن»: لوگوی فنری + هاله‌ی نبض‌دار (فقط یک انیمیشن بی‌پایان؛ بقیه یک‌بار اجرا می‌شن)
     val logo by animateFloatAsState(if (shown) 1f else 0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "n-logo")
-    val a1 by animateFloatAsState(if (shown) 1f else 0f, tween(450, 150, ease), label = "n-a1")
-    val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(450, 260, ease), label = "n-a2")
-    val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(450, 370, ease), label = "n-a3")
-    val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(450, 480, ease), label = "n-a4")
-    val inf = rememberInfiniteTransition(label = "n-inf")
-    val pulse by inf.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(1600, easing = ease), RepeatMode.Reverse), label = "n-pulse")
-
-    val drift by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(11000, easing = LinearEasing), RepeatMode.Reverse), label = "n-drift")
-    val spin by inf.animateFloat(0f, 360f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart), label = "n-spin")
-    val shimmer by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart), label = "n-shimmer")
+    val a1 by animateFloatAsState(if (shown) 1f else 0f, tween(500, 300, ease), label = "n-a1")
+    val a2 by animateFloatAsState(if (shown) 1f else 0f, tween(500, 400, ease), label = "n-a2")
+    val a3 by animateFloatAsState(if (shown) 1f else 0f, tween(500, 500, ease), label = "n-a3")
+    val a4 by animateFloatAsState(if (shown) 1f else 0f, tween(500, 620, ease), label = "n-a4")
+    val pulse by rememberInfiniteTransition(label = "n-pulse").animateFloat(0.92f, 1.08f, infiniteRepeatable(tween(1400, easing = ease), RepeatMode.Reverse), label = "n-p")
     val fxKind = if (fx.isBlank() || fx == "none") "" else fx
+    val emoji = when (fxKind) { "fireworks" -> "🎆"; "snow" -> "❄️"; "hearts" -> "💖"; "" -> ""; else -> "🎉" }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
+            // هاله‌ی ثابتِ رنگ تم پشت لوگو (نسبت به اندازه‌ی صفحه؛ هیچ لایه‌ای جابه‌جا نمی‌شه تا لبه‌ی اضافه دیده نشه)
+            .drawBehind {
+                drawRect(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.22f), Color.Transparent), center = Offset(size.width / 2f, size.height * 0.32f), radius = size.maxDimension * 0.55f))
+            }
             .pointerInput(Unit) { detectTapGestures { } }, // لمس به صفحه‌ی زیرش نرسه
     ) {
-        // دو هاله‌ی رنگیِ شناور پشت صفحه (فقط translation با graphicsLayer؛ بدون recompose)
-        Box(
-            Modifier.fillMaxSize().graphicsLayer { translationX = (drift - 0.5f) * 140f; translationY = (0.5f - drift) * 90f }
-                .background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.26f), Color.Transparent), center = Offset(300f, 520f), radius = 820f)),
-        )
-        Box(
-            Modifier.fillMaxSize().graphicsLayer { translationX = (0.5f - drift) * 120f; translationY = (drift - 0.5f) * 110f }
-                .background(Brush.radialGradient(listOf(c.accentLight.copy(alpha = 0.16f), Color.Transparent), center = Offset(820f, 1500f), radius = 900f)),
-        )
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.graphicsLayer { scaleX = logo; scaleY = logo; alpha = logo.coerceIn(0f, 1f) }) {
-                Box(Modifier.size(200.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }.background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.32f), Color.Transparent)), CircleShape))
-                Canvas(Modifier.size(150.dp).graphicsLayer { rotationZ = spin }) {
-                    val sw = 3.dp.toPx()
-                    drawArc(
-                        brush = Brush.sweepGradient(listOf(Color.Transparent, c.accent, c.accentLight, Color.Transparent)),
-                        startAngle = 0f, sweepAngle = 300f, useCenter = false,
-                        topLeft = Offset(sw, sw), size = Size(size.width - 2 * sw, size.height - 2 * sw),
-                        style = Stroke(sw, cap = StrokeCap.Round),
-                    )
-                }
-                Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(104.dp))
+            Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.size(190.dp).graphicsLayer { val k = pulse * logo; scaleX = k; scaleY = k }.background(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.30f), Color.Transparent)), CircleShape))
+                Image(painterResource(R.drawable.ic_fox_logo), contentDescription = null, modifier = Modifier.size(120.dp).graphicsLayer { scaleX = logo; scaleY = logo; alpha = logo.coerceIn(0f, 1f) })
             }
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(20.dp))
+            if (emoji.isNotEmpty()) {
+                Text(emoji, fontSize = 38.sp, modifier = Modifier.graphicsLayer { alpha = a1; translationY = (1f - a1) * 16f })
+                Spacer(Modifier.height(8.dp))
+            }
             if (badge != null) {
                 val pill = RoundedCornerShape(20.dp)
                 Row(
-                    modifier = Modifier.graphicsLayer { alpha = a1; translationY = (1f - a1) * 20f }
+                    modifier = Modifier.graphicsLayer { alpha = a1; translationY = (1f - a1) * 16f }
                         .clip(pill).background(c.accent.copy(alpha = 0.16f)).border(1.dp, c.accent.copy(alpha = 0.45f), pill)
                         .padding(horizontal = 16.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Bolt, null, tint = c.accent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Bolt, null, tint = c.accent, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text(com.vauth.foxyvpn.i18n.bidi(badge), color = c.accentText, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    Text(com.vauth.foxyvpn.i18n.bidi(badge), color = c.accentText, fontWeight = FontWeight.Black, fontSize = 17.sp)
                 }
                 Spacer(Modifier.height(14.dp))
             }
             Text(
                 com.vauth.foxyvpn.i18n.bidi(title), color = c.textPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
-                modifier = Modifier.graphicsLayer { alpha = a2; translationY = (1f - a2) * 24f },
+                modifier = Modifier.graphicsLayer { alpha = a2; translationY = (1f - a2) * 16f },
             )
             if (body.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 val glass = RoundedCornerShape(24.dp)
                 Column(
-                    Modifier.weight(1f, fill = false).widthIn(max = 520.dp).graphicsLayer { alpha = a3; translationY = (1f - a3) * 24f }
-                        .clip(glass).background(c.card.copy(alpha = 0.55f)).border(1.dp, c.cardBorder, glass)
+                    Modifier.weight(1f, fill = false).widthIn(max = 520.dp).graphicsLayer { alpha = a3; translationY = (1f - a3) * 16f }
+                        .clip(glass).background(c.card.copy(alpha = 0.6f)).border(1.dp, c.cardBorder, glass)
                         .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
                 ) {
                     Text(com.vauth.foxyvpn.i18n.bidi(body), color = c.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, lineHeight = 24.sp, modifier = Modifier.fillMaxWidth())
                 }
             }
             if (code.isNotBlank()) {
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(18.dp))
                 val chip = RoundedCornerShape(18.dp)
                 Row(
                     modifier = Modifier.graphicsLayer { alpha = a3 }
@@ -206,16 +194,11 @@ fun NoticeScreen(
             Spacer(Modifier.height(30.dp))
             val shape = RoundedCornerShape(20.dp)
             Box(
-                modifier = Modifier.graphicsLayer { alpha = a4; translationY = (1f - a4) * 20f }
+                modifier = Modifier.graphicsLayer { alpha = a4; translationY = (1f - a4) * 16f }
                     .fillMaxWidth().widthIn(max = 520.dp).height(56.dp)
                     .softGlowRect(c.accent, 20f, 10f, 0.16f)
                     .clip(shape)
                     .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
-                    .drawWithContent {
-                        drawContent()
-                        val x = -160f + shimmer * (size.width + 320f)
-                        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f), Color.Transparent), startX = x - 80f, endX = x + 80f))
-                    }
                     .clickable(onClick = onPrimary),
                 contentAlignment = Alignment.Center,
             ) { Text(primary, color = onAccent, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) }
