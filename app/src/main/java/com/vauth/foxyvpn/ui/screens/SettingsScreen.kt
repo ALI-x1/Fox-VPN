@@ -88,6 +88,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
@@ -294,6 +296,10 @@ fun SettingsScreen(
     var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyCredentialsDialog by rememberSaveable { mutableStateOf(false) }
     var showSplitTunnelDialog by rememberSaveable { mutableStateOf(false) }
+    var showDiag by remember { mutableStateOf(false) }
+    var showRef by remember { mutableStateOf(false) }
+    if (showDiag) DiagnoseDialog(onDismiss = { showDiag = false })
+    if (showRef) ReferralDialog(onDismiss = { showRef = false })
 
     if (showDohProviderDialog) {
         DohProviderPickerDialog(
@@ -666,6 +672,13 @@ fun SettingsScreen(
                                         subtitle = tr("Bot, Telegram and help"),
                                         onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
                                     )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Share,
+                                        title = tr("Invite friends"),
+                                        subtitle = tr("You and your friend both get free days"),
+                                        onClick = { showRef = true },
+                                    )
                                     val upd = updateInfo
                                     SettingRow(
                                         c = c,
@@ -757,10 +770,17 @@ fun SettingsScreen(
                                 SettingsSection(c, tr("Connection")) {
                                     SettingRow(
                                         c = c,
+                                        icon = Icons.Filled.NetworkCheck,
+                                        title = tr("Check my connection"),
+                                        subtitle = tr("Finds the problem in a few seconds"),
+                                        divider = false,
+                                        onClick = { showDiag = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
                                         icon = Icons.Filled.VerifiedUser,
                                         title = tr("Connection"),
                                         subtitle = if (exitCheckEnabled) tr("Exit location check on") else tr("Exit location check off"),
-                                        divider = false,
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
