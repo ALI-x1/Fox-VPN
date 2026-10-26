@@ -103,7 +103,7 @@ fun RedeemCard(
                 busy = false; ok = false; msg = it.message ?: tr("Could not verify the code"); return@launch
             }
             onDisconnect()
-            val r = authRepository.loginWithRefreshToken(grant.refreshToken)
+            val r = redeem.loginWithFailover(grant) { authRepository.loginWithRefreshToken(it) }
             busy = false
             if (r.isSuccess) {
                 code = ""
