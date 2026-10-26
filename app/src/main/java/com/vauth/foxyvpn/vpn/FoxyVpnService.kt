@@ -79,6 +79,7 @@ private const val RECONNECT_BACKOFF_CAP_MS = 60_000L
 private const val RECONNECT_FAILURES_BEFORE_EDGE_ROTATION = 2
 
 private const val MAX_ALTERNATE_EDGES = 3
+private const val LOCK_GUARD_INTERVAL_MS = 15_000L
 
 /** اتصال به هیچ سروری ممکن نشد؛ message همون متن ساده‌ی قابل‌نمایش به کاربره. */
 private class ConnectUnreachable(message: String) : IllegalStateException(message)
@@ -155,6 +156,10 @@ class FoxyVpnService : VpnService() {
     @Volatile private var reportedUnderlying: Network? = null
 
     @Volatile private var lastUnhealthyRedialAt = 0L
+
+    // سرورِ رایگانی که نگهبان قفل پیشنهاد داده؛ نگهبان واچ‌داگ (داخل connect) برمی‌داره و بدون قطع کامل روش سوییچ می‌کنه
+    @Volatile private var forcedSwitch: ProxyCandidate? = null
+    private var lockGuardJob: Job? = null
 
     @Volatile private var statusLabel: String = tr("Connecting\u2026")
     // کشور واقعیِ خروجی (برای «Recommended» که کدش REC هست)
@@ -290,6 +295,8 @@ class FoxyVpnService : VpnService() {
         connectJob = null
         watchdogJob?.cancel()
         watchdogJob = null
+        lockGuardJob?.cancel()
+        lockGuardJob = null
         connectionGeneration++
         releaseResources(detachResources(), stopNativeTunnel = true)
         releaseWakeLocks()
@@ -371,12 +378,28 @@ class FoxyVpnService : VpnService() {
 
             acquireWakeLocks()
             connectJob = scope.launch { opMutex.withLock { connect() } }
+            startLockGuard()
 
             return START_STICKY
         } else if (action == ACTION_DISCONNECT) {
             requestDisconnect("requested by the user")
         }
         return START_NOT_STICKY
+    }
+
+    /** هر ۱۵ ثانیه (وقتی وصله): آفر/قفل موقت تموم شده یا کشور حذف شده؟ پس برو روی سرور رایگان. */
+    private fun startLockGuard() {
+        lockGuardJob?.cancel()
+        lockGuardJob = scope.launch {
+            while (isActive) {
+                delay(LOCK_GUARD_INTERVAL_MS)
+                if (_state.value != ConnectionState.CONNECTED) continue
+                val picked = runCatching { LockGuard.refreshAndFix(applicationContext, exitCountryCode ?: ProxyStateStore(applicationContext).load()?.countryCode) }.getOrNull() ?: continue
+                forcedSwitch = picked
+                val msg = tr("This server is no longer available for your plan. Switched to a free server.")
+                android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_LONG).show() } }
+            }
+        }
     }
 
     private fun requestDisconnect(reason: String) {
@@ -397,6 +420,9 @@ class FoxyVpnService : VpnService() {
         connectJob = null
         watchdogJob?.cancel()
         watchdogJob = null
+        lockGuardJob?.cancel()
+        lockGuardJob = null
+        forcedSwitch = null
         exitForeground()
 
         releaseWakeLocks()
@@ -910,6 +936,14 @@ class FoxyVpnService : VpnService() {
 
                 while (isActive) {
                     delay(UPSTREAM_WATCHDOG_INTERVAL_MS)
+                    // آفر تموم شد/کشور قفل شد: همین حالا روی سرور رایگانِ جدید می‌ریم (سشن فعلی بسته می‌شه و پایین دوباره وصل می‌شه)
+                    forcedSwitch?.let { sw ->
+                        forcedSwitch = null
+                        candidates = listOf(sw); candidateIndex = 0; alternatesDiscovered = true
+                        exitCountryCode = null
+                        AppLogger.i(TAG, "switching the live tunnel to free server ${sw.authority} (${sw.countryCode})")
+                        runCatching { upstreamSession?.close() }
+                    }
                     val current = upstreamSession
                     if (current != null && current.isConnected) {
                         if (consecutiveFailures > 0 || waitingForNetwork) {
