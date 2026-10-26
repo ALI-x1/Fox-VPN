@@ -170,6 +170,23 @@ class RedeemClient(context: Context) {
         r.code == 200
     }
 
+    /**
+     * وارد شدن با کلید حساب؛ اگه موزیلا اون حساب رو قبول نکرد (کلید مرده)، تا ۲ بار از سرور می‌خوایم
+     * دستگاه رو به حساب سالم دیگه‌ای ببره و دوباره امتحان می‌کنیم؛ کاربر چیزی نمی‌بینه.
+     * اگه همه شکست خورد، جای دستگاه روی کد آزاد می‌شه تا یه ورودِ نیمه‌کاره ظرفیت رو اشغال نکنه.
+     */
+    suspend fun loginWithFailover(first: RedeemGrant, login: suspend (String) -> Result<Unit>): Result<Unit> {
+        var res = login(first.refreshToken)
+        var tries = 0
+        while (res.isFailure && tries < 2) {
+            tries++
+            val next = rotate().getOrNull() ?: break
+            res = login(next.refreshToken)
+        }
+        if (res.isFailure) releaseSnapshot()()
+        return res
+    }
+
     /** دعوت دوستان: بدون [friend] فقط اطلاعات؛ با [friend] ثبت کد دوست. null = خطای شبکه/سرور. */
     suspend fun referral(friend: String? = null): RefInfo? = withContext(Dispatchers.IO) {
         runCatching {
