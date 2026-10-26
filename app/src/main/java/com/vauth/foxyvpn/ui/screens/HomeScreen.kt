@@ -592,6 +592,15 @@ fun HomeScreen(
     val netIssue = com.vauth.foxyvpn.vpn.rememberNetIssue(state)
     var showDiag by remember { mutableStateOf(false) }
     if (showDiag) DiagnoseDialog(onDismiss = { showDiag = false })
+    // کشورِ انتخاب‌شده دیگه مجاز نیست (آفر تموم شد / ادمین کشور رو بست)؟ وقتی قطعیم، خودکار می‌ره روی یک سرور رایگان
+    LaunchedEffect(state, license?.plan) {
+        if (state != ConnectionState.DISCONNECTED) return@LaunchedEffect
+        while (true) {
+            val sw = com.vauth.foxyvpn.vpn.LockGuard.refreshAndFix(app)
+            if (sw != null) android.widget.Toast.makeText(app, tr("This server is no longer available for your plan. Switched to a free server."), android.widget.Toast.LENGTH_LONG).show()
+            delay(20_000)
+        }
+    }
     // لرزش خطا فقط برای خطای تازه؛ نه هر بار که صفحه از نو ساخته می‌شه و خطای قدیمی هنوز تو سرویس مونده
     val initialError = remember { lastError }
     LaunchedEffect(lastError) {
