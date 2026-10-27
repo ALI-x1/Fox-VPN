@@ -101,7 +101,9 @@ fun NoticeHost() {
     val btn = ButtonDefaults.textButtonColors(contentColor = c.accent)
 
     val u = update
-    if (u != null) {
+    // مدیر از ربات روش نمایش آپدیت اختیاری رو انتخاب می‌کنه: screen = اسکرین تمام‌صفحه (با افکت) · window/both = پنجره (بدون افکت) · push = فقط نوتیف
+    val uMode = if (u == null || u.force) "screen" else u.mode
+    if (u != null && uMode == "screen") {
         NoticeScreen(
             title = if (u.force) tr("Update required") else tr("New version available"),
             badge = u.versionName.takeIf { it.isNotBlank() }?.let { trf("Version %s", it) },
@@ -114,6 +116,20 @@ fun NoticeHost() {
             onSecondary = if (u.force) null else ({ NoticeClient.dismissUpdate(ctx, u); update = null }),
             canDismiss = !u.force,
             onDismiss = { NoticeClient.dismissUpdate(ctx, u); update = null },
+        )
+        return
+    }
+    if (u != null && uMode != "push") {
+        AlertDialog(
+            onDismissRequest = { NoticeClient.dismissUpdate(ctx, u); update = null },
+            containerColor = c.innerCard,
+            shape = RoundedCornerShape(28.dp),
+            titleContentColor = c.textPrimary,
+            textContentColor = c.textPrimary,
+            title = { Text(tr("New version available") + (u.versionName.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), fontWeight = FontWeight.ExtraBold) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(com.vauth.foxyvpn.i18n.bidi(u.notes.ifBlank { tr("Enjoy the new features and improvements.") })) } },
+            confirmButton = { TextButton(onClick = { if (u.url.isNotBlank()) open(u.url); NoticeClient.dismissUpdate(ctx, u); update = null }, colors = btn) { Text(tr("Install"), fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { NoticeClient.dismissUpdate(ctx, u); update = null }, colors = btn) { Text(tr("Later")) } },
         )
         return
     }
