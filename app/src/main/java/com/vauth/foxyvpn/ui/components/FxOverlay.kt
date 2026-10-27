@@ -23,6 +23,14 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Canvas as GCanvas
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import kotlinx.coroutines.delay
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlin.math.PI
 import kotlin.math.abs
@@ -47,35 +55,45 @@ fun FxOverlay(fx: String, modifier: Modifier = Modifier, durationMs: Int = -1, o
     val c = LocalFoxExtras.current
     val kind = when (fx) { "fireworks", "hearts", "snow" -> fx; else -> "confetti" }
     val total = if (durationMs >= 0) durationMs else when (kind) { "snow" -> 9000; "hearts" -> 7000; "fireworks" -> 7500; else -> 5200 }
-    // تم روشن: برف سفید روی زمینه‌ی سفید دیده نمی‌شه؛ برف خط‌دور مشکی می‌گیره و رنگ «سفید» پالت تیره می‌شه
+    // تم روشن: رنگ «سفید» پالتِ کاغذرنگی تیره می‌شه؛ برف همیشه سفیده (فقط یه هاله‌ی آبیِ خیلی ملایم دورش می‌گیره تا روی زمینه‌ی روشن گم نشه)
     val light = remember(c) { c.bgTop.luminance() > 0.55f }
+    val density = LocalDensity.current.density
     val palette = remember(c, light) {
         listOf(c.accent, c.accentLight, Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color(0xFF4CC9F0), if (light) Color(0xFF455A64) else Color.White)
     }
     var tSec by remember(kind) { mutableStateOf(0f) }
     val done by rememberUpdatedState(onDone)
-    LaunchedEffect(kind, total) {
-        val t0 = withFrameNanos { it }
-        while (true) {
-            val e = (withFrameNanos { it } - t0) / 1_000_000_000f
-            tSec = e
-            if (total > 0 && e * 1000f >= total) { done(); break }
-        }
-    }
-    val engine = remember(kind, palette, light) {
+    // موتور (اسپرایت‌ها و فهرست ذره‌ها) یک‌بار و قبل از اولین فریز ساخته می‌شه
+    val engine = remember(kind, palette, light, density) {
         when (kind) {
-            "snow" -> SnowFx(light)
+            "snow" -> SnowFx(light, density)
             "hearts" -> HeartsFx(palette)
             "fireworks" -> FireworksFx(palette)
             else -> ConfettiFx(palette)
         }
     }
+    LaunchedEffect(kind, total) {
+        // کمی صبر: انیمیشن ورودِ صفحه تموم بشه و بعد افکت شروع بشه (لگِ اول همین‌جا از بین می‌ره)
+        delay(160)
+        var last = withFrameNanos { it }
+        var e = 0f
+        while (true) {
+            val now = withFrameNanos { it }
+            // اگه یه فریم طولانی شد (لگ)، زمان یک‌دفعه نمی‌پره؛ حداکثر ۱/۳۰ ثانیه جلو می‌ره تا حرکت پیوسته بمونه
+            e += ((now - last) / 1_000_000_000f).coerceIn(0f, 1f / 30f)
+            last = now
+            tSec = e
+            if (total > 0 && e * 1000f >= total) { done(); break }
+        }
+    }
     Canvas(
         modifier.fillMaxSize().graphicsLayer {
+            compositingStrategy = CompositingStrategy.ModulateAlpha // بدون بافر آف‌اسکرین؛ فقط شفافیت ضرب می‌شه
             val e = tSec
-            val fin = (e / 0.35f).coerceIn(0f, 1f)
-            val fout = if (total > 0) ((total / 1000f - e) / 0.9f).coerceIn(0f, 1f) else 1f
-            alpha = fin * fout
+            val x = (e / 0.7f).coerceIn(0f, 1f)
+            val fin = x * x * (3f - 2f * x) // ورود نرم (smoothstep)
+            val y = if (total > 0) ((total / 1000f - e) / 1.1f).coerceIn(0f, 1f) else 1f
+            alpha = fin * (y * y * (3f - 2f * y))
         },
     ) { engine.draw(this, tSec) }
 }
@@ -102,7 +120,7 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
     init {
         val r = Random(21)
         val list = ArrayList<Cannon>()
-        for (side in 0..1) for (w in 0..1) repeat(28) {
+        for (side in 0..1) for (w in 0..1) repeat(20) {
             list += Cannon(
                 side, if (w == 0) 0f else 0.5f,
                 (48f + r.nextFloat() * 38f) * (PI.toFloat() / 180f), 1.0f + r.nextFloat() * 1.35f,
@@ -112,7 +130,7 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
             )
         }
         cannons = list
-        drizzle = List(30) {
+        drizzle = List(22) {
             Drizzle(r.nextFloat(), r.nextFloat() * 5f, 3.6f + r.nextFloat() * 2f, 4.5f + r.nextFloat() * 5f, r.nextInt(palette.size), r.nextInt(3), 3f + r.nextFloat() * 5f, r.nextFloat() * 6.28f, r.nextFloat() * 360f)
         }
     }
@@ -164,16 +182,49 @@ private class ConfettiFx(private val palette: List<Color>) : FxEngine {
 
 // ───────────────────────── برف ─────────────────────────
 
-private class SnowFx(private val light: Boolean) : FxEngine {
+private class SnowFx(private val light: Boolean, density: Float) : FxEngine {
     private class Flake(val x: Float, val y: Float, val z: Int, val f: Float, val ph: Float, val rs: Float, val amp: Float)
     private class Ball(val x: Float, val y: Float, val r: Float, val sp: Float, val ph: Float)
     private val flakes: List<Flake>
     private val balls: List<Ball>
+    private val halo = Color(0xFFCFDDEB) // هاله‌ی آبیِ خیلی روشن (فقط تم روشن)
+    // دانه‌برف‌ها فقط یک‌بار روی بیت‌مپ کشیده می‌شن؛ هر فریم فقط یک drawImage (به‌جای ده‌ها drawLine)
+    private val dot: ImageBitmap = sprite(2.2f * density, false)
+    private val mid: ImageBitmap = sprite(4.5f * density, true)
+    private val big: ImageBitmap = sprite(8f * density, true)
+
+    private fun sprite(r: Float, star: Boolean): ImageBitmap {
+        val pad = r * 0.5f + 5f
+        val side = ((r + pad) * 2f).toInt().coerceAtLeast(10)
+        val bmp = ImageBitmap(side, side)
+        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, GCanvas(bmp), Size(side.toFloat(), side.toFloat())) {
+            val c = Offset(side / 2f, side / 2f)
+            val sw = (r * 0.22f).coerceAtLeast(1.4f)
+            fun paint(col: Color, extra: Float) {
+                if (!star) { drawCircle(col, r + extra / 2f, c); return }
+                for (i in 0..2) {
+                    val a = i * (PI.toFloat() / 3f)
+                    val dx = cos(a) * r; val dy = sin(a) * r
+                    drawLine(col, Offset(c.x - dx, c.y - dy), Offset(c.x + dx, c.y + dy), sw + extra, StrokeCap.Round)
+                    for (sgn in intArrayOf(-1, 1)) {
+                        val bx = c.x + dx * 0.6f * sgn; val by = c.y + dy * 0.6f * sgn
+                        val ba = a + PI.toFloat() / 2f
+                        val ex = cos(ba) * r * 0.22f; val ey = sin(ba) * r * 0.22f
+                        drawLine(col, Offset(bx - ex, by - ey), Offset(bx + ex, by + ey), sw * 0.8f + extra, StrokeCap.Round)
+                    }
+                }
+                drawCircle(col, sw * 0.9f + extra / 2f, c)
+            }
+            if (light) paint(halo, if (star) sw * 1.6f else 3f)
+            paint(Color.White, 0f)
+        }
+        return bmp
+    }
 
     init {
         val r = Random(5)
-        flakes = List(86) { i -> val z = if (i < 44) 0 else if (i < 70) 1 else 2; Flake(r.nextFloat(), r.nextFloat(), z, 0.5f + r.nextFloat(), r.nextFloat() * 6.28f, (r.nextFloat() - 0.5f) * 40f, 10f + r.nextFloat() * 22f) }
-        balls = List(7) { Ball(r.nextFloat(), r.nextFloat(), 16f + r.nextFloat() * 14f, 0.16f + r.nextFloat() * 0.1f, r.nextFloat() * 6.28f) }
+        flakes = List(70) { i -> val z = if (i < 34) 0 else if (i < 54) 1 else 2; Flake(r.nextFloat(), r.nextFloat(), z, 0.5f + r.nextFloat(), r.nextFloat() * 6.28f, (r.nextFloat() - 0.5f) * 40f, 10f + r.nextFloat() * 22f) }
+        balls = List(6) { Ball(r.nextFloat(), r.nextFloat(), 16f + r.nextFloat() * 14f, 0.16f + r.nextFloat() * 0.1f, r.nextFloat() * 6.28f) }
     }
 
     override fun draw(s: DrawScope, t: Float) = with(s) {
@@ -182,56 +233,21 @@ private class SnowFx(private val light: Boolean) : FxEngine {
         val cyc = h * 1.12f
         for (f in flakes) {
             val sp = when (f.z) { 0 -> 0.055f; 1 -> 0.095f; else -> 0.15f }
-            val r = when (f.z) { 0 -> 2.2f; 1 -> 4.5f; else -> 8f } * dp
-            val al = when (f.z) { 0 -> 0.55f; 1 -> 0.78f; else -> 0.95f }
+            val al = when (f.z) { 0 -> 0.6f; 1 -> 0.82f; else -> 0.96f }
             val y = fmod(f.y * cyc + t * sp * h, cyc) - 0.06f * h
             val x = f.x * w + sin(t * 0.8f * f.f + f.ph) * f.amp * dp
-            val col = Color.White.copy(alpha = al)
-            val ink = Color(0xFF111111).copy(alpha = (al + 0.1f).coerceAtMost(1f))
-            val ol = 1.3f * dp // ضخامت خط‌دور (فقط تم روشن)
-            if (f.z == 0) {
-                if (light) drawCircle(ink, r + ol, Offset(x, y))
-                drawCircle(col, r, Offset(x, y))
-            } else {
-                val rot = f.ph * 57f + t * f.rs
-                withTransform({ rotate(rot, Offset(x, y)) }) {
-                    val sw = (r * 0.22f).coerceAtLeast(1.2f)
-                    // پاس اول: خط‌دور مشکی (کلفت‌تر)، پاس دوم: داخل سفید
-                    for (pass in (if (light) 0..1 else 1..1)) {
-                        val c2 = if (pass == 0) ink else col
-                        val extra = if (pass == 0) ol * 2f else 0f
-                        for (i in 0..2) {
-                            val a = i * (PI.toFloat() / 3f)
-                            val dx = cos(a) * r; val dy = sin(a) * r
-                            drawLine(c2, Offset(x - dx, y - dy), Offset(x + dx, y + dy), sw + extra, StrokeCap.Round)
-                            // شاخه‌های کوچک روی هر بازو
-                            for (sgn in intArrayOf(-1, 1)) {
-                                val bx = x + dx * 0.6f * sgn; val by = y + dy * 0.6f * sgn
-                                val ba = a + PI.toFloat() / 2f
-                                val ex = cos(ba) * r * 0.22f; val ey = sin(ba) * r * 0.22f
-                                drawLine(c2, Offset(bx - ex, by - ey), Offset(bx + ex, by + ey), sw * 0.8f + extra, StrokeCap.Round)
-                            }
-                        }
-                        drawCircle(c2, sw * 0.9f + extra / 2f, Offset(x, y))
-                    }
-                }
-            }
+            val img = when (f.z) { 0 -> dot; 1 -> mid; else -> big }
+            val tl = Offset(x - img.width / 2f, y - img.height / 2f)
+            if (f.z == 0) drawImage(img, tl, alpha = al)
+            else withTransform({ rotate(f.ph * 57f + t * f.rs, Offset(x, y)) }) { drawImage(img, tl, alpha = al) }
         }
-        // گلوله‌های برفیِ نرم و درشت (نزدیک به دوربین)
+        // گلوله‌های برفیِ نرم و درشت (نزدیک به دوربین): سفید با لبه‌ی محو
         for (b in balls) {
             val y = fmod(b.y * cyc + t * b.sp * h, cyc) - 0.06f * h
             val x = b.x * w + sin(t * 0.5f + b.ph) * 26f * dp
             val rr = b.r * dp
-            if (light) {
-                // تم روشن: گلوله‌ی سفید با لبه‌ی مشکیِ نازک
-                drawCircle(Color.White.copy(alpha = 0.92f), rr * 0.78f, Offset(x, y))
-                drawCircle(Color(0xFF111111).copy(alpha = 0.7f), rr * 0.78f, Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * dp))
-            } else {
-                drawCircle(
-                    Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.45f), Color.Transparent), Offset(x, y), rr),
-                    rr, Offset(x, y),
-                )
-            }
+            val edge = if (light) halo else Color.White
+            drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.7f), edge.copy(alpha = if (light) 0.55f else 0.25f), Color.Transparent), Offset(x, y), rr), rr, Offset(x, y))
         }
     }
 }
