@@ -127,6 +127,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.ui.draw.scale
 import android.content.Context
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Block
@@ -508,7 +510,9 @@ fun HomeScreen(
     // سرورِ موقتِ باز برای همه (ادمین از ربات می‌ذاره): فقط برای کسی که قفل داره، تا پایان تایمر
     val perksOpen = com.vauth.foxyvpn.ui.components.Perks.rememberUnlocked()
     val tempBanner: HomeBanner? = planCfg.temp?.takeIf { !perksOpen && it.active(nowOffer * 1000) }?.let { tmp ->
-        val names = tmp.codes.joinToString(" · ") { code -> (com.vauth.foxyvpn.data.CountryUtil.flagEmoji(code) + " " + (com.vauth.foxyvpn.data.CountryUtil.countryName(code) ?: code)).trim() }
+        // خلاصه: یک کشور = پرچم + اسم؛ چند کشور = فقط پرچم‌ها (تا نوار از دو خط بیشتر نشه)
+        val names = if (tmp.codes.size == 1) tmp.codes.first().let { code -> (com.vauth.foxyvpn.data.CountryUtil.flagEmoji(code) + " " + (com.vauth.foxyvpn.data.CountryUtil.countryName(code) ?: code)).trim() }
+        else tmp.codes.joinToString(" ") { com.vauth.foxyvpn.data.CountryUtil.flagEmoji(it) }
         HomeBanner(Icons.Filled.LocalFireDepartment, trf("%s is open for everyone", names), bannerAccent) { onOpenServers() }
             .also { it.offerEnd = tmp.untilMs / 1000; it.promoLabel = tr("Free for a limited time") }
     }
@@ -665,8 +669,10 @@ fun HomeScreen(
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // zIndex: بالا (هدر + کارت اصلی) روی هاله‌ی ضربانیِ دکمه‌ی اتصال می‌شینه؛ هاله پشتش می‌ره (مثل کارت دیتا پایین)
                 Column(
                     modifier = Modifier
+                        .zIndex(1f)
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -716,7 +722,7 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.width(10.dp))
                             }
-                            HeartHeaderButton(c)
+                            UpgradeHeaderButton(c, onOpenPlans)
                             Spacer(Modifier.width(10.dp))
                             IconButton(
                                 onClick = onOpenSettings,
@@ -1321,7 +1327,7 @@ private fun NetHintBanner(issue: com.vauth.foxyvpn.vpn.NetIssue, connected: Bool
     ) {
         Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text(text = text, style = MaterialTheme.typography.bodySmall, color = c.textPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(text = text, style = MaterialTheme.typography.bodySmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
 }
 
@@ -1345,7 +1351,7 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifi
             text = message,
             style = MaterialTheme.typography.bodySmall,
             color = c.textPrimary,
-            maxLines = 3,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
@@ -1734,39 +1740,34 @@ private fun DataRemainingCard(
 }
 
 /** قلب کنار تنظیمات: فعلاً فقط واکنش نشون می‌ده (رنگ می‌گیره، می‌تپه و لرزش خفیف)؛ بعداً می‌شه بهش کار داد. */
+/** دکمه‌ی ارتقا (به‌جای قلب): تاج پرمیوم با تپش آرام؛ لمس = صفحه‌ی پلن‌ها. */
 @Composable
-private fun HeartHeaderButton(c: FoxExtras) {
-    val context = LocalContext.current
+private fun UpgradeHeaderButton(c: FoxExtras, onClick: () -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val prefs = remember { context.getSharedPreferences("foxvpn_ui", Context.MODE_PRIVATE) }
-    var on by remember { mutableStateOf(prefs.getBoolean("home_heart", false)) }
-    val pink = Color(0xFFFF5C8D)
-    val tint by animateColorAsState(if (on) pink else c.textPrimary.copy(alpha = 0.75f), label = "heart-tint")
-    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
-    LaunchedEffect(on) {
-        if (on) {
-            pop.animateTo(1.4f, tween(120))
-            pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 380f))
-        }
-    }
+    val glow = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-glow").animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            tween(1900, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
     Box(
         modifier = Modifier
             .size(46.dp)
             .clip(CircleShape)
-            .background(if (on) pink.copy(alpha = 0.16f) else c.card)
-            .border(1.dp, if (on) pink.copy(alpha = 0.5f) else c.cardBorder, CircleShape)
+            .background(Brush.linearGradient(listOf(c.accentLight.copy(alpha = 0.30f), c.accent.copy(alpha = 0.16f))))
+            .border(1.dp, c.accent.copy(alpha = 0.55f), CircleShape)
             .clickable {
-                on = !on
-                prefs.edit().putBoolean("home_heart", on).apply()
-                haptics.performHapticFeedback(if (on) androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress else androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                onClick()
             },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (on) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = tr("Favorite"),
-            tint = tint,
-            modifier = Modifier.size(24.dp).scale(pop.value),
+            imageVector = Icons.Filled.WorkspacePremium,
+            contentDescription = tr("Upgrade"),
+            tint = c.accent,
+            modifier = Modifier.size(25.dp).graphicsLayer { val k = 1f + 0.08f * glow.value; scaleX = k; scaleY = k },
         )
     }
 }
@@ -1853,11 +1854,11 @@ private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
             .background(b.tone.copy(alpha = 0.14f))
             .border(1.dp, b.tone.copy(alpha = 0.45f), shape)
             .then(if (b.onClick != null) Modifier.clickable(onClick = b.onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
+            modifier = Modifier.size(30.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
             contentAlignment = Alignment.Center,
         ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
         Spacer(Modifier.width(10.dp))
@@ -1865,9 +1866,11 @@ private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
             text = com.vauth.foxyvpn.i18n.bidi(b.text),
             modifier = Modifier.weight(1f),
             color = c.textPrimary,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            lineHeight = 19.sp,
+            lineHeight = 18.sp,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         if (b.onClick != null) {
             Spacer(Modifier.width(6.dp))
