@@ -175,6 +175,23 @@ fun RedeemCard(
     }
 }
 
+/** نمایش «FOX-XXXX-XXXX-XXXX» روی ۱۲ حرف خام؛ مکان نشانگر درست بین دو حالت تبدیل می‌شه. */
+private val CodeVisualTransformation = androidx.compose.ui.text.input.VisualTransformation { text ->
+    val raw = text.text
+    val shown = "FOX-" + raw.chunked(4).joinToString("-")
+    androidx.compose.ui.text.input.TransformedText(
+        androidx.compose.ui.text.AnnotatedString(if (raw.isEmpty()) "" else shown),
+        object : androidx.compose.ui.text.input.OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = if (raw.isEmpty()) 0 else 4 + offset + (if (offset > 0) (offset - 1) / 4 else 0)
+            override fun transformedToOriginal(offset: Int): Int {
+                if (raw.isEmpty() || offset <= 4) return 0
+                val d = offset - 4
+                return (d - d / 5).coerceIn(0, raw.length)
+            }
+        },
+    )
+}
+
 @Composable
 private fun RedeemSheetContent(
     c: FoxExtras,
@@ -206,9 +223,17 @@ private fun RedeemSheetContent(
                 Text(tr("Enter it and your plan upgrades instantly."), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
             }
         }
+        // فیلد فقط ۱۲ حرف/عدد خام نگه می‌داره؛ «FOX-» و خط‌تیره‌ها فقط نمایشی‌ان (VisualTransformation).
+        // قبلاً متن فرمت‌شده تو onValueChange برمی‌گشت و کیبوردِ پیشنهادگر (Gboard…) با متن قاطی می‌شد و حرف اضافه می‌چسبوند.
+        val body = code.removePrefix("FOX-").replace("-", "").let { if (it == "FOX") "" else it }
         OutlinedTextField(
-            value = code,
-            onValueChange = onCode,
+            value = body,
+            onValueChange = { raw0 ->
+                val raw = raw0.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+                val b = (if (raw.length > 12 && raw.startsWith("FOX")) raw.drop(3) else raw).take(12)
+                onCode(if (b.isEmpty()) "" else "FOX-" + b.chunked(4).joinToString("-"))
+            },
+            visualTransformation = CodeVisualTransformation,
             singleLine = true,
             enabled = !busy,
             placeholder = { Text("FOX-XXXX-XXXX-XXXX", color = c.textSecondary.copy(alpha = 0.6f)) },
@@ -222,7 +247,7 @@ private fun RedeemSheetContent(
             },
             shape = RoundedCornerShape(18.dp),
             textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onApply() }),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = c.accent, unfocusedBorderColor = c.cardBorder,
