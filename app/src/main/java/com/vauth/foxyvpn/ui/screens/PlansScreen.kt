@@ -672,17 +672,19 @@ internal fun PromoStrip(c: FoxExtras, title: String, nowState: State<Long>, end:
     val left = (end - nowState.value).coerceAtLeast(0)
     Row(
         modifier = Modifier.fillMaxWidth().clip(shape).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
-            .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.LocalFireDepartment, null, tint = onAccent, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.width(12.dp))
+        Icon(Icons.Filled.LocalFireDepartment, null, tint = onAccent, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(10.dp))
+        // حداکثر دو خط: برچسب کوچک + عنوان تک‌خطی (اگر بلند بود با … کوتاه می‌شه)
         Column(Modifier.weight(1f)) {
-            Text(label ?: tr("Limited-time offer"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = onAccent.copy(alpha = 0.85f))
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Black, color = onAccent)
+            Text(label ?: tr("Limited-time offer"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = onAccent.copy(alpha = 0.85f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = onAccent, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
+        Spacer(Modifier.width(8.dp))
         Text(
-            countdownText(left), fontSize = 15.sp, fontWeight = FontWeight.Black, color = onAccent,
+            countdownText(left), fontSize = 13.sp, fontWeight = FontWeight.Black, color = onAccent, maxLines = 1,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
         )
     }
