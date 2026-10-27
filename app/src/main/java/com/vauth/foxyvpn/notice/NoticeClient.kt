@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
 data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false, val ev: String = "open", val fx: String = "", val ccode: String = "")
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
-data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean, val fx: String = "confetti")
+data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean, val fx: String = "confetti", val rep: Boolean = false, val mode: String = "screen")
 
 /** بنر وضعیت سرور: kind = "maint" (در حال به‌روزرسانی) یا "info"؛ [text] خالی یعنی متن پیش‌فرض اپ. */
 data class StatusBanner(val kind: String, val text: String, val id: String = "", val fx: String = "")
@@ -92,7 +92,7 @@ object NoticeClient {
                     Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1, o.optString("ev", "open"), o.optString("fx"), o.optString("ccode"))
                 }
                 val u = j.optJSONObject("update")?.let {
-                    UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"), it.optString("fx", "confetti"))
+                    UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"), it.optString("fx", "confetti"), it.optBoolean("rep"), it.optString("mode", "screen"))
                 }
                 val b = j.optJSONObject("banner")?.let { StatusBanner(it.optString("kind"), it.optString("text")) }
                 val bArr = j.optJSONArray("banners")
@@ -162,7 +162,8 @@ object NoticeClient {
     suspend fun fetchForDialog(c: Context): NoticeResult = withContext(Dispatchers.IO) {
         val r = queryAll(c, "shown")
         val dismissed = prefs(c).getInt("upd_dismissed", 0)
-        val u = r.update?.takeIf { it.force || it.versionCode > dismissed }
+        // rep = «هر بار ورود»: با «بعداً» فقط تا بستن همین اجرا کنار می‌ره؛ دفعه‌ی بعد که اپ باز بشه دوباره می‌آد
+        val u = r.update?.takeIf { it.force || it.rep || it.versionCode > dismissed }
         if (r.ok) cacheForce(c, r.update)
         NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" }), u, whatsNew = r.whatsNew, ok = r.ok)
     }
@@ -264,7 +265,7 @@ object NoticeClient {
     fun forcePending(c: Context): Boolean = cachedForce(c) != null
 
     fun dismissUpdate(c: Context, u: UpdateInfo) {
-        if (!u.force) prefs(c).edit().putInt("upd_dismissed", u.versionCode).apply()
+        if (!u.force && !u.rep) prefs(c).edit().putInt("upd_dismissed", u.versionCode).apply()
     }
 
     // ───────── پس‌زمینه ─────────
@@ -309,7 +310,7 @@ object NoticeClient {
         }
         val u = r.update
         if (u != null && u.versionCode > p.getInt("upd_notified", 0)) {
-            if (canNotify) post(c, 99, tr("New version available"), if (u.versionName.isNotBlank()) tr("Fox-VPN") + " " + u.versionName else tr("Tap to update"))
+            if (canNotify && (u.force || u.mode != "window")) post(c, 99, tr("New version available"), if (u.versionName.isNotBlank()) tr("Fox-VPN") + " " + u.versionName else tr("Tap to update"))
             p.edit().putInt("upd_notified", u.versionCode).apply()
         }
     }
