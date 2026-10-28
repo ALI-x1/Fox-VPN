@@ -62,6 +62,7 @@ data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInf
                 "free" to PlanInfo(7, 5.0, 0.5, 1),
                 "pro" to PlanInfo(30, 30.0, 5.0, 3),
                 "max" to PlanInfo(30, 60.0, 15.0, 5),
+                "vip" to PlanInfo(30, 100.0, 20.0, 5),
             ),
             ContactInfo(),
         )
@@ -101,7 +102,7 @@ object PlanConfigStore {
         )
     }.getOrNull()
 
-    private val DEFAULT_KEYS = listOf("free", "pro", "max")
+    private val DEFAULT_KEYS = listOf("free", "pro", "max", "vip")
 
     fun cached(context: Context): PlanConfig {
         val t = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
