@@ -220,7 +220,8 @@ fun PlansScreen(
     var discBusy by remember { mutableStateOf(false) }
     // آکاردئون: فقط یک کارت باز؛ اول پلن فعلی (یا Pro) باز است و با لمس هدر عوض می‌شود
     var expanded by remember { mutableStateOf<String?>(null) }
-    var autoOpen by remember { mutableStateOf(true) }
+    // همیشه بسته شروع می‌شه؛ کاربر خودش باز می‌کنه
+    var autoOpen by remember { mutableStateOf(false) }
     LaunchedEffect(PlanFocus.key) { PlanFocus.key?.let { k -> autoOpen = false; expanded = k; PlanFocus.key = null } }
     val nowBase = System.currentTimeMillis() / 1000
     val anyTimed = listOf("pro", "max").any { cfg.plan(it).dend > nowBase && cfg.plan(it).disc > 0 }
