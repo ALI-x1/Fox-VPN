@@ -1,6 +1,16 @@
 package com.vauth.foxyvpn.ui.screens
 
 import androidx.compose.foundation.border
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import com.vauth.foxyvpn.data.RedeemClient
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -81,6 +91,16 @@ private class Confetto(
 fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
     val c = LocalFoxExtras.current
     val context = LocalContext.current
+    // ورود کد دعوت (فقط کاربر تازه‌ی فری که هنوز دعوتی استفاده نکرده)
+    val scope = rememberCoroutineScope()
+    val refClient = remember { RedeemClient(context) }
+    val uiPrefs = remember { context.getSharedPreferences("foxvpn_ui", android.content.Context.MODE_PRIVATE) }
+    var refUsed by remember { mutableStateOf(uiPrefs.getBoolean("ref_used", false)) }
+    var inviteOpen by remember { mutableStateOf(false) }
+    var friend by remember { mutableStateOf("") }
+    var inviteBusy by remember { mutableStateOf(false) }
+    var inviteMsg by remember { mutableStateOf<String?>(null) }
+    var inviteOk by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { LicenseState.load(context) }
     val license by LicenseState.status.collectAsState()
     val planKey = license?.plan?.takeIf { it == "pro" || it == "max" } ?: "free"
@@ -142,7 +162,7 @@ fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
             }
         }
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 28.dp),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -190,6 +210,73 @@ fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
                 color = c.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center, modifier = Modifier.alpha(textAlpha),
             )
+            // کارت نرمِ «کد دعوت دارم؟»: بسته = یک قرص کوچک؛ باز = فیلد + اعمال
+            if (!upgrade && planKey == "free" && (!refUsed || inviteOk)) {
+                Spacer(Modifier.height(18.dp))
+                val iShape = RoundedCornerShape(20.dp)
+                Column(
+                    modifier = Modifier.alpha(textAlpha).fillMaxWidth().animateContentSize().clip(iShape)
+                        .background(c.accent.copy(alpha = 0.10f)).border(1.dp, c.accent.copy(alpha = 0.35f), iShape)
+                        .then(if (!inviteOpen && !inviteOk) Modifier.clickable { inviteOpen = true } else Modifier)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (inviteOk) {
+                        Text(inviteMsg.orEmpty(), color = c.accentText, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, textAlign = TextAlign.Center)
+                    } else if (!inviteOpen) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.CardGiftcard, null, tint = c.accent, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(tr("Have an invite code?"), color = c.accentText, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                        }
+                    } else {
+                        Text(tr("Enter your friend's code. You both get free days."), color = c.textSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = friend,
+                            onValueChange = { friend = it.uppercase().filter { ch -> ch.isLetterOrDigit() }.take(18); inviteMsg = null },
+                            singleLine = true, enabled = !inviteBusy, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+                            placeholder = { Text(tr("Friend's code"), color = c.textSecondary.copy(alpha = 0.6f)) },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = c.accent, unfocusedBorderColor = c.cardBorder,
+                                focusedContainerColor = c.innerCard, unfocusedContainerColor = c.innerCard, cursorColor = c.accent,
+                            ),
+                        )
+                        inviteMsg?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) }
+                        Spacer(Modifier.height(8.dp))
+                        PlanButton(if (inviteBusy) tr("Checking…") else tr("Apply"), c, Modifier.fillMaxWidth(), enabled = friend.length > 2 && !inviteBusy, onClick = {
+                            inviteBusy = true; inviteMsg = null
+                            scope.launch {
+                                val r = refClient.referral(friend)
+                                inviteBusy = false
+                                when {
+                                    r == null -> inviteMsg = tr("Could not reach the server. Try again.")
+                                    r.ok -> {
+                                        uiPrefs.edit().putBoolean("ref_used", true).apply()
+                                        refUsed = true; inviteOk = true
+                                        inviteMsg = trf("Done! +%d days added to your plan.", r.gained)
+                                        LicenseState.load(context)
+                                    }
+                                    else -> {
+                                        if (r.error == "already") { uiPrefs.edit().putBoolean("ref_used", true).apply(); refUsed = true }
+                                        inviteMsg = when (r.error) {
+                                            "self" -> tr("That's your own code.")
+                                            "already" -> tr("You've already used an invite.")
+                                            "full" -> tr("This friend has reached the invite limit.")
+                                            "same_network" -> tr("This invite can't be used from the same network.")
+                                            "too_old" -> tr("Invites only work in your first days with the app.")
+                                            "disabled" -> tr("Invites are turned off right now.")
+                                            else -> tr("This code isn't valid.")
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    }
+                }
+            }
             Spacer(Modifier.height(34.dp))
             val shape = RoundedCornerShape(20.dp)
             Box(
