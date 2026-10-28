@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.border
@@ -122,10 +123,13 @@ object PlanFocus {
     var key by mutableStateOf<String?>(null)
 }
 
+/** پلن‌های قابل خرید (Free فقط به‌صورت پلنِ فعلیِ کاربر وجود دارد و کارت خرید ندارد). */
+internal val PAID_KEYS = listOf("pro", "max", "vip")
+
 private val PLANS = listOf(
-    PlanSpec("free", "Free", "Try it out", Icons.Filled.CardGiftcard, null),
     PlanSpec("pro", "Pro", "For everyday use", Icons.Filled.Star, "POPULAR"),
     PlanSpec("max", "Max", "For power users", Icons.Filled.Bolt, "BEST VALUE"),
+    PlanSpec("vip", "VIP", "Maximum power", Icons.Filled.Diamond, "TOP TIER"),
 )
 
 /** ویژگی‌های هر پلن از روی اعداد سرور (ربات: /plan) ساخته می‌شه تا همیشه با سرور یکی باشه. */
@@ -154,6 +158,7 @@ internal fun rank(key: String?): Int = when (key) {
     "free" -> 1
     "pro" -> 2
     "max" -> 3
+    "vip" -> 4
     else -> 0
 }
 
@@ -224,7 +229,7 @@ fun PlansScreen(
     var autoOpen by remember { mutableStateOf(false) }
     LaunchedEffect(PlanFocus.key) { PlanFocus.key?.let { k -> autoOpen = false; expanded = k; PlanFocus.key = null } }
     val nowBase = System.currentTimeMillis() / 1000
-    val anyTimed = listOf("pro", "max").any { cfg.plan(it).dend > nowBase && cfg.plan(it).disc > 0 }
+    val anyTimed = PAID_KEYS.any { cfg.plan(it).dend > nowBase && cfg.plan(it).disc > 0 }
     val nowState = rememberNowSec(anyTimed)
     // پیشنهاد هوشمند: حجم رو به پایان / سقف خورده / پلن در آستانه‌ی انقضا
     val lic0 = license
@@ -232,10 +237,10 @@ fun PlansScreen(
     val lowData = !isAdmin && fracLeft != null && fracLeft <= 0.2f
     val renewOffer = cfg.renew
     val expSoon = !isAdmin && (lic0?.expiresAt ?: Long.MAX_VALUE) - nowBase in 0L..((renewOffer?.days ?: 3) * 86400L)
-    val nextKey = when (currentKey) { "free" -> "pro"; "pro" -> "max"; else -> null }
+    val nextKey = when (currentKey) { "free" -> "pro"; "pro" -> "max"; "max" -> "vip"; else -> null }
     val suggestKey: String? = when {
         isAdmin || lic0 == null -> null
-        expSoon && (currentKey == "pro" || currentKey == "max") -> currentKey
+        expSoon && currentKey in PAID_KEYS -> currentKey
         (lowData || block != null) && nextKey != null -> nextKey
         else -> null
     }
@@ -253,7 +258,7 @@ fun PlansScreen(
         if (code.isEmpty() || discBusy) return
         discBusy = true; discMsg = null
         scope.launch {
-            val r = listOf("pro", "max").mapNotNull { k -> PlanConfigStore.checkDiscount(code, k)?.let { k to it } }.toMap()
+            val r = PAID_KEYS.mapNotNull { k -> PlanConfigStore.checkDiscount(code, k)?.let { k to it } }.toMap()
             discBusy = false
             if (r.isEmpty()) { discOk = false; discMsg = tr("This discount code isn't valid."); applied = emptyMap(); appliedCode = "" }
             else { discOk = true; applied = r; appliedCode = code.uppercase(); discMsg = trf("Discount applied: %d%% off", r.values.maxOf { it.first }) }
@@ -264,7 +269,7 @@ fun PlansScreen(
     LaunchedEffect(expSoon, renewOffer?.code, currentKey) {
         val ro = renewOffer
         if (expSoon && ro != null && currentKey != null && currentKey != "free" && appliedCode.isEmpty()) {
-            val r = listOf("pro", "max").mapNotNull { k -> PlanConfigStore.checkDiscount(ro.code, k)?.let { k to it } }.toMap()
+            val r = PAID_KEYS.mapNotNull { k -> PlanConfigStore.checkDiscount(ro.code, k)?.let { k to it } }.toMap()
             if (r.isNotEmpty()) { discOk = true; applied = r; appliedCode = ro.code; discMsg = trf("Renewal discount applied: %d%% off", r.values.maxOf { it.first }) }
         }
     }
@@ -331,7 +336,7 @@ fun PlansScreen(
                     SuggestStrip(c, suggestReason, suggestKey == currentKey, tr(PLANS.first { it.key == suggestKey }.title)) { autoOpen = false; expanded = suggestKey }
                 }
                 // تخفیف زمان‌دار فعال: نوار جذاب با شمارش معکوس
-                val promo = listOf("pro", "max").filter { discLive(cfg.plan(it), nowBase) && cfg.plan(it).dend > nowBase }.minByOrNull { cfg.plan(it).dend }
+                val promo = PAID_KEYS.filter { discLive(cfg.plan(it), nowBase) && cfg.plan(it).dend > nowBase }.minByOrNull { cfg.plan(it).dend }
                 if (promo != null) {
                     val pi = cfg.plan(promo)
                     PromoStrip(c, trf("%s · %d%% off", tr(PLANS.first { it.key == promo }.title), pi.disc), nowState, pi.dend) { autoOpen = false; expanded = promo }
