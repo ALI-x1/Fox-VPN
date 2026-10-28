@@ -176,7 +176,7 @@ fun RedeemCard(
 }
 
 /** نمایش «FOX-XXXX-XXXX-XXXX» روی ۱۲ حرف خام؛ مکان نشانگر درست بین دو حالت تبدیل می‌شه. */
-private val CodeVisualTransformation = androidx.compose.ui.text.input.VisualTransformation { text ->
+internal val CodeVisualTransformation = androidx.compose.ui.text.input.VisualTransformation { text ->
     val raw = text.text
     val shown = "FOX-" + raw.chunked(4).joinToString("-")
     androidx.compose.ui.text.input.TransformedText(
