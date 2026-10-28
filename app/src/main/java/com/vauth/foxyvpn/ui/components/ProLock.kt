@@ -58,7 +58,7 @@ object Perks {
         if (runCatching { RedeemClient(app).adminMode }.getOrDefault(false)) return true
         LicenseState.load(app)
         val plan = LicenseState.status.value?.plan
-        if (plan == null || plan == "pro" || plan == "max") return true
+        if (plan == null || plan == "pro" || plan == "max" || plan == "vip") return true
         return isFreeCountry(code) || com.vauth.foxyvpn.data.PlanConfigStore.cached(app).temp?.covers(code) == true
     }
 
@@ -72,7 +72,7 @@ object Perks {
         LaunchedEffect(Unit) { LicenseState.load(context) }
         val lic by LicenseState.status.collectAsState()
         val admin = remember { runCatching { RedeemClient(context.applicationContext).adminMode }.getOrDefault(false) }
-        return admin || lic == null || lic?.plan == "pro" || lic?.plan == "max"
+        return admin || lic == null || lic?.plan == "pro" || lic?.plan == "max" || lic?.plan == "vip"
     }
 }
 
