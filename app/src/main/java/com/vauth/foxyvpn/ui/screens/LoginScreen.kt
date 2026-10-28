@@ -353,11 +353,15 @@ fun LoginScreen(
                         Spacer(Modifier.height(20.dp))
 
                         LoginField(
-                            value = code,
-                            onValueChange = {
+                            // فیلد فقط ۱۲ حرف خام نگه می‌داره؛ «FOX-» و خط‌تیره‌ها فقط نمایشی‌ان (جلوی حرف‌های اضافه‌ی کیبورد)
+                            value = code.removePrefix("FOX-").replace("-", "").let { if (it == "FOX") "" else it },
+                            onValueChange = { raw0 ->
                                 errorMessage = null
-                                code = RedeemClient.formatCode(it)
+                                val raw = raw0.uppercase().filter { ch -> ch in 'A'..'Z' || ch in '0'..'9' }
+                                val b = (if (raw.length > 12 && raw.startsWith("FOX")) raw.drop(3) else raw).take(12)
+                                code = if (b.isEmpty()) "" else "FOX-" + b.chunked(4).joinToString("-")
                             },
+                            visualTransformation = CodeVisualTransformation,
                             label = "Redeem code",
                             onFocusChange = { codeFocused = it },
                             enabled = !isLoading,
