@@ -30,9 +30,14 @@ object Diagnostics {
     private val http = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS).readTimeout(6, TimeUnit.SECONDS).callTimeout(8, TimeUnit.SECONDS).build()
 
-    suspend fun run(context: Context): DiagResult = withContext(Dispatchers.IO) {
+    /** هر بررسی که تموم شد، همون لحظه با [onItem] خبر می‌ده (برای نمایش زنده‌ی لیست). تعداد کلِ بررسی‌ها: [TOTAL]. */
+    const val TOTAL = 8
+
+    suspend fun run(context: Context, onItem: ((DiagItem) -> Unit)? = null): DiagResult = withContext(Dispatchers.IO) {
         val app = context.applicationContext
-        val items = ArrayList<DiagItem>()
+        val items = object : ArrayList<DiagItem>() {
+            override fun add(element: DiagItem): Boolean { val r = super.add(element); onItem?.invoke(element); return r }
+        }
 
         // ۱) اینترنت گوشی
         val cm = app.getSystemService(ConnectivityManager::class.java)
@@ -64,6 +69,11 @@ object Diagnostics {
                 if (d != null) skewSec = d - System.currentTimeMillis() / 1000
             }
         }
+        // DNS: اسم سرور برنامه از روی شبکه‌ی گوشی پیدا می‌شه؟
+        if (base != null && validated) {
+            val dnsOk = runCatching { java.net.InetAddress.getByName(java.net.URI(base).host) }.isSuccess
+            items += if (dnsOk) DiagItem(0, "DNS", tr("Resolves correctly")) else DiagItem(2, "DNS", tr("Could not resolve names"))
+        }
         if (abs(skewSec) > 300) items += DiagItem(2, tr("Phone clock"), tr("The date or time on your phone is wrong"))
         else items += DiagItem(0, tr("Phone clock"), tr("Correct"))
 
@@ -79,6 +89,10 @@ object Diagnostics {
                 if (left != null && left in 0..2) DiagItem(1, tr("Your plan"), trf("Ends in %d day(s)", left.toInt() + 1)) else DiagItem(0, tr("Your plan"), tr("Active"))
             }
         }
+
+        // صرفه‌جویی باتری: بعضی گوشی‌ها VPN رو تو پس‌زمینه می‌بُرن
+        val pm = app.getSystemService(android.os.PowerManager::class.java)
+        items += if (pm?.isPowerSaveMode == true) DiagItem(1, tr("Battery saver"), tr("On — it can cut the VPN in the background")) else DiagItem(0, tr("Battery saver"), tr("Off"))
 
         // ۴) لیست سرورها
         val servers = withTimeoutOrNull(8000) { runCatching { ServerListClient().fetchCountries() }.getOrNull() }
