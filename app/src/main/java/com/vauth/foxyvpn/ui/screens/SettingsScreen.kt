@@ -58,6 +58,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -97,6 +98,10 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
@@ -235,6 +240,7 @@ fun SettingsScreen(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var checking by remember { mutableStateOf(false) }
     var checked by remember { mutableStateOf(false) }
+    var checkFailed by remember { mutableStateOf(false) }
     val updateScope = rememberCoroutineScope()
     // force = true وقتی کاربر خودش روی «Version» می‌زنه؛ وگرنه تا ۶۰ دقیقه از نتیجه‌ی قبلی استفاده می‌شه
     fun checkUpdate(force: Boolean = false) {
@@ -244,11 +250,12 @@ fun SettingsScreen(
             checked = true
             return
         }
-        checking = true
+        checking = true; checkFailed = false
         updateScope.launch {
             val result = runCatching { NoticeClient.fetchStatus(context).update }
             if (result.isSuccess) UpdateCheckCache.put(result.getOrNull())
             updateInfo = result.getOrNull() ?: UpdateCheckCache.info
+            checkFailed = result.isFailure && updateInfo == null
             checking = false; checked = true
         }
     }
@@ -659,7 +666,8 @@ fun SettingsScreen(
                                         .fillMaxWidth()
                                         .settingsCard(c, 24.dp)
                                 ) {
-                                    AccountHeaderRow(c = c, onClick = onOpenAccount)
+                                    val licStatus by com.vauth.foxyvpn.data.LicenseState.status.collectAsState()
+                                    AccountHeaderRow(c = c, license = licStatus, onClick = onOpenAccount)
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.CardGiftcard,
@@ -677,6 +685,13 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
+                                        icon = Icons.Filled.BugReport,
+                                        title = tr("Report a bug"),
+                                        subtitle = tr("Message the developer"),
+                                        onClick = { showBug = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
                                         icon = Icons.Filled.Share,
                                         title = tr("Invite friends"),
                                         subtitle = tr("You and your friend both get free days"),
@@ -691,6 +706,7 @@ fun SettingsScreen(
                                         subtitle = when {
                                             upd != null -> trf("%s → %s · tap to update", BuildConfig.VERSION_NAME, upd.versionName.ifBlank { upd.versionCode.toString() })
                                             checking -> com.vauth.foxyvpn.i18n.bidi((BuildConfig.VERSION_NAME + " · " + tr("Checking…")).replace("\u202B", "").replace("\u202C", ""))
+                                            checkFailed -> com.vauth.foxyvpn.i18n.bidi((BuildConfig.VERSION_NAME + " · " + tr("Couldn't check · tap to retry")).replace("\u202B", "").replace("\u202C", ""))
                                             checked -> com.vauth.foxyvpn.i18n.bidi((BuildConfig.VERSION_NAME + " · " + tr("You're up to date")).replace("\u202B", "").replace("\u202C", ""))
                                             else -> BuildConfig.VERSION_NAME
                                         },
@@ -700,6 +716,8 @@ fun SettingsScreen(
                                                 Box(
                                                     modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 6.dp),
                                                 ) { Text(tr("Update"), fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White) }
+                                            } else {
+                                                UpdateStatusIcon(c, if (checking) 1 else if (checkFailed) 3 else if (checked) 2 else 0)
                                             }
                                         },
                                     )
@@ -781,16 +799,9 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.BugReport,
-                                        title = tr("Report a bug"),
-                                        subtitle = tr("Send a message straight to the developer"),
-                                        onClick = { showBug = true },
-                                    )
-                                    SettingRow(
-                                        c = c,
                                         icon = Icons.Filled.VerifiedUser,
-                                        title = tr("Connection"),
-                                        subtitle = if (exitCheckEnabled) tr("Exit location check on") else tr("Exit location check off"),
+                                        title = tr("Exit location check"),
+                                        subtitle = if (exitCheckEnabled) tr("On") else tr("Off"),
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
@@ -1191,6 +1202,42 @@ private fun SettingRow(
     }
 }
 
+/** وضعیت بررسی آپدیت: 0 = آماده · 1 = در حال بررسی (چرخان) · 2 = به‌روز (تیک) · 3 = ناموفق (ابر خط‌خورده). */
+@Composable
+private fun UpdateStatusIcon(c: FoxExtras, state: Int) {
+    val tone = if (state == 3) MaterialTheme.colorScheme.error else c.accent
+    Box(
+        modifier = Modifier.size(36.dp).clip(CircleShape).background(tone.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = {
+                (fadeIn(tween(220)) + androidx.compose.animation.scaleIn(tween(260), initialScale = 0.4f)) togetherWith
+                    (androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.scaleOut(tween(120), targetScale = 0.4f))
+            },
+            label = "update-status",
+        ) { st ->
+            when (st) {
+                1 -> {
+                    // فقط وقتی واقعاً در حال بررسیه ساخته می‌شه؛ بعدش انیمیشن بی‌کار نمی‌مونه
+                    val rot = androidx.compose.animation.core.rememberInfiniteTransition(label = "update-spin").animateFloat(
+                        initialValue = 0f, targetValue = 360f,
+                        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                            tween(900, easing = androidx.compose.animation.core.LinearEasing),
+                        ),
+                        label = "spin",
+                    )
+                    Icon(Icons.Filled.Autorenew, contentDescription = tr("Checking…"), tint = tone, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rot.value })
+                }
+                2 -> Icon(Icons.Filled.CheckCircle, contentDescription = tr("You're up to date"), tint = tone, modifier = Modifier.size(22.dp))
+                3 -> Icon(Icons.Filled.CloudOff, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+                else -> Icon(Icons.Filled.Refresh, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
 @Composable
 private fun SettingSwitchRow(
     c: FoxExtras,
@@ -1227,7 +1274,7 @@ private fun SettingSwitchRow(
 
 /** ردیف اکانت بالای صفحه. */
 @Composable
-private fun AccountHeaderRow(c: FoxExtras, onClick: () -> Unit) {
+private fun AccountHeaderRow(c: FoxExtras, license: com.vauth.foxyvpn.data.LicenseStatus?, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1263,11 +1310,37 @@ private fun AccountHeaderRow(c: FoxExtras, onClick: () -> Unit) {
                 fontWeight = FontWeight.ExtraBold,
                 color = c.textPrimary,
             )
-            Text(
-                text = tr("Subscription status and data usage"),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.textSecondary,
-            )
+            // خلاصه‌ی زنده: پلن · روز باقی‌مانده · حجم باقی‌مانده (+ نوار باریک حجم)
+            val total = license?.totalBytes?.takeIf { it > 0 }
+            val leftFrac = total?.let { ((it - license.usedBytes).toFloat() / it.toFloat()).coerceIn(0f, 1f) }
+            if (license == null) {
+                Text(
+                    text = tr("Subscription status and data usage"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                )
+            } else {
+                val parts = mutableListOf<String>()
+                license.plan?.takeIf { it.isNotBlank() }?.let { parts += it.replaceFirstChar { ch -> ch.uppercase() } }
+                license.expiresAt?.let { e ->
+                    val d = kotlin.math.ceil((e - System.currentTimeMillis() / 1000) / 86400.0).toLong().coerceAtLeast(0)
+                    parts += if (d == 1L) tr("1 day left") else trf("%d days left", d)
+                }
+                if (total != null) parts += trf("%.1f GB left", ((total - license.usedBytes).coerceAtLeast(0L)) / 1073741824.0)
+                Text(
+                    text = com.vauth.foxyvpn.i18n.bidi(parts.joinToString(" · ").replace("\u202B", "").replace("\u202C", "")),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.textSecondary,
+                    maxLines = 1,
+                )
+                if (leftFrac != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(c.accent.copy(alpha = 0.15f))) {
+                        Box(Modifier.fillMaxHeight().fillMaxWidth(leftFrac).clip(RoundedCornerShape(3.dp)).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent))))
+                    }
+                }
+            }
         }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
