@@ -80,6 +80,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Palette
@@ -297,8 +298,10 @@ fun SettingsScreen(
     var showUpstreamProxyCredentialsDialog by rememberSaveable { mutableStateOf(false) }
     var showSplitTunnelDialog by rememberSaveable { mutableStateOf(false) }
     var showDiag by remember { mutableStateOf(false) }
+    var showBug by remember { mutableStateOf(false) }
     var showRef by remember { mutableStateOf(false) }
     if (showDiag) DiagnoseDialog(onDismiss = { showDiag = false })
+    if (showBug) BugReportDialog(onDismiss = { showBug = false })
     if (showRef) ReferralDialog(onDismiss = { showRef = false })
 
     if (showDohProviderDialog) {
@@ -775,6 +778,13 @@ fun SettingsScreen(
                                         subtitle = tr("Finds the problem in a few seconds"),
                                         divider = false,
                                         onClick = { showDiag = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.BugReport,
+                                        title = tr("Report a bug"),
+                                        subtitle = tr("Send a message straight to the developer"),
+                                        onClick = { showBug = true },
                                     )
                                     SettingRow(
                                         c = c,
