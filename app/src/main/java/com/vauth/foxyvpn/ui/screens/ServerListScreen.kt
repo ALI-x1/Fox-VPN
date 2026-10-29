@@ -86,6 +86,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
@@ -137,6 +142,12 @@ private data class CityEntry(val country: VpnCountry, val city: VpnCity) {
 }
 
 private data class PingTarget(val key: String, val host: String, val port: Int)
+
+/** آخرین پینگ هر لوکیشن؛ با باز کردن دوباره‌ی صفحه تا ۶۰ ثانیه از همین استفاده می‌شه و دوباره سنجیده نمی‌شه. */
+private object PingCache {
+    const val TTL_MS = 60_000L
+    val map = HashMap<String, Pair<Int, Long>>()
+}
 
 private enum class PingState { PENDING, DONE, FAILED }
 
@@ -556,7 +567,7 @@ fun ServerListScreen(
             Snapshot.withMutableSnapshot {
                 for (k in dirty) {
                     val r = localResults[k]
-                    if (r != null) pingResults[k] = r else pingResults.remove(k)
+                    if (r != null) { pingResults[k] = r; PingCache.map[k] = r to System.currentTimeMillis() } else pingResults.remove(k)
                     localStates[k]?.let { pingStates[k] = it }
                 }
             }
@@ -572,18 +583,35 @@ fun ServerListScreen(
         }
         flush()
 
+        // نتیجه‌های تازه‌ی دفعه‌ی قبل (کمتر از ۶۰ ثانیه)
+        val nowSeed = System.currentTimeMillis()
+        var seededAll = cityTargets.isNotEmpty()
+        for (k in cityTargets.keys) {
+            val cached = PingCache.map[k]
+            if (cached != null && nowSeed - cached.second < PingCache.TTL_MS) {
+                localResults[k] = cached.first; localStates[k] = PingState.DONE; dirty += k
+            } else seededAll = false
+        }
+        flush()
+
         val semaphore = Semaphore(PING_PARALLELISM)
         // بهترین پینگِ هر لوکیشن تو چند دور اخیر
         val history = HashMap<String, ArrayDeque<Int>>()
-        var round = 0
+        var round = if (seededAll) 1 else 0
+        if (seededAll) delay(LIVE_INTERVAL_MS)
         while (true) {
             // پاز: برنامه تو پس‌زمینه‌ست یا «Live» خاموشه
             snapshotFlow { isLive && isForeground }.first { it }
 
             // بهترین پینگ هر لوکیشن تو همین دور (همه‌ی کدها روی ترد اصلی اجرا می‌شن؛ نیازی به قفل نیست)
             val roundBest = HashMap<String, Int>()
+            // دور کامل: اولین دور و هر ۵ دور؛ بقیه‌ی دورها فقط ردیف‌های دیده‌شده (باتری و شبکه کمتر)
+            val full = round % 5 == 0
+            val vis: Set<String> = if (full) emptySet() else listState.layoutInfo.visibleItemsInfo
+                .mapNotNull { (it.key as? String)?.takeIf { k -> k.startsWith("city:") }?.removePrefix("city:") }.toSet()
+            val active = if (full || vis.isEmpty()) cityTargets else cityTargets.filterKeys { it in vis }
             coroutineScope {
-                for ((key, list) in cityTargets) {
+                for ((key, list) in active) {
                     for (t in pickRound(list, round)) {
                         launch {
                             semaphore.withPermit {
@@ -604,7 +632,7 @@ fun ServerListScreen(
             }
 
             // پایان دور: ثبت تو تاریخچه، یا حساب شکست‌ها
-            for (key in cityTargets.keys) {
+            for (key in active.keys) {
                 val best = roundBest[key]
                 if (best != null) {
                     failCounts[key] = 0
@@ -925,7 +953,18 @@ fun ServerListScreen(
                         }
                         else -> LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                .drawWithContent {
+                                    drawContent()
+                                    // محو نرم لبه‌ی بالا: کارت‌ها زیر چیپ‌ها با خط بریده تموم نشن
+                                    drawRect(
+                                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = 16.dp.toPx()),
+                                        blendMode = BlendMode.DstIn,
+                                    )
+                                },
+                            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (!searching) {
@@ -960,7 +999,7 @@ fun ServerListScreen(
                                 citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
                                 citySection(
                                     id = "all",
-                                    title = if (freeCities.isNotEmpty() || cat == 2) tr("VIP locations") else tr("All locations"),
+                                    title = if (freeCities.isNotEmpty() || cat == 2) tr("Premium · Pro or higher") else tr("All locations"),
                                     icon = if (freeCities.isNotEmpty() || cat == 2) Icons.Filled.WorkspacePremium else null,
                                     iconTint = c.accentText,
                                     c = c,
@@ -1187,26 +1226,32 @@ private fun CityCard(
             Text(
                 text = countryName,
                 style = MaterialTheme.typography.titleMedium,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = c.textPrimary,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (cityLabel.isNotBlank()) {
-                Text(
-                    text = cityLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            if (cityLabel.isNotBlank() || locked) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (locked) {
+                        Icon(Icons.Filled.Lock, contentDescription = tr("Locked"), tint = c.textSecondary, modifier = Modifier.size(14.dp))
+                        if (cityLabel.isNotBlank()) Spacer(Modifier.width(5.dp))
+                    }
+                    if (cityLabel.isNotBlank()) Text(
+                        text = cityLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             // نشان‌ها تو خط جدا می‌آن تا اسم شهر کوتاه نشه (وضعیت اتصال اولویت داره)
-            if (status != null || isFastest || locked) {
+            if (status != null || (isFastest && !locked)) {
                 Spacer(Modifier.height(4.dp))
                 if (status != null) StatusChip(status = status, c = c)
-                else if (locked) com.vauth.foxyvpn.ui.components.ProBadge()
                 else FastestChip()
             }
         }
@@ -1595,11 +1640,11 @@ private fun PingBadge(pingMs: Int?, pingState: PingState, c: FoxExtras) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
-            .widthIn(min = 104.dp)
+            .widthIn(min = 92.dp)
             .clip(shape)
             .background(color.copy(alpha = 0.13f))
             .border(1.dp, color.copy(alpha = 0.35f), shape)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1609,7 +1654,7 @@ private fun PingBadge(pingMs: Int?, pingState: PingState, c: FoxExtras) {
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = pingMs.toString(),
-                    fontSize = 20.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = color,
                 )
