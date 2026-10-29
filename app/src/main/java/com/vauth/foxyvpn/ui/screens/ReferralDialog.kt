@@ -123,7 +123,7 @@ fun ReferralDialog(onDismiss: () -> Unit) {
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding()
-                .padding(horizontal = 22.dp).padding(bottom = 18.dp),
+                .padding(horizontal = 22.dp).padding(top = 8.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // سربرگ
