@@ -234,57 +234,47 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     LaunchedEffect(Unit) { shown = true }
     val a by animateFloatAsState(if (shown) 1f else 0f, tween(500), label = "hero")
     val shape = RoundedCornerShape(28.dp)
-    Row(
+    val pillShape = RoundedCornerShape(12.dp)
+    Column(
         modifier = Modifier.fillMaxWidth().alpha(a).scale(0.95f + 0.05f * a)
             .shadow(12.dp, shape, ambientColor = c.accent.copy(alpha = 0.3f), spotColor = c.accent.copy(alpha = 0.3f))
-            .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape).padding(18.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape).padding(horizontal = 18.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(
-            modifier = Modifier.size(62.dp).shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
-                .clip(CircleShape).background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
-            contentAlignment = Alignment.Center,
-        ) { Icon(if (frozen) Icons.Filled.AcUnit else planIcon(lic.plan), null, tint = onAccent, modifier = Modifier.size(34.dp)) }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(name, fontSize = 28.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
-            val exp = lic.expiresAt
-            Text(
-                when {
-                    exp == null -> tr("No expiry")
-                    exp <= nowSec -> tr("Expired")
-                    else -> com.vauth.foxyvpn.i18n.bidi(
-                        trf("%s left", durationText(exp - nowSec)).replace("\u202B", "").replace("\u202C", "") + " · " +
-                            java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(exp * 1000)),
-                    )
-                },
-                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (onUpgrade != null) {
-                val pillShape = RoundedCornerShape(12.dp)
-                if (lic.plan == "max") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(68.dp).shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+                    .clip(CircleShape).background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
+                contentAlignment = Alignment.Center,
+            ) { Icon(if (frozen) Icons.Filled.AcUnit else planIcon(lic.plan), null, tint = onAccent, modifier = Modifier.size(36.dp)) }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(name, fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
-                            .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) { Text(com.vauth.foxyvpn.i18n.bidi(("👑 " + tr("Top plan")).replace("\u202B", "").replace("\u202C", "")), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
-                } else {
-                    Row(
-                        modifier = Modifier.clip(pillShape).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
-                            .clickable(onClick = onUpgrade).padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.WorkspacePremium, null, tint = onAccent, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(tr("Upgrade"), fontSize = 13.sp, fontWeight = FontWeight.Black, color = onAccent)
+                        modifier = Modifier.clip(pillShape).background(statusColor.copy(alpha = 0.16f))
+                            .border(1.dp, statusColor.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 5.dp),
+                    ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
+                    if (onUpgrade != null && (lic.plan == "max" || lic.plan == "vip")) {
+                        Box(
+                            modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
+                                .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 5.dp),
+                        ) { Text(com.vauth.foxyvpn.i18n.bidi(("👑 " + tr("Top plan")).replace("\u202B", "").replace("\u202C", "")), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
                     }
                 }
             }
-            Box(
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(statusColor.copy(alpha = 0.16f))
-                    .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
-            ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
+        }
+        if (onUpgrade != null && lic.plan != "max" && lic.plan != "vip") {
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
+                    .clickable(onClick = onUpgrade).padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.WorkspacePremium, null, tint = onAccent, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(tr("Upgrade"), fontSize = 15.sp, fontWeight = FontWeight.Black, color = onAccent)
+            }
         }
     }
     if (block != null) {
@@ -408,7 +398,8 @@ private fun DailyAndTimeCards(c: FoxExtras, lic: LicenseStatus, planDays: Int, n
         BarCard(
             c, Icons.Filled.Schedule, tr("Plan time"),
             if (remain == 0L) tr("Expired") else trf("%s left", durationText(remain)),
-            (remain.toFloat() / total.toFloat()).coerceIn(0f, 1f), null,
+            (remain.toFloat() / total.toFloat()).coerceIn(0f, 1f),
+            com.vauth.foxyvpn.i18n.bidi(trf("Ends %s", java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(exp * 1000))).replace("\u202B", "").replace("\u202C", "")),
         )
     }
 }
