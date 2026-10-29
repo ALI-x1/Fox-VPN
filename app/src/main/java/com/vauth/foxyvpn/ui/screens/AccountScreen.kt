@@ -204,7 +204,8 @@ fun AccountScreen(
                 // دکمه‌های سریع
                 if (!isAdmin) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
+                        // دکمه‌ی Upgrade همین بالا (کارت پلن) هست؛ برای پلن‌های غیر از بالاترین تکرارش نمی‌کنیم
+                        if (license?.plan == "max" || license?.plan == "vip") QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
                     }
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
