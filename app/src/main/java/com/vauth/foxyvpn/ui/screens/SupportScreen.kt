@@ -198,11 +198,11 @@ private fun ContactOptions(c: FoxExtras, contacts: ContactInfo, startIndex: Int,
     val haptics = LocalHapticFeedback.current
     val tg = contacts.tg.ifBlank { RedeemClient.SUPPORT_URL }
     ContactOption(
-        c, Icons.Filled.SmartToy, tr("Support bot"), tr("Fast answers, any time"),
+        c, Icons.Filled.SmartToy, tr("Telegram bot"), tr("Fast answers, any time"),
         enabled = contacts.bot.isNotBlank(), actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = startIndex,
     ) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); runCatching { uri.openUri(tgUrl(contacts.bot)) } }
     ContactOption(
-        c, Icons.Filled.AccountCircle, tr("Message the owner"), if (tg.startsWith("http")) tg.removePrefix("https://") else tg,
+        c, Icons.Filled.AccountCircle, tr("Admin"), tr("Telegram admin"),
         enabled = true, actionIcon = Icons.AutoMirrored.Filled.Send, index = startIndex + 1,
     ) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); runCatching { uri.openUri("${tgUrl(tg)}?text=${Uri.encode(message)}") } }
 }
@@ -223,15 +223,15 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
             ) {
                 ScreenHeader(c, tr("Support"), tr("We're here to help"), onBack)
                 HeroBadge(c, Icons.Filled.SupportAgent, tr("Have a question or a problem? Pick the fastest way to reach us."))
-                ContactOptions(c, cfg.contacts, 0, msg)
-                ContactOption(
-                    c, Icons.Filled.Receipt, tr("Copy support info"), tr("Version, plan and device ID — paste it in the chat"),
-                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 2,
-                ) { copyText(context, supportInfo(context), tr("Support info")) }
                 ContactOption(
                     c, Icons.Filled.LocalOffer, tr("Plans & prices"), tr("See what each plan includes"),
-                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 3,
+                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 0,
                 ) { onOpenPlans() }
+                ContactOptions(c, cfg.contacts, 1, msg)
+                ContactOption(
+                    c, Icons.Filled.Receipt, tr("Copy support info"), tr("Version, plan and device ID"),
+                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 3,
+                ) { copyText(context, supportInfo(context), tr("Support info")) }
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.innerCard).padding(14.dp),
                     verticalAlignment = Alignment.Top,
