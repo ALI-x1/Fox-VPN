@@ -121,6 +121,10 @@ import com.vauth.foxyvpn.data.LicenseBlock
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.RedeemClient
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.CheckCircle
@@ -499,7 +503,7 @@ fun HomeScreen(
     // آفر/تخفیفِ زمان‌دار (فقط وقتی از ربات با تایمر گذاشته شده): همان ظاهر نوار صفحه‌ی پلن‌ها + لمس = باز شدن همان پلن
     val planCfg by com.vauth.foxyvpn.data.rememberPlanConfig()
     val nowOffer = System.currentTimeMillis() / 1000
-    val offerKey = listOf("pro", "max").filter { k ->
+    val offerKey = PAID_KEYS.filter { k ->
         val i = planCfg.plan(k); i.disc > 0 && i.dend > nowOffer && rank(k) >= rank(license?.plan)
     }.minByOrNull { planCfg.plan(it).dend }
     val offerBanner: HomeBanner? = offerKey?.let { k ->
@@ -620,7 +624,8 @@ fun HomeScreen(
         ConnectionState.DISCONNECTED -> if (block != null) MaterialTheme.colorScheme.error else c.accent
     }
     val ringColor by animateColorAsState(targetValue = targetRingColor, label = "connect-ring-color")
-    val scale by animateFloatAsState(
+    // State (نه مقدار): فقط در فاز draw خونده می‌شه تا فنر دکمه کل صفحه رو recompose/relayout نکنه
+    val scale = animateFloatAsState(
         targetValue = if (state == ConnectionState.CONNECTED) 1f else 0.96f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "connect-scale",
@@ -683,11 +688,11 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_fox_logo),
                                 contentDescription = null,
-                                modifier = Modifier.size(46.dp)
+                                modifier = Modifier.size(42.dp)
                             )
                             Spacer(Modifier.width(12.dp))
                             Column {
@@ -696,8 +701,9 @@ fun HomeScreen(
                                         withStyle(SpanStyle(color = c.textPrimary)) { append("FOX-") }
                                         withStyle(SpanStyle(color = c.accent)) { append("VPN") }
                                     },
-                                    fontSize = 30.sp,
+                                    fontSize = 26.sp,
                                     fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
                                 )
                                 Text(
                                     text = tr("Secure & Private"),
@@ -720,14 +726,14 @@ fun HomeScreen(
                                         themeController.set(if (isDarkNow) ThemeMode.LIGHT else ThemeMode.DARK)
                                     },
                                 )
-                                Spacer(Modifier.width(10.dp))
+                                Spacer(Modifier.width(8.dp))
                             }
                             UpgradeHeaderButton(c, onOpenPlans)
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(8.dp))
                             IconButton(
                                 onClick = onOpenSettings,
                                 modifier = Modifier
-                                    .size(46.dp)
+                                    .size(42.dp)
                                     .clip(CircleShape)
                                     .background(c.card)
                                     .border(1.dp, c.cardBorder, CircleShape)
@@ -982,8 +988,9 @@ fun HomeScreen(
                     c = c,
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth().entrance(entranceData),
-                    bottomInset = padding.calculateBottomPadding(),
+                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp + padding.calculateBottomPadding()).entrance(entranceData),
+                    showUpgrade = !isAdmin && license?.plan != "max" && license?.plan != "vip",
+                    onUpgrade = onOpenPlans,
                 )
             }
             fxPlaying?.let { fx -> com.vauth.foxyvpn.ui.components.FxOverlay(fx, onDone = { fxPlaying = null }) }
@@ -997,7 +1004,7 @@ fun HomeScreen(
 private fun ConnectButton(
     size: Dp,
     ringColor: Color,
-    scale: Float,
+    scale: State<Float>,
     connected: Boolean,
     labelColor: Color,
     c: FoxExtras,
@@ -1008,7 +1015,7 @@ private fun ConnectButton(
     entryBurst: State<Float>,
 ) {
     // همه‌ی اندازه‌ها نسبت به size هستن (نسبت‌ها همون طراحی قبلی با size = 250)
-    val buttonSize = size * 0.824f * scale
+    val buttonSize = size * 0.824f
     val logoTint = c.accent
     Box(
         modifier = Modifier
@@ -1043,80 +1050,85 @@ private fun ConnectButton(
                 .border(1.dp, ringColor.copy(alpha = 0.18f), CircleShape)
         )
 
-        // انیمیشن‌های ریز: فقط وقتی لازمه و برنامه جلوی چشمه ساخته می‌شن (مصرف باتری ~صفر در حالت قطع)
-        if (animate && connecting) {
-            // در حال اتصال: ضربان تندتر و کوتاه‌تر (دوره‌ی ۱ ثانیه، دامنه‌ی کم)
-            PulseRing(
-                size = buttonSize,
-                maxScale = 1.12f * size.value / buttonSize.value,
-                color = ringColor,
-                period = 1000,
-                peakAlpha = 0.6f,
-            )
-        } else if (animate && connected) {
-            // وصل: ضربان نرم و آروم و پخش‌تر
-            PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
-        }
-
-        // حلقه‌ی ورود: فقط یک‌بار موقع باز شدن برنامه از لبه‌ی دکمه پخش می‌شه و محو می‌شه
         Box(
-            modifier = Modifier
-                .size(buttonSize)
-                .graphicsLayer {
-                    val p = entryBurst.value
-                    if (p <= 0f || p >= 1f) {
-                        alpha = 0f
-                    } else {
-                        val sc = 1f + 0.9f * p
-                        scaleX = sc
-                        scaleY = sc
-                        alpha = (1f - p) * 0.55f
-                    }
-                }
-                .border(2.dp, ringColor, CircleShape)
-        )
-
-        // دکمه اصلی
-        Box(
-            modifier = Modifier
-                .size(buttonSize)
-                .shadow(28.dp, CircleShape, ambientColor = ringColor, spotColor = ringColor)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(listOf(c.buttonFillCenter, c.buttonFillEdge))
-                )
-                .border(
-                    width = 4.dp,
-                    brush = Brush.linearGradient(listOf(c.accentLight, ringColor)),
-                    shape = CircleShape
-                )
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+            modifier = Modifier.size(size).graphicsLayer { val k = scale.value; scaleX = k; scaleY = k },
+            contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_fox_mono),
-                    contentDescription = when {
-                        connecting -> tr("Connecting…")
-                        connected -> tr("Disconnect")
-                        else -> tr("Connect")
-                    },
-                    tint = logoTint,
-                    modifier = Modifier.size(size * 0.256f)
+            // انیمیشن‌های ریز: فقط وقتی لازمه و برنامه جلوی چشمه ساخته می‌شن (مصرف باتری ~صفر در حالت قطع)
+            if (animate && connecting) {
+                // در حال اتصال: ضربان تندتر و کوتاه‌تر (دوره‌ی ۱ ثانیه، دامنه‌ی کم)
+                PulseRing(
+                    size = buttonSize,
+                    maxScale = 1.12f * size.value / buttonSize.value,
+                    color = ringColor,
+                    period = 1000,
+                    peakAlpha = 0.6f,
                 )
-                Spacer(Modifier.height(size * 0.056f))
-                Text(
-                    text = when {
-                        connecting -> tr("CONNECTING…")
-                        connected -> tr("DISCONNECT")
-                        else -> tr("CONNECT")
-                    },
-                    maxLines = 1,
-                    fontSize = (size.value * 0.072f).sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (size.value * 0.016f).sp,
-                    color = labelColor
-                )
+            } else if (animate && connected) {
+                // وصل: ضربان نرم و آروم و پخش‌تر
+                PulseRing(size = buttonSize, maxScale = 1.3f * size.value / buttonSize.value, color = ringColor)
+            }
+
+            // حلقه‌ی ورود: فقط یک‌بار موقع باز شدن برنامه از لبه‌ی دکمه پخش می‌شه و محو می‌شه
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .graphicsLayer {
+                        val p = entryBurst.value
+                        if (p <= 0f || p >= 1f) {
+                            alpha = 0f
+                        } else {
+                            val sc = 1f + 0.9f * p
+                            scaleX = sc
+                            scaleY = sc
+                            alpha = (1f - p) * 0.55f
+                        }
+                    }
+                    .border(2.dp, ringColor, CircleShape)
+            )
+
+            // دکمه اصلی
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .shadow(28.dp, CircleShape, ambientColor = ringColor, spotColor = ringColor)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(listOf(c.buttonFillCenter, c.buttonFillEdge))
+                    )
+                    .border(
+                        width = 4.dp,
+                        brush = Brush.linearGradient(listOf(c.accentLight, ringColor)),
+                        shape = CircleShape
+                    )
+                    .clickable(onClick = onClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_fox_mono),
+                        contentDescription = when {
+                            connecting -> tr("Connecting…")
+                            connected -> tr("Disconnect")
+                            else -> tr("Connect")
+                        },
+                        tint = logoTint,
+                        modifier = Modifier.size(size * 0.256f)
+                    )
+                    Spacer(Modifier.height(size * 0.056f))
+                    Text(
+                        text = when {
+                            connecting -> tr("CONNECTING…")
+                            connected -> tr("DISCONNECT")
+                            else -> tr("CONNECT")
+                        },
+                        maxLines = 1,
+                        fontSize = (size.value * 0.072f).sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (size.value * 0.016f).sp,
+                        color = labelColor
+                    )
+                }
             }
         }
     }
@@ -1172,7 +1184,7 @@ private fun ThemeToggleButton(isDark: Boolean, c: FoxExtras, onClick: () -> Unit
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(46.dp)
+            .size(42.dp)
             .clip(CircleShape)
             .background(c.card)
             .border(1.dp, c.cardBorder, CircleShape)
@@ -1608,6 +1620,8 @@ private fun DataRemainingCard(
     criticalColor: Color,
     modifier: Modifier = Modifier,
     bottomInset: Dp = 0.dp,
+    showUpgrade: Boolean = false,
+    onUpgrade: () -> Unit = {},
 ) {
     fun toneFor(f: Float, none: Boolean) = when {
         none -> c.accent
@@ -1638,7 +1652,7 @@ private fun DataRemainingCard(
         else -> "${(animatedFraction * 100).roundToInt()}%"
     }
 
-    val shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+    val shape = RoundedCornerShape(28.dp)
     val pillShape = RoundedCornerShape(12.dp)
 
     Column(
@@ -1648,7 +1662,7 @@ private fun DataRemainingCard(
             .background(c.card)
             .border(1.dp, c.cardBorder, shape)
             .clickable(onClick = onCardClick)
-            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 16.dp + bottomInset),
+            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1668,7 +1682,10 @@ private fun DataRemainingCard(
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Star, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                    Icon(
+                        when (planLabel.lowercase()) { "free" -> Icons.Filled.CardGiftcard; "max" -> Icons.Filled.Bolt; "vip" -> Icons.Filled.Diamond; "pro" -> Icons.Filled.Star; else -> Icons.Filled.WorkspacePremium },
+                        contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp),
+                    )
                     Spacer(Modifier.width(4.dp))
                     Text(text = planLabel, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = c.accent, maxLines = 1)
                 }
@@ -1733,6 +1750,31 @@ private fun DataRemainingCard(
             }
         }
 
+        val lowData = !unlimited && remainingGb != null && (fraction <= 0.2f || (dailyFraction != null && dailyFraction <= 0.2f))
+        AnimatedVisibility(visible = showUpgrade && lowData, enter = fadeIn() + expandVertically()) {
+            val ctaShape = RoundedCornerShape(16.dp)
+            val onAcc = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(ctaShape).background(animatedTone.copy(alpha = 0.12f))
+                    .border(1.dp, animatedTone.copy(alpha = 0.4f), ctaShape).padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = tr("Running low — get more data"), modifier = Modifier.weight(1f),
+                    fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.textPrimary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
+                        .clickable(onClick = onUpgrade).padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.WorkspacePremium, null, tint = onAcc, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(tr("Upgrade"), fontSize = 14.sp, fontWeight = FontWeight.Black, color = onAcc)
+                }
+            }
+        }
         if (note != null) {
             Text(text = note, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
         }
@@ -1753,7 +1795,7 @@ private fun UpgradeHeaderButton(c: FoxExtras, onClick: () -> Unit) {
     )
     Box(
         modifier = Modifier
-            .size(46.dp)
+            .size(42.dp)
             .clip(CircleShape)
             .background(Brush.linearGradient(listOf(c.accentLight.copy(alpha = 0.30f), c.accent.copy(alpha = 0.16f))))
             .border(1.dp, c.accent.copy(alpha = 0.55f), CircleShape)
