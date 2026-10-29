@@ -26,7 +26,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -43,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val SESSION_RESTORE_TIMEOUT_MS = 8_000L
+private const val MIN_SHOW_MS = 400L
 
 @Composable
 fun SplashScreen(
@@ -52,17 +57,20 @@ fun SplashScreen(
 ) {
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     LaunchedEffect(Unit) {
-        delay(500)
+        // قبلاً همیشه ۰٫۵ ثانیه الکی صبر می‌کرد؛ حالا فقط اگه همه‌چی خیلی سریع تموم شد تا ~۴۰۰ms نگه می‌داریم (نه فلاش ناگهانی)
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        suspend fun hold() { delay((MIN_SHOW_MS - (android.os.SystemClock.elapsedRealtime() - t0)).coerceAtLeast(0L)) }
         val status = withTimeoutOrNull(SESSION_RESTORE_TIMEOUT_MS) {
             authRepository.restoreSession()
         } ?: SessionStatus.UNREACHABLE
 
         when (status) {
-            SessionStatus.ACTIVE -> onSignedIn()
-            SessionStatus.UNREACHABLE -> onSignedIn()
+            SessionStatus.ACTIVE -> { hold(); onSignedIn() }
+            SessionStatus.UNREACHABLE -> { hold(); onSignedIn() }
             SessionStatus.NEEDS_LOGIN -> {
                 // کلید موزیلا رد شده؛ اگه با کد وارد شده بود، بی‌صدا با همون کد کلید تازه می‌گیریم (نه بیرون‌انداختن از اکانت)
                 val recovered = withTimeoutOrNull(12_000L) { com.vauth.foxyvpn.data.SessionRecovery.recover(appContext, authRepository, rotate = true) } ?: false
+                hold()
                 if (recovered) onSignedIn() else onNeedsLogin()
             }
         }
@@ -73,12 +81,18 @@ fun SplashScreen(
 
     // تپش آرام هاله‌ی پشت لوگو
     val pulse = rememberInfiniteTransition(label = "splash-pulse")
-    val haloScale by pulse.animateFloat(
+    val haloScaleState = pulse.animateFloat(
         initialValue = 0.94f,
         targetValue = 1.06f,
         animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "splash-halo-scale",
     )
+    // ورود نرم: محتوا محو‌شده شروع می‌شه و کمی بزرگ می‌شه؛ اسپینر فقط اگه بیشتر از ~۱٫۲ ثانیه طول کشید ظاهر می‌شه
+    var shown by remember { mutableStateOf(false) }
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true; delay(1_200); slow = true }
+    val enter = animateFloatAsState(if (shown) 1f else 0f, tween(380, easing = FastOutSlowInEasing), label = "splash-enter")
+    val spinnerAlpha = animateFloatAsState(if (slow) 1f else 0f, tween(300), label = "splash-spinner")
 
     Box(
         modifier = Modifier
@@ -86,13 +100,16 @@ fun SplashScreen(
             .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom))),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.graphicsLayer { val e = enter.value; alpha = e; scaleX = 0.94f + 0.06f * e; scaleY = 0.94f + 0.06f * e },
+        ) {
             // لوگوی روباه با دو حلقه‌ی هاله، مثل دکمه‌ی اتصال
             Box(modifier = Modifier.size(210.dp), contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
                         .size(210.dp)
-                        .scale(haloScale)
+                        .graphicsLayer { val k = haloScaleState.value; scaleX = k; scaleY = k }
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
@@ -136,7 +153,7 @@ fun SplashScreen(
             Spacer(Modifier.height(36.dp))
 
             CircularProgressIndicator(
-                modifier = Modifier.size(26.dp),
+                modifier = Modifier.size(26.dp).graphicsLayer { alpha = spinnerAlpha.value },
                 strokeWidth = 2.5.dp,
                 color = c.accent,
             )
