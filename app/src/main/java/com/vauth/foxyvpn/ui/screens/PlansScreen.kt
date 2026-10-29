@@ -342,17 +342,6 @@ fun PlansScreen(
                     PromoStrip(c, trf("%s · %d%% off", tr(PLANS.first { it.key == promo }.title), pi.disc), nowState, pi.dend) { autoOpen = false; expanded = promo }
                 }
 
-                if (!isAdmin && authRepository != null) {
-                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded, inline = true)
-                }
-
-                DiscountBox(
-                    c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
-                    onCode = { discCode = it.uppercase(); discMsg = null },
-                    onApply = ::applyDiscount,
-                    appliedLabel = if (appliedCode.isNotEmpty()) appliedCode else null,
-                )
-
                 var shown by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) { shown = true }
                 PLANS.forEachIndexed { i, plan ->
@@ -372,6 +361,17 @@ fun PlansScreen(
                         onGet = { onBuy(plan.key, if (applied.containsKey(plan.key)) appliedCode else "") },
                     )
                 }
+
+                if (!isAdmin && authRepository != null) {
+                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded, inline = true)
+                }
+
+                DiscountBox(
+                    c = c, code = discCode, busy = discBusy, message = discMsg, ok = discOk,
+                    onCode = { discCode = it.uppercase(); discMsg = null },
+                    onApply = ::applyDiscount,
+                    appliedLabel = if (appliedCode.isNotEmpty()) appliedCode else null,
+                )
 
                 Text(
                     tr("Payment and activation are handled in Telegram. Your new code works right after it's sent to you."),
@@ -415,17 +415,18 @@ private fun PlanCard(
     onGet: () -> Unit,
 ) {
     val highlighted = true // همه‌ی کارت‌ها دور هماهنگ با تم دارن (قبلاً Pro نداشت)
+    val featured = plan.key == "max" // پرفروش: حاشیه‌ی ضخیم‌تر و درخشش بیشتر
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     val cardShape = RoundedCornerShape(28.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .softGlowRect(c.accent, 28f, 10f, if (active) 0.14f else 0.08f)
+            .softGlowRect(c.accent, 28f, 10f, if (active) 0.14f else if (featured) 0.18f else 0.08f)
             .clip(cardShape)
             .background(c.card)
             .border(
-                if (active || highlighted) 2.dp else 1.dp,
+                if (featured) 3.dp else if (active || highlighted) 2.dp else 1.dp,
                 if (active || highlighted) Brush.linearGradient(listOf(c.accentLight, c.accent)) else Brush.linearGradient(listOf(c.cardBorder, c.cardBorder)),
                 cardShape,
             )
@@ -488,6 +489,21 @@ private fun PlanCard(
                     )
                 }
             }
+        }
+
+        // خلاصه‌ی یک‌خطی (وقتی بسته‌ست): حجم · سقف روزانه · دستگاه؛ کاربر بدون باز کردن کارت می‌فهمه چی می‌گیره
+        if (!expanded) {
+            Text(
+                com.vauth.foxyvpn.i18n.bidi(
+                    listOf(
+                        gbLabel(info.gb),
+                        trf("%s / day", gbLabel(info.daily)),
+                        if (info.devices > 1) trf("%d devices", info.devices) else tr("1 device"),
+                    ).joinToString(" · ").replace("\u202B", "").replace("\u202C", ""),
+                ),
+                fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, maxLines = 1,
+                modifier = Modifier.offset(y = (-6).dp),
+            )
         }
 
         if (info.dend > 0 && info.disc > 0 && plan.key != "free" && info.dend > nowState.value) {
