@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ContentCopy
@@ -225,7 +226,7 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
                 HeroBadge(c, Icons.Filled.SupportAgent, tr("Have a question or a problem? Pick the fastest way to reach us."))
                 ContactOption(
                     c, Icons.Filled.LocalOffer, tr("Plans & prices"), tr("See what each plan includes"),
-                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = 0,
+                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight, index = 0,
                 ) { onOpenPlans() }
                 ContactOptions(c, cfg.contacts, 1, msg)
                 ContactOption(
@@ -239,7 +240,7 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
                     Icon(Icons.Filled.Info, null, tint = c.accent, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        tr("Tip: send your code name (not the code itself) and the support info — it helps us answer faster."),
+                        tr("Tip: send your code name (not the code) and the support info."),
                         style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textSecondary,
                     )
                 }
