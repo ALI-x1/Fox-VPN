@@ -34,6 +34,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -503,6 +504,42 @@ fun HomeScreen(
     // آفر/تخفیفِ زمان‌دار (فقط وقتی از ربات با تایمر گذاشته شده): همان ظاهر نوار صفحه‌ی پلن‌ها + لمس = باز شدن همان پلن
     val planCfg by com.vauth.foxyvpn.data.rememberPlanConfig()
     val nowOffer = System.currentTimeMillis() / 1000
+    // دکمه‌ی بالای صفحه هوشمنده: کسی که باید خرید کنه ← ارتقا (تاج + تپش)؛ کاربر پولیِ سرحال ← حمایت (قلب)؛ بقیه ← تاج آرام
+    val nowHdr = System.currentTimeMillis() / 1000
+    val needsUpgrade = license?.let { l ->
+        val t = l.totalBytes?.takeIf { it > 0 }
+        val low = t != null && (t - l.usedBytes).toFloat() / t.toFloat() <= 0.2f
+        val soon = l.expiresAt?.let { it - nowHdr in 0L..(3 * 86400L) } == true
+        l.plan == "free" || block != null || low || soon
+    } == true
+    // سفارشی‌ها (از ربات): هر ۱۰ ثانیه بینشون عوض می‌شه
+    val slots = remember(planCfg) { planCfg.contacts.slots() }
+    var rotIdx by remember { mutableStateOf(0) }
+    LaunchedEffect(planCfg.hdr, slots.size) {
+        if (planCfg.hdr == "custom" && slots.size > 1) while (true) { delay(10_000); rotIdx++ }
+    }
+    val slot = if (planCfg.hdr == "custom" && slots.isNotEmpty()) slots[rotIdx % slots.size] else null
+    // رایگان/کم‌حجم/نزدیک انقضا ← تاج ارتقا؛ کاربر پولیِ سرحال ← قلب (یا سفارشی‌های صاحب برنامه از ربات)
+    val headerMode = when {
+        isAdmin || license == null -> HeaderMode.CALM
+        needsUpgrade -> HeaderMode.UPGRADE
+        planCfg.hdr == "off" -> HeaderMode.NONE
+        slot != null -> HeaderMode.CUSTOM
+        else -> HeaderMode.HEART
+    }
+    var showRefHome by remember { mutableStateOf(false) }
+    if (showRefHome) ReferralDialog(onDismiss = { showRefHome = false })
+    val headerDisc = if (headerMode == HeaderMode.UPGRADE)
+        PAID_KEYS.map { planCfg.plan(it) }.filter { it.disc > 0 && (it.dend == 0L || it.dend > nowHdr) }.maxOfOrNull { it.disc } ?: 0
+    else 0
+    val hintPrefs = remember { app.getSharedPreferences("foxvpn_hints", android.content.Context.MODE_PRIVATE) }
+    var tipOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(headerMode) {
+        if (headerMode == HeaderMode.UPGRADE && !hintPrefs.getBoolean("upgrade_tip", false)) {
+            delay(1500); tipOpen = true; delay(5000); tipOpen = false
+            hintPrefs.edit().putBoolean("upgrade_tip", true).apply()
+        } else tipOpen = false
+    }
     val offerKey = PAID_KEYS.filter { k ->
         val i = planCfg.plan(k); i.disc > 0 && i.dend > nowOffer && rank(k) >= rank(license?.plan)
     }.minByOrNull { planCfg.plan(it).dend }
@@ -728,8 +765,25 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.width(8.dp))
                             }
-                            UpgradeHeaderButton(c, onOpenPlans)
-                            Spacer(Modifier.width(8.dp))
+                            if (headerMode != HeaderMode.NONE) UpgradeHeaderButton(
+                                c = c, mode = headerMode, discPct = headerDisc, slotEmoji = slot?.first ?: "",
+                                tip = if (tipOpen) tr("Get more data here") else null,
+                                onClick = {
+                                    if (headerMode == HeaderMode.HEART || headerMode == HeaderMode.CUSTOM) {
+                                        val d = if (headerMode == HeaderMode.CUSTOM) slot?.second.orEmpty() else planCfg.contacts.donate
+                                        when {
+                                            d.isBlank() || d == "plans" -> onOpenPlans()
+                                            d == "invite" -> showRefHome = true
+                                            d.startsWith("http") || d.startsWith("tg:") -> runCatching { uriHandler.openUri(d) }
+                                            else -> copyText(app, d, tr("Copied"))
+                                        }
+                                    } else {
+                                        tipOpen = false
+                                        onOpenPlans()
+                                    }
+                                },
+                            )
+                            if (headerMode != HeaderMode.NONE) Spacer(Modifier.width(8.dp))
                             IconButton(
                                 onClick = onOpenSettings,
                                 modifier = Modifier
@@ -1781,39 +1835,87 @@ private fun DataRemainingCard(
     }
 }
 
-/** قلب کنار تنظیمات: فعلاً فقط واکنش نشون می‌ده (رنگ می‌گیره، می‌تپه و لرزش خفیف)؛ بعداً می‌شه بهش کار داد. */
-/** دکمه‌ی ارتقا (به‌جای قلب): تاج پرمیوم با تپش آرام؛ لمس = صفحه‌ی پلن‌ها. */
+private enum class HeaderMode { UPGRADE, HEART, CUSTOM, CALM, NONE }
+
+/**
+ * دکمه‌ی گرد بالای صفحه (کنار تنظیمات):
+ *  UPGRADE = تاج + هاله‌ی ضربان‌دار + نقطه‌ی قرمز (+ نشان تخفیف) ← صفحه‌ی پلن‌ها
+ *  INVITE  = هدیه ← دعوت دوستان (اگه صاحب برنامه از ربات انتخاب کرده باشه)
+ *  DONATE  = قلب ← حمایت/دونیت (اگه صاحب برنامه از ربات انتخاب کرده باشه)
+ *  CALM    = تاج ثابت و ساکت ← صفحه‌ی پلن‌ها
+ * انیمیشن فقط تو حالت UPGRADE ساخته می‌شه (در بقیه‌ی حالت‌ها مصرف باتری صفر).
+ */
 @Composable
-private fun UpgradeHeaderButton(c: FoxExtras, onClick: () -> Unit) {
+private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", onClick: () -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val glow = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-glow").animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            tween(1900, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse,
-        ),
-        label = "glow",
-    )
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(c.accentLight.copy(alpha = 0.30f), c.accent.copy(alpha = 0.16f))))
-            .border(1.dp, c.accent.copy(alpha = 0.55f), CircleShape)
-            .clickable {
-                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                onClick()
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.WorkspacePremium,
-            contentDescription = tr("Upgrade"),
-            tint = c.accent,
-            modifier = Modifier.size(25.dp).graphicsLayer { val k = 1f + 0.08f * glow.value; scaleX = k; scaleY = k },
-        )
+    val heart = Color(0xFFE9556D)
+    Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+        if (mode == HeaderMode.UPGRADE) {
+            val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-halo")
+            val p = t.animateFloat(
+                initialValue = 0f, targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(1800, easing = androidx.compose.animation.core.LinearOutSlowInEasing)),
+                label = "halo",
+            )
+            Box(
+                Modifier.matchParentSize()
+                    .graphicsLayer { val k = 1f + 0.55f * p.value; scaleX = k; scaleY = k; alpha = 0.55f * (1f - p.value) }
+                    .border(2.dp, c.accent, CircleShape),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(c.accentLight.copy(alpha = 0.30f), c.accent.copy(alpha = 0.16f))))
+                .border(1.dp, animateColorAsState(if (mode == HeaderMode.HEART) heart else c.accent, tween(500), label = "hdr-bd").value.copy(alpha = 0.55f), CircleShape)
+                .clickable {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onClick()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(targetState = mode to slotEmoji, animationSpec = tween(500), label = "hdr-ic") { (m, em) ->
+                if (m == HeaderMode.CUSTOM) {
+                    Text(em, fontSize = 20.sp)
+                } else {
+                    Icon(
+                        imageVector = if (m == HeaderMode.HEART) Icons.Filled.Favorite else Icons.Filled.WorkspacePremium,
+                        contentDescription = if (m == HeaderMode.HEART) tr("Support the project") else tr("Upgrade"),
+                        tint = if (m == HeaderMode.HEART) heart else c.accent,
+                        modifier = Modifier.size(25.dp),
+                    )
+                }
+            }
+        }
+        // نقطه‌ی قرمز: «یه کاری داری»
+        if (mode == HeaderMode.UPGRADE && discPct <= 0) {
+            Box(
+                Modifier.align(Alignment.TopEnd).offset(x = 1.dp, y = (-1).dp).size(11.dp)
+                    .clip(CircleShape).background(MaterialTheme.colorScheme.error).border(1.5.dp, c.card, CircleShape),
+            )
+        }
+        // نشان تخفیف
+        if (mode == HeaderMode.UPGRADE && discPct > 0) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).offset(y = 9.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.error)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            ) { Text("-$discPct%", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1) }
+        }
+        // راهنمای یک‌باره
+        if (tip != null) {
+            val dy = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
+            androidx.compose.ui.window.Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, dy)) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(14.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text(tip, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White)
+                }
+            }
+        }
     }
 }
-
 
 /** یک پیام وضعیت روی صفحه‌ی اصلی؛ [onClick] خالی یعنی فقط اطلاع‌رسانی. */
 private class HomeBanner(
