@@ -78,7 +78,9 @@ fun languageLabel(language: AppLanguage): String = when (language) {
 @Composable
 fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
     val c = LocalFoxExtras.current
-    var selected by remember { mutableStateOf(AppLanguage.SYSTEM) }
+    // گوشی فارسی ← «فارسی» از اول انتخاب شده؛ بقیه ← زبان سیستم (انگلیسی)
+    var selected by remember { mutableStateOf(if (Lang.systemIsPersian()) AppLanguage.PERSIAN else AppLanguage.SYSTEM) }
+    val effFa = when (selected) { AppLanguage.PERSIAN -> true; AppLanguage.ENGLISH -> false; AppLanguage.SYSTEM -> Lang.systemIsPersian() }
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     Scaffold(containerColor = Color.Transparent) { padding ->
@@ -149,12 +151,15 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                         .clickable { onConfirm(selected) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "Continue  ·  ادامه",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = onAccent,
-                    )
+                    // متن دکمه همان لحظه با زبان انتخاب‌شده عوض می‌شه
+                    androidx.compose.animation.Crossfade(targetState = effFa, animationSpec = androidx.compose.animation.core.tween(200), label = "lang-continue") { fa ->
+                        Text(
+                            if (fa) "ادامه" else "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = onAccent,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
             }
@@ -202,7 +207,7 @@ private fun LanguageOptions(
     val systemName = if (Lang.systemIsPersian()) "فارسی" else "English"
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         LanguageOptionCard(
-            title = if (bilingual) "System default  ·  پیش‌فرض سیستم" else tr("System default"),
+            title = if (bilingual) "System  ·  سیستم" else tr("System default"),
             subtitle = if (bilingual) "$systemName" else tr("Follows your phone's language") + " ($systemName)",
             icon = { Icon(Icons.Filled.PhoneAndroid, null, tint = c.accent, modifier = Modifier.size(24.dp)) },
             selected = selected == AppLanguage.SYSTEM,
