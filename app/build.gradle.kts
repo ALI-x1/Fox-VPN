@@ -44,11 +44,11 @@ android {
     ndkVersion = "26.1.10909125"
 
     defaultConfig {
-        applicationId = "com.vauth.foxyvpn"
+        applicationId = "com.foxvpn.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 44
-        versionName = "1.0.7"
+        versionCode = 45
+        versionName = "1.0.8"
 
         externalNativeBuild {
             ndkBuild {
@@ -81,6 +81,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -137,6 +140,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
