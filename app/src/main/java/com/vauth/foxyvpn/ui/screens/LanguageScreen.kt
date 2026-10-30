@@ -37,7 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -77,7 +78,9 @@ fun languageLabel(language: AppLanguage): String = when (language) {
 @Composable
 fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
     val c = LocalFoxExtras.current
-    var selected by remember { mutableStateOf(AppLanguage.SYSTEM) }
+    // گوشی فارسی ← «فارسی» از اول انتخاب شده؛ بقیه ← زبان سیستم (انگلیسی)
+    var selected by remember { mutableStateOf(if (Lang.systemIsPersian()) AppLanguage.PERSIAN else AppLanguage.SYSTEM) }
+    val effFa = when (selected) { AppLanguage.PERSIAN -> true; AppLanguage.ENGLISH -> false; AppLanguage.SYSTEM -> Lang.systemIsPersian() }
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     Scaffold(containerColor = Color.Transparent) { padding ->
@@ -107,7 +110,7 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                     Box(
                         modifier = Modifier
                             .size(104.dp)
-                            .shadow(14.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                            .softGlow(c.accent, 12f, 0.30f)
                             .clip(CircleShape)
                             .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                         contentAlignment = Alignment.Center,
@@ -142,18 +145,21 @@ fun LanguageScreen(onConfirm: (AppLanguage) -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .shadow(10.dp, RoundedCornerShape(20.dp), ambientColor = c.accent.copy(alpha = 0.35f), spotColor = c.accent.copy(alpha = 0.35f))
+                        .softGlowRect(c.accent, 20f, 10f, 0.16f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
                         .clickable { onConfirm(selected) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "Continue  ·  ادامه",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = onAccent,
-                    )
+                    // متن دکمه همان لحظه با زبان انتخاب‌شده عوض می‌شه
+                    androidx.compose.animation.Crossfade(targetState = effFa, animationSpec = androidx.compose.animation.core.tween(200), label = "lang-continue") { fa ->
+                        Text(
+                            if (fa) "ادامه" else "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = onAccent,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
             }
@@ -201,7 +207,7 @@ private fun LanguageOptions(
     val systemName = if (Lang.systemIsPersian()) "فارسی" else "English"
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         LanguageOptionCard(
-            title = if (bilingual) "System default  ·  پیش‌فرض سیستم" else tr("System default"),
+            title = if (bilingual) "System  ·  سیستم" else tr("System default"),
             subtitle = if (bilingual) "$systemName" else tr("Follows your phone's language") + " ($systemName)",
             icon = { Icon(Icons.Filled.PhoneAndroid, null, tint = c.accent, modifier = Modifier.size(24.dp)) },
             selected = selected == AppLanguage.SYSTEM,
@@ -246,10 +252,7 @@ private fun LanguageOptionCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                if (selected) 8.dp else 2.dp, shape,
-                ambientColor = c.accent.copy(alpha = 0.18f), spotColor = c.accent.copy(alpha = 0.18f),
-            )
+            .then(if (selected) Modifier.softGlowRect(c.accent, 22f, 8f, 0.12f) else Modifier)
             .clip(shape)
             .background(if (selected) c.accent.copy(alpha = 0.10f) else c.card)
             .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.cardBorder, shape)
