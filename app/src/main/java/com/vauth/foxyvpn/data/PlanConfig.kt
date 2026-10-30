@@ -40,7 +40,17 @@ data class ContactInfo(
     val bot: String = "",
     val note: String = "",
     val cur: String = "",
-)
+    val s1: String = "",
+    val s2: String = "",
+    val s3: String = "",
+) {
+    /** دکمه‌های سفارشیِ صفحه‌ی اصلی: «ایموجی لینک» ← (ایموجی، مقصد) */
+    fun slots(): List<Pair<String, String>> = listOf(s1, s2, s3).mapNotNull { raw ->
+        val t = raw.trim()
+        val i = t.indexOfFirst { it.isWhitespace() }
+        if (i <= 0) null else t.substring(0, i) to t.substring(i).trim()
+    }
+}
 
 /** کشورهایی که ادمین موقتاً برای همه باز کرده؛ [untilMs] با ساعت گوشی (لحظه‌ی دریافت + مدت باقی‌مانده‌ی سرور). */
 data class TempOpen(val codes: Set<String>, val untilMs: Long) {
@@ -52,7 +62,7 @@ data class TempOpen(val codes: Set<String>, val untilMs: Long) {
 /** تخفیف خودکار تمدید: وقتی [days] روز یا کمتر به انقضا مانده، کد [code] با [pct]٪ خودکار اعمال می‌شود. */
 data class RenewOffer(val pct: Int, val days: Int, val code: String)
 
-data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null) {
+data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null, val hdr: String = "heart") {
     fun plan(key: String): PlanInfo = plans[key] ?: DEFAULT.plans.getValue(key)
 
     companion object {
@@ -92,6 +102,7 @@ object PlanConfigStore {
             ContactInfo(
                 cj.optString("card"), cj.optString("crypto"), cj.optString("donate"), cj.optString("tg"),
                 cj.optString("bot"), cj.optString("note"), cj.optString("cur"),
+                cj.optString("s1"), cj.optString("s2"), cj.optString("s3"),
             ),
             j.optJSONObject("temp")?.let { t ->
                 val arr = t.optJSONArray("codes")
@@ -99,6 +110,7 @@ object PlanConfigStore {
                 TempOpen(codes, at + t.optLong("left") * 1000L)
             },
             j.optJSONObject("renew")?.let { r -> r.optInt("pct").takeIf { it > 0 }?.let { RenewOffer(it, r.optInt("days", 3), r.optString("code", "RENEW")) } },
+            j.optString("hdr", "heart").ifBlank { "heart" },
         )
     }.getOrNull()
 
