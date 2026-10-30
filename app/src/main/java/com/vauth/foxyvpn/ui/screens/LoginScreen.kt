@@ -101,6 +101,10 @@ import androidx.compose.ui.unit.sp
 import com.vauth.foxyvpn.R
 import com.vauth.foxyvpn.data.FxaAuthRepository
 import com.vauth.foxyvpn.data.RedeemClient
+import com.vauth.foxyvpn.data.gbLabel
+import com.vauth.foxyvpn.data.rememberPlanConfig
+import com.vauth.foxyvpn.i18n.trf
+import androidx.compose.material.icons.filled.ShoppingCart
 import com.vauth.foxyvpn.ui.theme.FoxExtras
 import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 import kotlinx.coroutines.launch
@@ -199,6 +203,9 @@ fun LoginScreen(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val redeemClient = remember { RedeemClient(context.applicationContext) }
+    val planCfg by rememberPlanConfig()
+    val freePlan = planCfg.plan("free")
+    val storeBot = planCfg.contacts.bot
 
     val extras = LocalFoxExtras.current
     val c = remember(extras) { extras.toLoginColors() }
@@ -387,9 +394,11 @@ fun LoginScreen(
                             ),
                         )
                         Spacer(Modifier.height(20.dp))
+                        val codeReady = RedeemClient.isComplete(code)
+                        // وقتی کد کامل نیست، «حساب رایگان» دکمه‌ی اصلیه (اکثر کاربرهای جدید کد ندارن)؛ با کامل شدن کد، «Redeem» اصلی می‌شه
                         LoginPrimaryButton(
                             text = tr("Redeem"),
-                            enabled = !isLoading && RedeemClient.isComplete(code),
+                            enabled = !isLoading && codeReady,
                             isLoading = isLoading,
                             colors = c,
                             onClick = {
@@ -398,20 +407,33 @@ fun LoginScreen(
                             },
                         )
                         Spacer(Modifier.height(12.dp))
-                        LoginSecondaryButton(
-                            text = tr("Continue with free account"),
-                            enabled = !isLoading,
-                            colors = c,
-                            onClick = {
-                                focusManager.clearFocus()
-                                doFree()
-                            },
+                        val freeSub = com.vauth.foxyvpn.i18n.bidi(
+                            trf("%s · %d days free", gbLabel(freePlan.gb), freePlan.days).replace("\u202B", "").replace("\u202C", ""),
                         )
+                        if (codeReady) {
+                            LoginSecondaryButton(
+                                text = tr("Continue with free account"),
+                                subtitle = freeSub,
+                                enabled = !isLoading,
+                                colors = c,
+                                onClick = { focusManager.clearFocus(); doFree() },
+                            )
+                        } else {
+                            LoginPrimaryButton(
+                                text = tr("Continue with free account"),
+                                subtitle = freeSub,
+                                enabled = !isLoading,
+                                isLoading = false,
+                                colors = c,
+                                onClick = { focusManager.clearFocus(); doFree() },
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                         SupportLink(
-                            text = tr("Need more data? Message support"),
+                            text = if (storeBot.isNotBlank()) tr("Need more data? Buy a plan") else tr("Need more data? Message support"),
+                            icon = if (storeBot.isNotBlank()) Icons.Filled.ShoppingCart else Icons.Filled.SupportAgent,
                             colors = c,
-                            onClick = ::openSupport,
+                            onClick = { if (storeBot.isNotBlank()) runCatching { uriHandler.openUri(tgUrl(storeBot)) } else openSupport() },
                         )
                     }
 
@@ -509,7 +531,7 @@ private fun LoginLogo() {
 }
 
 @Composable
-private fun SupportLink(text: String, colors: LoginColors, onClick: () -> Unit) {
+private fun SupportLink(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, colors: LoginColors, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -520,7 +542,7 @@ private fun SupportLink(text: String, colors: LoginColors, onClick: () -> Unit) 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Filled.SupportAgent,
+            imageVector = icon,
             contentDescription = null,
             tint = colors.accentText,
             modifier = Modifier.size(18.dp),
@@ -590,6 +612,7 @@ private fun LoginPrimaryButton(
     isLoading: Boolean,
     colors: LoginColors,
     onClick: () -> Unit,
+    subtitle: String? = null,
 ) {
     val shape = RoundedCornerShape(20.dp)
     val bg = if (enabled || isLoading) {
@@ -639,13 +662,21 @@ private fun LoginPrimaryButton(
                 color = colors.onAccent,
             )
         } else {
-            Text(
-                text = text,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                color = if (enabled) colors.onAccent else colors.textSecondary,
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = text,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = if (enabled) colors.onAccent else colors.textSecondary,
+                )
+                if (subtitle != null) Text(
+                    text = subtitle,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = (if (enabled) colors.onAccent else colors.textSecondary).copy(alpha = 0.8f),
+                )
+            }
         }
     }
 }
@@ -657,6 +688,7 @@ private fun LoginSecondaryButton(
     enabled: Boolean,
     colors: LoginColors,
     onClick: () -> Unit,
+    subtitle: String? = null,
 ) {
     val shape = RoundedCornerShape(20.dp)
     Box(
@@ -669,11 +701,19 @@ private fun LoginSecondaryButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (enabled) colors.accentText else colors.textSecondary,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = text,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) colors.accentText else colors.textSecondary,
+            )
+            if (subtitle != null) Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textSecondary,
+            )
+        }
     }
 }
