@@ -419,6 +419,8 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "No limits" to "بدون محدودیت",
     "BEST VALUE" to "به‌صرفه‌ترین",
     "TOP TIER" to "ویژه",
+    "Get more data here" to "حجم بیشتر از اینجا",
+    "Support the project" to "حمایت از پروژه",
     "%s · %d days free" to "%s · %d روز رایگان",
     "Need more data? Buy a plan" to "حجم بیشتر می‌خوای؟ پلن بخر",
     "%s / day" to "%s در روز",
