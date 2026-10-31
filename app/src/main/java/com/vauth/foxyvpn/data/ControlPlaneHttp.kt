@@ -16,11 +16,12 @@ import javax.net.SocketFactory
 
 private const val TAG = "ControlPlaneHttp"
 
-const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:android 14; iap:true)"
+// همان User-Agent و Accept که خودِ VPN داخل فایرفاکس دسکتاپ می‌فرستد؛ موزیلا «MozillaVPN/…» را به‌عنوان ربات رد می‌کرد
+const val MOZILLA_VPN_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0"
 
 fun Request.Builder.applyMozillaVpnHeaders(): Request.Builder {
     header("User-Agent", MOZILLA_VPN_USER_AGENT)
-    header("Accept", "application/json")
+    header("Accept", "*/*")
     return this
 }
 
