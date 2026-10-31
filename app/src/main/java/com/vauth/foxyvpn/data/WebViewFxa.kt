@@ -22,9 +22,14 @@ object WebViewFxa {
 
     /** POST به https://api.accounts.firefox.com/v1[path]؛ جواب = (کد HTTP، متن). */
     suspend fun postJson(path: String, body: JSONObject, authorization: String? = null): Pair<Int, String> {
-        val ctx = ControlPlaneHttp.appContext ?: throw IllegalStateException("no app context for WebView fallback")
+        val ctx = ControlPlaneHttp.appContext ?: currentApplication() ?: throw IllegalStateException("no app context for WebView fallback")
         return withTimeout(50_000L) { withContext(Dispatchers.Main) { runInWebView(ctx, path, body, authorization) } }
     }
+
+    /** اگر attachStorage صدا زده نشده بود (مثلاً برنچ ادمین)، Application فعلی را از خود اندروید می‌گیریم. */
+    private fun currentApplication(): android.content.Context? = runCatching {
+        Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? android.app.Application
+    }.getOrNull()
 
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun runInWebView(ctx: android.content.Context, path: String, body: JSONObject, authorization: String?): Pair<Int, String> {
