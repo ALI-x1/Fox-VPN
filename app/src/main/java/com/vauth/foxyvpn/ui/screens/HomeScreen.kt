@@ -490,7 +490,16 @@ fun HomeScreen(
     val localBanner: HomeBanner? = when {
         block == LicenseBlock.MAINT -> HomeBanner(Icons.Filled.Build, blockMsg, bannerWarn, null)
         block == LicenseBlock.FROZEN -> HomeBanner(Icons.Filled.AcUnit, blockMsg, bannerAccent) { onOpenSupport() }
-        block == LicenseBlock.DAILY -> HomeBanner(Icons.Filled.Schedule, blockMsg, bannerWarn) { onOpenPlans() }
+        block == LicenseBlock.DAILY -> {
+            // رایگان: به‌جای پیام خشک، زمان تمدید + دعوت به ارتقا
+            val left = ((license?.resetAt ?: 0L) - System.currentTimeMillis() / 1000).coerceAtLeast(0)
+            val msg = if (license?.plan == "free" && left > 0) {
+                val h = left / 3600; val m = (left % 3600) / 60
+                val t = if (h > 0) trf("%dh %dm", h, m) else trf("%dm", maxOf(m, 1L))
+                trf("Today's free data is used up. It renews in %s, or upgrade now to keep going.", t)
+            } else blockMsg
+            HomeBanner(Icons.Filled.Schedule, msg, bannerWarn) { onOpenPlans() }
+        }
         block == LicenseBlock.TOTAL -> HomeBanner(Icons.Filled.DataUsage, blockMsg, bannerErr) { onOpenPlans() }
         block != null -> HomeBanner(Icons.Filled.Block, blockMsg, bannerErr) { onOpenPlans() }
         daysLeft != null && daysLeft in 1..3 -> HomeBanner(Icons.Filled.Timer, trf("Your plan ends in %d days. Renew it to stay connected.", daysLeft), bannerWarn) { onOpenPlans() }
