@@ -2,14 +2,18 @@ package com.vauth.foxyvpn.data
 
 import android.util.Base64
 import com.vauth.foxyvpn.data.model.Entitlement
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 
 const val GUARDIAN_ENDPOINT_DEFAULT = "https://vpn.mozilla.org"
+private const val TAG = "GuardianClient"
+private const val GUARDIAN_MAX_CHALLENGE_ATTEMPTS = 5
 
 class GuardianHttpError(message: String, val statusCode: Int? = null) : Exception(message)
 class QuotaExceededError(message: String) : Exception(message)
@@ -94,6 +98,10 @@ class GuardianClient(
     )
 
     private suspend fun authorizedRequest(method: String, url: String, accessToken: String): Response {
+        val origin = runCatching { url.toHttpUrl() }.getOrNull()
+            ?.let { "${it.scheme}://${it.host}" }
+            ?: url
+
         fun buildRequest(): Request {
             val builder = Request.Builder().url(url).applyMozillaVpnHeaders()
             builder.header("Content-Type", "application/json")
@@ -102,10 +110,23 @@ class GuardianClient(
             return builder.build()
         }
         var response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
-        if (response.code == 406) {
-            response.close()
-            challengeSolver.solveAndInstall()
+        var attempts = 1
+        while (response.code == 406 && attempts < GUARDIAN_MAX_CHALLENGE_ATTEMPTS) {
+            val challengedBody = response.use { it.body?.string().orEmpty() }
+            try {
+                challengeSolver.solveAndInstall(challengedBody, origin)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (solveFailure: Exception) {
+                AppLogger.w(TAG, "could not solve the Fastly challenge", solveFailure)
+                throw GuardianHttpError(
+                    "Mozilla's bot protection rejected this request (HTTP 406) and the challenge " +
+                        "could not be solved automatically. Try again later or on another network.",
+                    406,
+                )
+            }
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+            attempts++
         }
         return response
     }
