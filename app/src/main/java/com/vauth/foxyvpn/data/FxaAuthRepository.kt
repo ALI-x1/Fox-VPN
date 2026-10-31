@@ -283,8 +283,8 @@ class FxaAuthRepository(
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
-            response.close()
-            challengeSolver.solveAndInstall()
+            val challengedBody = response.use { it.body?.string().orEmpty() }
+            challengeSolver.solveAndInstall(challengedBody, "${url.scheme}://${url.host}")
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
             attempts++
         }
