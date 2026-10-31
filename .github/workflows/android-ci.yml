@@ -88,6 +88,11 @@ jobs:
             echo "No SIGNING_KEYSTORE_BASE64 secret; the release APK will be unsigned."
           fi
 
+      - name: Version code from tag (v51 -> 51)
+        run: |
+          N="$(echo "${GITHUB_REF_NAME}" | sed -n 's/^v\([0-9]\{1,6\}\)$/\1/p')"
+          if [ -n "$N" ]; then echo "VERSION_CODE=$N" >> "$GITHUB_ENV"; else echo "Tag is not numeric; keeping the default versionCode."; fi
+
       - name: Assemble release APK
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
