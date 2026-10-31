@@ -166,6 +166,30 @@ fun AdminLoginScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    var browserUrl by remember { mutableStateOf<String?>(null) }
+    var browserBusy by remember { mutableStateOf(false) }
+    var browserError by remember { mutableStateOf<String?>(null) }
+    if (browserUrl != null) {
+        BrowserLoginScreen(
+            startUrl = browserUrl!!,
+            busy = browserBusy,
+            errorMessage = browserError,
+            onSessionCaptured = { tok ->
+                if (!browserBusy) {
+                    browserBusy = true
+                    browserError = null
+                    scope.launch {
+                        val r = authRepository.completeBrowserLogin(tok)
+                        browserBusy = false
+                        r.onSuccess { browserUrl = null; onSignedIn() }
+                            .onFailure { browserError = it.message ?: "Browser sign-in failed" }
+                    }
+                }
+            },
+            onCanceled = { browserUrl = null; browserError = null },
+        )
+        return
+    }
 
     val c = LocalFoxExtras.current.toAdminLoginColors()
 
@@ -398,6 +422,12 @@ fun AdminLoginScreen(
                                         doSubmitLogin()
                                     },
                                 )
+                                androidx.compose.material3.TextButton(
+                                    onClick = { browserUrl = authRepository.getBrowserLoginUrl() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(tr("Sign in with browser instead"), color = c.accent)
+                                }
                             }
                         } else {
                             Column {
