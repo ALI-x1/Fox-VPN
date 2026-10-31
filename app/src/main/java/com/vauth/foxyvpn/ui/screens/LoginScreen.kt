@@ -255,7 +255,7 @@ fun LoginScreen(
                 .onFailure {
                     redeemClient.activeCode = null
                     // دلیل فنیِ کوتاه (برای پشتیبانی)؛ بدون این، همه‌ی خطاها یک پیام یکسان می‌شدند
-                    val why = (it.message ?: it::class.java.simpleName).replace(Regex("\\s+"), " ").take(70)
+                    val why = (it.message ?: it::class.java.simpleName).replace(Regex("\\s+"), " ").replace(Regex("https?://[^/ ]+/_fs-ch-[A-Za-z0-9]+/"), "…/").takeLast(90)
                     errorMessage = tr("This code can't sign in right now. Please contact support.") + "\n[" + why + "]"
                 }
         }
