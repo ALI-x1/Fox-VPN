@@ -14,16 +14,56 @@ import javax.net.SocketFactory
 
 private const val TAG = "ControlPlaneHttp"
 
-const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:linux; iap:true)"
+// همان User-Agent و Accept که VPN داخلی فایرفاکس دسکتاپ می‌فرستد
+const val MOZILLA_VPN_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0"
 
 fun Request.Builder.applyMozillaVpnHeaders(): Request.Builder {
     header("User-Agent", MOZILLA_VPN_USER_AGENT)
-    header("Accept", "application/json")
+    header("Accept", "*/*")
     return this
 }
 
 class SimpleCookieJar : CookieJar {
     private val byDomain = ConcurrentHashMap<String, MutableList<Cookie>>()
+
+    // کوکی‌های Fastly (نتیجه‌ی حل چالش ۴۰۶) ماندگار می‌شن تا اتصال اول بعد از هر بار باز کردن برنامه
+    // مجبور به حل دوباره‌ی چالش (چند درخواست + PoW) نشه؛ همین مهم‌ترین دلیل کندی اتصال اول بود.
+    @Volatile private var prefs: android.content.SharedPreferences? = null
+
+    fun attachStorage(context: android.content.Context) {
+        if (prefs != null) return
+        val sp = context.applicationContext.getSharedPreferences("fox_cp_cookies", android.content.Context.MODE_PRIVATE)
+        prefs = sp
+        runCatching {
+            val arr = org.json.JSONArray(sp.getString("jar", "[]"))
+            val now = System.currentTimeMillis()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val exp = o.optLong("e", 0L)
+                if (exp <= now) continue
+                val b = Cookie.Builder().name(o.getString("n")).value(o.getString("v"))
+                    .domain(o.getString("d")).path(o.optString("p", "/")).expiresAt(exp)
+                if (o.optBoolean("s", false)) b.secure()
+                val c = b.build()
+                val bucket = byDomain.getOrPut(c.domain) { mutableListOf() }
+                synchronized(bucket) { bucket.removeAll { it.name == c.name }; bucket.add(c) }
+            }
+        }
+    }
+
+    private fun persist() {
+        val sp = prefs ?: return
+        runCatching {
+            val now = System.currentTimeMillis()
+            val arr = org.json.JSONArray()
+            for (c in snapshotAll()) {
+                if (c.expiresAt <= now) continue
+                arr.put(org.json.JSONObject().put("n", c.name).put("v", c.value).put("d", c.domain)
+                    .put("p", c.path).put("e", c.expiresAt).put("s", c.secure))
+            }
+            sp.edit().putString("jar", arr.toString()).apply()
+        }
+    }
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         for (cookie in cookies) {
@@ -33,6 +73,7 @@ class SimpleCookieJar : CookieJar {
                 bucket.add(cookie)
             }
         }
+        persist()
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -62,6 +103,7 @@ class SimpleCookieJar : CookieJar {
                     .build(),
             )
         }
+        persist()
     }
 
     fun snapshotAll(): List<Cookie> = byDomain.values.flatten()
