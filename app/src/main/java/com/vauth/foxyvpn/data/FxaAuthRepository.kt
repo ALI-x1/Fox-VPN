@@ -280,13 +280,35 @@ class FxaAuthRepository(
             return builder.build()
         }
 
+        val viaWebViewOk = method == "POST"
+        suspend fun viaWebView(): JSONObject {
+            val (code, text) = WebViewFxa.postJson(path, jsonBody, buildRequest().header("Authorization"))
+            if (code >= 400) {
+                val eb = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+                throw FxaApiError(eb.optString("message", text.ifEmpty { "HTTP $code" }), if (eb.has("errno")) eb.optInt("errno") else null, code)
+            }
+            return if (text.isEmpty()) JSONObject() else JSONObject(text)
+        }
+
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
-            challengeSolver.solveAndInstall(challengedBody, "${url.scheme}://${url.host}")
+            try {
+                challengeSolver.solveAndInstall(challengedBody, "${url.scheme}://${url.host}")
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (solveFailure: Exception) {
+                // حل‌کننده‌ی داخلی نشد؛ برای تازه‌سازی توکن، همان درخواست را از داخل WebView واقعی امتحان کن
+                if (viaWebViewOk) return@withContext viaWebView()
+                throw solveFailure
+            }
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
             attempts++
+        }
+        if (response.code == 406 && viaWebViewOk) {
+            response.close()
+            return@withContext viaWebView()
         }
 
         response.use { resp ->
