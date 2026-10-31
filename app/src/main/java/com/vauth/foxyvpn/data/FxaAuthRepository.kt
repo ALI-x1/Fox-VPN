@@ -57,6 +57,17 @@ class FxaAuthRepository(
 ) {
     private var pendingSessionToken: String? = null
 
+    fun getBrowserLoginUrl(): String =
+        "https://accounts.firefox.com/?context=fx_desktop_v3&service=sync&action=email"
+
+    suspend fun completeBrowserLogin(sessionToken: String): Result<Unit> = runCatching {
+        val clean = sessionToken.trim().replace(Regex("[\\s\"]"), "").lowercase()
+        if (!Regex("^[0-9a-f]{64}$").matches(clean)) {
+            error("The sign-in page did not hand over a usable session token")
+        }
+        completeLogin(clean)
+    }
+
     companion object {
         fun normalizeEmail(email: String): String =
             email.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "").trim().lowercase()
