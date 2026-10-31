@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.CurrencyBitcoin
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Shield
@@ -86,6 +87,8 @@ import com.vauth.foxyvpn.ui.theme.LocalFoxExtras
 // ───────────────────────── کمکی‌ها (مشترک بین پشتیبانی و خرید) ─────────────────────────
 
 /** آیدی/لینک تلگرام → لینک کامل. */
+internal const val SITE_URL = "https://vaslsho.fox-vpn.workers.dev"
+
 internal fun tgUrl(v: String): String {
     val t = v.trim()
     return when {
@@ -208,6 +211,16 @@ private fun ContactOptions(c: FoxExtras, contacts: ContactInfo, startIndex: Int,
     ) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); runCatching { uri.openUri("${tgUrl(tg)}?text=${Uri.encode(message)}") } }
 }
 
+@Composable
+private fun SiteOption(c: FoxExtras, index: Int) {
+    val uri = LocalUriHandler.current
+    val haptics = LocalHapticFeedback.current
+    ContactOption(
+        c, Icons.Filled.Language, tr("Official website"), tr("Plans, guides and the latest download"),
+        enabled = true, actionIcon = Icons.AutoMirrored.Filled.OpenInNew, index = index,
+    ) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); runCatching { uri.openUri(SITE_URL) } }
+}
+
 // ───────────────────────── صفحه‌ی پشتیبانی ─────────────────────────
 
 @Composable
@@ -229,9 +242,10 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
                     enabled = true, actionIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight, index = 0,
                 ) { onOpenPlans() }
                 ContactOptions(c, cfg.contacts, 1, msg)
+                SiteOption(c, index = 3)
                 ContactOption(
                     c, Icons.Filled.Receipt, tr("Copy support info"), tr("Version, plan and device ID"),
-                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 3,
+                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 4,
                 ) { copyText(context, supportInfo(context), tr("Support info")) }
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.innerCard).padding(14.dp),
@@ -334,6 +348,7 @@ fun PurchaseScreen(planKey: String, discountCode: String = "", onBack: () -> Uni
                     c, Icons.Filled.AccountCircle, tr("Message the owner"), ct.tg.ifBlank { RedeemClient.SUPPORT_URL }.removePrefix("https://"),
                     enabled = true, actionIcon = Icons.AutoMirrored.Filled.Send, index = 4,
                 ) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); runCatching { uri.openUri("${tgUrl(ct.tg.ifBlank { RedeemClient.SUPPORT_URL })}?text=${Uri.encode(msg)}") } }
+                SiteOption(c, index = 5)
 
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.innerCard).padding(14.dp),
