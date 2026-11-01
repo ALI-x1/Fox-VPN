@@ -50,7 +50,13 @@ object Perks {
 
     /** کشورهای رایگان: آلمان، فنلاند، بریتانیا، ایالات متحده، کره‌ی جنوبی (همه‌ی شهرهاشون برای همه آزاده). */
     val FREE_COUNTRIES = setOf("DE", "FI", "GB", "UK", "US", "KR")
-    fun isFreeCountry(code: String?): Boolean = code != null && code.uppercase() in FREE_COUNTRIES
+    fun isFreeCountry(code: String?): Boolean {
+        if (code == null) return false
+        val c = code.uppercase()
+        val fl = LicenseState.status.value?.fl
+        if (fl != null) return c in fl || (c == "UK" && "GB" in fl)
+        return c in FREE_COUNTRIES
+    }
 
     /** برای کدهای غیر-Compose (مثلاً سرویس VPN): آیا این کاربر مجازه به این کشور وصل بشه؟ (Pro/Max/ادمین، کشور رایگان، یا باز موقت) */
     fun canUseCountry(context: android.content.Context, code: String?): Boolean {
