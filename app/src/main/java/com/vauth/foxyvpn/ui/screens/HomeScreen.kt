@@ -1070,7 +1070,7 @@ fun HomeScreen(
                     lowColor = statusColors.connecting,
                     criticalColor = MaterialTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp + padding.calculateBottomPadding()).entrance(entranceData),
-                    showUpgrade = !isAdmin && license?.plan != "max" && license?.plan != "vip",
+                    showUpgrade = !isAdmin && license?.plan != "vip",
                     onUpgrade = onOpenPlans,
                 )
             }
