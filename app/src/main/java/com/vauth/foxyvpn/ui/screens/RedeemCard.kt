@@ -65,7 +65,7 @@ object RedeemRequest {
     var pending by mutableStateOf(false)
 }
 
-private fun planRank(key: String?): Int = when (key) { "free" -> 1; "pro" -> 2; "max" -> 3; else -> 0 }
+private fun planRank(key: String?): Int = when (key) { "free" -> 1; "pro" -> 2; "max" -> 3; "vip" -> 4; else -> 0 }
 
 /**
  * کارت وارد کردن کد (ردیم): هم تو «پلن‌ها» و هم تو «اکانت» و «تنظیمات» استفاده می‌شه.
