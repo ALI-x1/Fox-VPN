@@ -40,12 +40,15 @@ data class LicenseStatus(
     val poll: Int = 0,
     /** آخرین اعلانِ نوتیف‌دارِ سرور؛ اگه از آخرین دیده‌شده بزرگ‌تر باشه اپ همون لحظه نوتیف می‌ده. */
     val nn: Long = 0,
+    /** کشورهای رایگانِ باز برای این کاربر امروز (سرور می‌فرسته و روزبه‌روز کم می‌شه)؛ null = لیست ثابت اپ. */
+    val fl: List<String>? = null,
 ) {
     fun toJson(): String = JSONObject()
         .put("state", state).put("plan", plan ?: JSONObject.NULL)
         .put("expiresAt", expiresAt ?: JSONObject.NULL).put("totalBytes", totalBytes ?: JSONObject.NULL)
         .put("usedBytes", usedBytes).put("dailyBytes", dailyBytes ?: JSONObject.NULL)
-        .put("dailyUsed", dailyUsed).put("resetAt", resetAt).toString()
+        .put("dailyUsed", dailyUsed).put("resetAt", resetAt)
+        .put("fl", fl?.let { org.json.JSONArray(it) } ?: JSONObject.NULL).toString()
 
     companion object {
         private fun JSONObject.longOrNull(key: String): Long? = if (isNull(key) || !has(key)) null else optLong(key)
@@ -61,6 +64,7 @@ data class LicenseStatus(
             resetAt = j.optLong("resetAt", 0L),
             poll = j.optInt("poll", 0),
             nn = j.optLong("nn", 0L),
+            fl = j.optJSONArray("fl")?.let { a -> (0 until a.length()).map { a.getString(it).uppercase() } },
         )
 
         fun parse(text: String?): LicenseStatus? =
