@@ -205,7 +205,7 @@ fun AccountScreen(
                 if (!isAdmin) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         // دکمه‌ی Upgrade همین بالا (کارت پلن) هست؛ برای پلن‌های غیر از بالاترین تکرارش نمی‌کنیم
-                        if (license?.plan == "max" || license?.plan == "vip") QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
+                        if (license?.plan == "vip") QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
                     }
                     RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
@@ -254,7 +254,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
             Spacer(Modifier.width(16.dp))
             Text(name, fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
-        if (onUpgrade != null && lic.plan != "max" && lic.plan != "vip") {
+        if (onUpgrade != null && lic.plan != "vip") {
             Row(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
                     .clickable(onClick = onUpgrade).padding(vertical = 12.dp),
@@ -271,7 +271,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
         modifier = Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (onUpgrade != null && (lic.plan == "max" || lic.plan == "vip")) {
+        if (onUpgrade != null && lic.plan == "vip") {
             Box(
                 modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
                     .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 10.dp, vertical = 4.dp),
