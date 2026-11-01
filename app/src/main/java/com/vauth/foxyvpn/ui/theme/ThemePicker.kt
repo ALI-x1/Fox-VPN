@@ -68,6 +68,11 @@ private fun ThemePalette.displayTitle(): String = if (Lang.isFa) title else when
     ThemePalette.CYBER_CYAN -> "Neon Cyan"
     ThemePalette.LIQUID_GLASS -> "Liquid Glass"
     ThemePalette.MOCHA_LATTE -> "Mocha Latte"
+    ThemePalette.SUNFLOWER -> "Sunflower"
+    ThemePalette.SAKURA_NIGHT -> "Sakura Night"
+    ThemePalette.LAVENDER_MIST -> "Lavender Mist"
+    ThemePalette.MATCHA_CREAM -> "Matcha & Cream"
+    ThemePalette.WINE_VELVET -> "Wine Velvet"
 }
 
 private fun ThemePalette.displaySubtitle(): String = if (Lang.isFa) subtitle else when (this) {
@@ -88,6 +93,11 @@ private fun ThemePalette.displaySubtitle(): String = if (Lang.isFa) subtitle els
     ThemePalette.CYBER_CYAN -> "Cyber and glowing"
     ThemePalette.LIQUID_GLASS -> "White and translucent"
     ThemePalette.MOCHA_LATTE -> "Warm and cozy"
+    ThemePalette.SUNFLOWER -> "Bright and cheerful"
+    ThemePalette.SAKURA_NIGHT -> "Soft pink after dark"
+    ThemePalette.LAVENDER_MIST -> "Light and calm"
+    ThemePalette.MATCHA_CREAM -> "Sage green and cozy"
+    ThemePalette.WINE_VELVET -> "Burgundy and champagne"
 }
 
 /**
