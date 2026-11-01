@@ -202,20 +202,38 @@ private fun TimerText(elapsed: () -> Long, color: Color) {
     )
 }
 
-/** سرعت با حرکت نرم بین مقدارها (به‌جای پرش هر ثانیه) و ارقام هم‌عرض تا عرض عدد نپره. */
+/**
+ * سرعت: عدد در مقیاس لگاریتمی و آهسته می‌لغزه (بدون رقم‌شماریِ شلوغ بین ۶۷ B/s و چند MB/s)،
+ * و وقتی داده در جریانه یه «نفس» ملایم سبز داره، هماهنگ با فلش و نوار زیرش.
+ */
 @Composable
-private fun SmoothSpeedText(speedBytes: Long, color: Color) {
-    val animated by animateFloatAsState(
-        targetValue = speedBytes.toFloat(),
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+private fun SmoothSpeedText(speedBytes: Long, color: Color, active: Boolean = false, tint: Color = color) {
+    val logTarget = kotlin.math.ln(1.0 + speedBytes.coerceAtLeast(0L)).toFloat()
+    val logNow by animateFloatAsState(
+        targetValue = logTarget,
+        animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
         label = "speed-number",
     )
+    val shown = kotlin.math.expm1(logNow.toDouble()).toLong().coerceAtLeast(0L)
+    val breath = if (active) {
+        val t by rememberInfiniteTransition(label = "speed-breath").animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                tween(1600, easing = FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse,
+            ),
+            label = "speed-breath-v",
+        )
+        t
+    } else 0f
     Text(
-        text = formatBytesPerSecond(animated.toLong()),
-        style = TextStyle(fontFeatureSettings = "tnum"),
+        text = formatBytesPerSecond(shown),
+        style = TextStyle(
+            fontFeatureSettings = "tnum",
+            shadow = if (active) androidx.compose.ui.graphics.Shadow(tint.copy(alpha = 0.10f + 0.30f * breath), blurRadius = 10f + 14f * breath) else null,
+        ),
         fontSize = 19.sp,
         fontWeight = FontWeight.ExtraBold,
-        color = color,
+        color = if (active) androidx.compose.ui.graphics.lerp(color, tint, 0.25f * breath) else color,
         maxLines = 1
     )
 }
@@ -1574,7 +1592,7 @@ private fun TrafficColumn(
             )
         }
         Spacer(Modifier.height(4.dp))
-        SmoothSpeedText(speedBytes = speedBytes, color = numberColor)
+        SmoothSpeedText(speedBytes = speedBytes, color = numberColor, active = active, tint = tint)
         ActivityMeter(speedBytes = speedBytes, connected = connected, tint = tint, track = c.cardBorder)
         Spacer(Modifier.height(4.dp))
         Text(
