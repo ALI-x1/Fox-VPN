@@ -98,6 +98,26 @@ enum class ThemePalette(
     MOCHA_LATTE(
         "موکا و لاته", "گرم و دنج", true,
         Color(0xFFC8925A), Color(0xFF2A1D16), Color(0xFFFFFFFF), Color(0xFFC9B39A)
+    ),
+    SUNFLOWER(
+        "آفتابگردان", "زرد گرم و شاد", false,
+        Color(0xFFEAB308), Color(0xFFFFFBE6), Color(0xFF2A2306), Color(0xFF857A45)
+    ),
+    SAKURA_NIGHT(
+        "شب شکوفه", "صورتی شبانه و نرم", true,
+        Color(0xFFF472B6), Color(0xFF22101D), Color(0xFFFFFFFF), Color(0xFFD9A3C4)
+    ),
+    LAVENDER_MIST(
+        "مه اطلسی", "ارغوانی روشن و آرام", false,
+        Color(0xFF8B5CF6), Color(0xFFF5F1FF), Color(0xFF1E1536), Color(0xFF75689A)
+    ),
+    MATCHA_CREAM(
+        "ماچا و کرم", "سبز مریم‌گلی و دنج", false,
+        Color(0xFF6B8E4E), Color(0xFFF4F6EC), Color(0xFF1C2414), Color(0xFF6D7A5C)
+    ),
+    WINE_VELVET(
+        "مخمل شرابی", "شرابی و شامپاینی", true,
+        Color(0xFFE2B58A), Color(0xFF220C14), Color(0xFFFFFFFF), Color(0xFFCDA6A6)
     );
 
     /** آیا این تم هم روشن و هم تیره داره (و کلید لایت/دارک روش اثر می‌ذاره)؟ */
@@ -437,6 +457,106 @@ private val MochaScheme = buildScheme(
     outline = Color(0xFF8A7561),
 )
 
+private val SunflowerScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFFB45309), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFDEFB0), onPrimaryContainer = Color(0xFF3B2A00),
+    secondary = Color(0xFF8A7A33),
+    background = Color(0xFFFFFCEE), onSurface = Color(0xFF2A2306),
+    surfaceLow = Color(0xFFFFF9DD), surfaceMid = Color(0xFFFFF4C8),
+    surfaceHigh = Color(0xFFFCEDB0), surfaceHighest = Color(0xFFF7E49A),
+    surfaceVariant = Color(0xFFFBF0C0), onSurfaceVariant = Color(0xFF6E6228),
+    outline = Color(0xFFA89A52),
+)
+private val SunflowerExtras = FoxExtras(
+    bgTop = Color(0xFFFFFDF0), bgBottom = Color(0xFFFFF0B3),
+    card = Color(0xE6FFFFFF), cardBorder = Color(0x55D4A90E), innerCard = Color(0xFFFFF6D2),
+    textPrimary = Color(0xFF2A2306), textSecondary = Color(0xFF7A6D2E),
+    accent = Color(0xFFEAB308), accentLight = Color(0xFFFDE047), accentText = Color(0xFF8A5A00),
+    upload = Color(0xFFD97706), download = Color(0xFF65A30D),
+    buttonFillCenter = Color(0xFFFFF3B8), buttonFillEdge = Color(0xFFFBD84A),
+)
+
+private val SakuraScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFFF9A8D4), onPrimary = Color(0xFF4A0F2E),
+    primaryContainer = Color(0xFF7A2552), onPrimaryContainer = Color(0xFFFFD9EC),
+    secondary = Color(0xFFD9A3C4),
+    background = Color(0xFF160A12), onSurface = Color(0xFFFBEAF3),
+    surfaceLow = Color(0xFF1C0E17), surfaceMid = Color(0xFF26131F),
+    surfaceHigh = Color(0xFF30192A), surfaceHighest = Color(0xFF3B2034),
+    surfaceVariant = Color(0xFF331B2B), onSurfaceVariant = Color(0xFFD0A5BF),
+    outline = Color(0xFF946B83),
+)
+private val SakuraExtras = FoxExtras(
+    bgTop = Color(0xFF160A12), bgBottom = Color(0xFF2C1426),
+    card = Color(0xCC341A2B), cardBorder = Color(0x44F472B6), innerCard = Color(0xFF3F2135),
+    textPrimary = Color(0xFFFBEAF3), textSecondary = Color(0xFFD0A5BF),
+    accent = Color(0xFFF472B6), accentLight = Color(0xFFFBCFE8), accentText = Color(0xFFF9A8D4),
+    upload = Color(0xFFF472B6), download = Color(0xFFA5B4FC),
+    buttonFillCenter = Color(0xFF5E2447), buttonFillEdge = Color(0xFF2B1022),
+)
+
+private val LavenderScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFF6D3FE0), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFE6DCFF), onPrimaryContainer = Color(0xFF220A5E),
+    secondary = Color(0xFF7A6BA8),
+    background = Color(0xFFF9F6FF), onSurface = Color(0xFF1E1536),
+    surfaceLow = Color(0xFFF3EEFF), surfaceMid = Color(0xFFEDE6FE),
+    surfaceHigh = Color(0xFFE6DDFC), surfaceHighest = Color(0xFFDED3F9),
+    surfaceVariant = Color(0xFFEAE3FB), onSurfaceVariant = Color(0xFF665A8C),
+    outline = Color(0xFF9A8EC0),
+)
+private val LavenderExtras = FoxExtras(
+    bgTop = Color(0xFFFBF9FF), bgBottom = Color(0xFFE6DCFF),
+    card = Color(0xCCFFFFFF), cardBorder = Color(0x558B5CF6), innerCard = Color(0xFFF1EBFF),
+    textPrimary = Color(0xFF1E1536), textSecondary = Color(0xFF75689A),
+    accent = Color(0xFF8B5CF6), accentLight = Color(0xFFC4B5FD), accentText = Color(0xFF5B2BD0),
+    upload = Color(0xFF8B5CF6), download = Color(0xFF0EA5E9),
+    buttonFillCenter = Color(0xFFEFE7FF), buttonFillEdge = Color(0xFFCDBBFB),
+)
+
+private val MatchaScheme = buildScheme(
+    dark = false,
+    primary = Color(0xFF4F7036), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFDDEBCB), onPrimaryContainer = Color(0xFF14240A),
+    secondary = Color(0xFF6D7A5C),
+    background = Color(0xFFF7F8F0), onSurface = Color(0xFF1C2414),
+    surfaceLow = Color(0xFFF1F4E6), surfaceMid = Color(0xFFEAEFDB),
+    surfaceHigh = Color(0xFFE2E9D0), surfaceHighest = Color(0xFFD9E2C4),
+    surfaceVariant = Color(0xFFE6ECD6), onSurfaceVariant = Color(0xFF5A6648),
+    outline = Color(0xFF8E9A7A),
+)
+private val MatchaExtras = FoxExtras(
+    bgTop = Color(0xFFFAFBF4), bgBottom = Color(0xFFDDE8C8),
+    card = Color(0xCCFFFFFF), cardBorder = Color(0x556B8E4E), innerCard = Color(0xFFF1F5E6),
+    textPrimary = Color(0xFF1C2414), textSecondary = Color(0xFF6D7A5C),
+    accent = Color(0xFF6B8E4E), accentLight = Color(0xFFB7D197), accentText = Color(0xFF3E5E27),
+    upload = Color(0xFF6B8E4E), download = Color(0xFFB7791F),
+    buttonFillCenter = Color(0xFFEEF4DF), buttonFillEdge = Color(0xFFC3D6A2),
+)
+
+private val WineScheme = buildScheme(
+    dark = true,
+    primary = Color(0xFFE9C9A6), onPrimary = Color(0xFF3A1A0C),
+    primaryContainer = Color(0xFF6E2438), onPrimaryContainer = Color(0xFFFFDDE3),
+    secondary = Color(0xFFCDA6A6),
+    background = Color(0xFF14070C), onSurface = Color(0xFFF7E8EA),
+    surfaceLow = Color(0xFF1B0A11), surfaceMid = Color(0xFF260E17),
+    surfaceHigh = Color(0xFF311320), surfaceHighest = Color(0xFF3D1A29),
+    surfaceVariant = Color(0xFF34161F), onSurfaceVariant = Color(0xFFCDA6A6),
+    outline = Color(0xFF8F6670),
+)
+private val WineExtras = FoxExtras(
+    bgTop = Color(0xFF14070C), bgBottom = Color(0xFF2E0F1C),
+    card = Color(0xCC381523), cardBorder = Color(0x44E2B58A), innerCard = Color(0xFF451C2D),
+    textPrimary = Color(0xFFF7E8EA), textSecondary = Color(0xFFCDA6A6),
+    accent = Color(0xFFE2B58A), accentLight = Color(0xFFF6E3C8), accentText = Color(0xFFEBCBA3),
+    upload = Color(0xFFE2B58A), download = Color(0xFFF08CA0),
+    buttonFillCenter = Color(0xFF6A2640), buttonFillEdge = Color(0xFF2D0E1A),
+)
+
 private fun status(dark: Boolean, connected: Color, connecting: Color, onVariant: Color) =
     FoxyStatusColors(connected = connected, connecting = connecting, disconnected = onVariant)
 
@@ -505,6 +625,31 @@ fun ThemePalette.spec(dark: Boolean): FoxThemeSpec = when (this) {
     ThemePalette.MOCHA_LATTE -> FoxThemeSpec(
         MochaScheme, MochaExtras,
         status(true, Color(0xFF4ADE80), Color(0xFFFBBF24), Color(0xFFB9A590))
+    )
+
+    ThemePalette.SUNFLOWER -> FoxThemeSpec(
+        SunflowerScheme, SunflowerExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF6E6228))
+    )
+
+    ThemePalette.SAKURA_NIGHT -> FoxThemeSpec(
+        SakuraScheme, SakuraExtras,
+        status(true, Color(0xFF5EE6A8), Color(0xFFFFC46B), Color(0xFFD0A5BF))
+    )
+
+    ThemePalette.LAVENDER_MIST -> FoxThemeSpec(
+        LavenderScheme, LavenderExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF665A8C))
+    )
+
+    ThemePalette.MATCHA_CREAM -> FoxThemeSpec(
+        MatchaScheme, MatchaExtras,
+        status(false, Color(0xFF2E7D32), Color(0xFFB26A00), Color(0xFF5A6648))
+    )
+
+    ThemePalette.WINE_VELVET -> FoxThemeSpec(
+        WineScheme, WineExtras,
+        status(true, Color(0xFF4ADE80), Color(0xFFFBBF24), Color(0xFFCDA6A6))
     )
 }
 
