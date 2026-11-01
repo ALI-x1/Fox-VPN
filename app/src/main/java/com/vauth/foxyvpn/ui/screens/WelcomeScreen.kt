@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material3.Icon
@@ -103,11 +104,11 @@ fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
     var inviteOk by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { LicenseState.load(context) }
     val license by LicenseState.status.collectAsState()
-    val planKey = license?.plan?.takeIf { it == "pro" || it == "max" } ?: "free"
+    val planKey = license?.plan?.takeIf { it == "pro" || it == "max" || it == "vip" } ?: "free"
     val planName = planKey.replaceFirstChar { it.uppercase() }
-    val planIcon = when (planKey) { "max" -> Icons.Filled.Bolt; "pro" -> Icons.Filled.Star; else -> Icons.Filled.CardGiftcard }
+    val planIcon = when (planKey) { "vip" -> Icons.Filled.Diamond; "max" -> Icons.Filled.Bolt; "pro" -> Icons.Filled.Star; else -> Icons.Filled.CardGiftcard }
     // هر چی پلن بالاتر، جشن پرشورتر
-    val count = when (planKey) { "max" -> 160; "pro" -> 110; else -> 70 }
+    val count = when (planKey) { "vip" -> 200; "max" -> 160; "pro" -> 110; else -> 70 }
     val summary = license?.let { l ->
         val parts = mutableListOf<String>()
         parts += if (l.totalBytes == null) tr("Unlimited data") else trf("%d GB", (l.totalBytes / 1_073_741_824L).toInt())
@@ -115,7 +116,7 @@ fun WelcomeScreen(upgrade: Boolean = false, onContinue: () -> Unit) {
         parts.joinToString(" · ")
     }
     val palette = remember(c, planKey) {
-        listOf(c.accent, c.accentLight, c.accentText, Color(if (planKey == "max") 0xFFFFD700 else 0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color.White)
+        listOf(c.accent, c.accentLight, c.accentText, Color(if (planKey == "max" || planKey == "vip") 0xFFFFD700 else 0xFFFFD166), Color(0xFF06D6A0), Color(0xFFEF476F), Color.White)
     }
     val confetti = remember(count) { val r = Random(7); List(count) { Confetto(r.nextFloat(), r.nextFloat(), 0.6f + r.nextFloat() * 0.9f, 6f + r.nextFloat() * 8f, 0.02f + r.nextFloat() * 0.05f, r.nextFloat() * 360f, r.nextInt(7), r.nextBoolean()) } }
 
