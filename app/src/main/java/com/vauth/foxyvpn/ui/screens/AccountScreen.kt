@@ -236,10 +236,13 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     val a by animateFloatAsState(if (shown) 1f else 0f, tween(500), label = "hero")
     val shape = RoundedCornerShape(28.dp)
     val pillShape = RoundedCornerShape(12.dp)
-    Column(
+    Box(
         modifier = Modifier.fillMaxWidth().alpha(a).scale(0.95f + 0.05f * a)
             .shadow(12.dp, shape, ambientColor = c.accent.copy(alpha = 0.3f), spotColor = c.accent.copy(alpha = 0.3f))
-            .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape).padding(horizontal = 18.dp, vertical = 20.dp),
+            .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape),
+    ) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -249,21 +252,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
                 contentAlignment = Alignment.Center,
             ) { Icon(if (frozen) Icons.Filled.AcUnit else planIcon(lic.plan), null, tint = onAccent, modifier = Modifier.size(36.dp)) }
             Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(name, fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.clip(pillShape).background(statusColor.copy(alpha = 0.16f))
-                            .border(1.dp, statusColor.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 5.dp),
-                    ) { Text(statusText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = statusColor) }
-                    if (onUpgrade != null && (lic.plan == "max" || lic.plan == "vip")) {
-                        Box(
-                            modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
-                                .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 12.dp, vertical = 5.dp),
-                        ) { Text(com.vauth.foxyvpn.i18n.bidi(("👑 " + tr("Top plan")).replace("\u202B", "").replace("\u202C", "")), fontSize = 13.sp, fontWeight = FontWeight.Black, color = c.accentText) }
-                    }
-                }
-            }
+            Text(name, fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
         if (onUpgrade != null && lic.plan != "max" && lic.plan != "vip") {
             Row(
@@ -277,6 +266,22 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
                 Text(tr("Upgrade"), fontSize = 15.sp, fontWeight = FontWeight.Black, color = onAccent)
             }
         }
+    }
+    Row(
+        modifier = Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onUpgrade != null && (lic.plan == "max" || lic.plan == "vip")) {
+            Box(
+                modifier = Modifier.clip(pillShape).background(c.accent.copy(alpha = 0.16f))
+                    .border(1.dp, c.accent.copy(alpha = 0.45f), pillShape).padding(horizontal = 10.dp, vertical = 4.dp),
+            ) { Text(com.vauth.foxyvpn.i18n.bidi(("👑 " + tr("Top plan")).replace("\u202B", "").replace("\u202C", "")), fontSize = 12.sp, fontWeight = FontWeight.Black, color = c.accentText) }
+        }
+        Box(
+            modifier = Modifier.clip(pillShape).background(statusColor.copy(alpha = 0.16f))
+                .border(1.dp, statusColor.copy(alpha = 0.45f), pillShape).padding(horizontal = 10.dp, vertical = 4.dp),
+        ) { Text(statusText, fontSize = 12.sp, fontWeight = FontWeight.Black, color = statusColor) }
+    }
     }
     if (block != null) {
         Row(Modifier.fillMaxWidth().accCard(c, 20, err.copy(alpha = 0.45f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
