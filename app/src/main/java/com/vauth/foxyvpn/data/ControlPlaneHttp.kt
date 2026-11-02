@@ -5,8 +5,6 @@ import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.FilterOutputStream
-import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -16,7 +14,7 @@ import javax.net.SocketFactory
 
 private const val TAG = "ControlPlaneHttp"
 
-const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:android 14; iap:true)"
+const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:linux; iap:true)"
 
 fun Request.Builder.applyMozillaVpnHeaders(): Request.Builder {
     header("User-Agent", MOZILLA_VPN_USER_AGENT)
@@ -32,7 +30,6 @@ class SimpleCookieJar : CookieJar {
     @Volatile private var prefs: android.content.SharedPreferences? = null
 
     fun attachStorage(context: android.content.Context) {
-        ControlPlaneHttp.appContext = context.applicationContext
         if (prefs != null) return
         val sp = context.applicationContext.getSharedPreferences("fox_cp_cookies", android.content.Context.MODE_PRIVATE)
         prefs = sp
@@ -111,36 +108,6 @@ class SimpleCookieJar : CookieJar {
     fun snapshotAll(): List<Cookie> = byDomain.values.flatten()
 }
 
-/** سوکتی که پیام اول TLS را تکه‌تکه می‌فرستد (فقط یک بار، روی همان ClientHello). */
-private class SplitClientHelloSocket : Socket() {
-    private var splitDone = false
-
-    override fun getOutputStream(): OutputStream {
-        val realOut = super.getOutputStream()
-        return object : FilterOutputStream(realOut) {
-            override fun write(b: ByteArray, off: Int, len: Int) {
-                if (splitDone || !TlsSplit.looksLikeClientHello(b, off, len)) {
-                    realOut.write(b, off, len)
-                    return
-                }
-                splitDone = true
-                val parts = runCatching { TlsSplit.split(b, off, len) }.getOrNull()
-                if (parts.isNullOrEmpty()) {
-                    realOut.write(b, off, len)
-                    return
-                }
-                runCatching { this@SplitClientHelloSocket.tcpNoDelay = true }
-                for (p in parts) {
-                    realOut.write(p)
-                    realOut.flush()
-                }
-            }
-
-            override fun write(b: ByteArray) = write(b, 0, b.size)
-        }
-    }
-}
-
 private class ProtectingSocketFactory : SocketFactory() {
 
     private fun protect(socket: Socket, localAddress: InetSocketAddress?): Socket {
@@ -164,20 +131,20 @@ private class ProtectingSocketFactory : SocketFactory() {
         return socket
     }
 
-    override fun createSocket(): Socket = protect(SplitClientHelloSocket(), null)
+    override fun createSocket(): Socket = protect(Socket(), null)
 
     override fun createSocket(host: String, port: Int): Socket =
-        protect(SplitClientHelloSocket(), null).apply { connect(InetSocketAddress(host, port)) }
+        protect(Socket(), null).apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: String, port: Int, localAddr: InetAddress, localPort: Int): Socket =
-        protect(SplitClientHelloSocket(), InetSocketAddress(localAddr, localPort))
+        protect(Socket(), InetSocketAddress(localAddr, localPort))
             .apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: InetAddress, port: Int): Socket =
-        protect(SplitClientHelloSocket(), null).apply { connect(InetSocketAddress(host, port)) }
+        protect(Socket(), null).apply { connect(InetSocketAddress(host, port)) }
 
     override fun createSocket(host: InetAddress, port: Int, localAddr: InetAddress, localPort: Int): Socket =
-        protect(SplitClientHelloSocket(), InetSocketAddress(localAddr, localPort))
+        protect(Socket(), InetSocketAddress(localAddr, localPort))
             .apply { connect(InetSocketAddress(host, port)) }
 }
 
@@ -186,10 +153,6 @@ object ControlPlaneHttp {
 
     @Volatile
     var socketProtector: ((Socket) -> Boolean)? = null
-
-    /** برای راه‌حل جایگزین با WebView (WebViewFxa)؛ در attachStorage پر می‌شود. */
-    @Volatile
-    var appContext: android.content.Context? = null
 
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
