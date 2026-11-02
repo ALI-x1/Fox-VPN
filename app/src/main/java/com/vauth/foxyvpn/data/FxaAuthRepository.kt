@@ -290,7 +290,20 @@ class FxaAuthRepository(
             return if (text.isEmpty()) JSONObject() else JSONObject(text)
         }
 
+        // اگر به‌تازگی برای همین درخواست ۴۰۶ دیده‌ایم، درخواست OkHttp محکوم به شکست را رد می‌کنیم و مستقیم WebView
+        if (viaWebViewOk && WebViewFxa.challengeRecent() && ControlPlaneHttp.appContext != null) {
+            try {
+                return@withContext viaWebView()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (api: FxaApiError) {
+                throw api
+            } catch (_: Exception) {
+                // WebView شکست خورد؛ مسیر معمولی (OkHttp + حل‌کننده) را امتحان می‌کنیم
+            }
+        }
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        if (response.code == 406 && viaWebViewOk) WebViewFxa.sawChallengeAt = System.currentTimeMillis()
         // تازه‌سازی توکن: اول WebView واقعی (سریع‌تر و مطمئن‌تر)؛ فقط اگر خودِ WebView خراب شد سراغ حل‌کننده می‌رویم
         if (response.code == 406 && viaWebViewOk) {
             try {
