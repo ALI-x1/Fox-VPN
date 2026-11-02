@@ -202,6 +202,8 @@ fun LoginScreen(
     val uriHandler = LocalUriHandler.current
     val redeemClient = remember { RedeemClient(context.applicationContext) }
     val planCfg by rememberPlanConfig()
+    // صفحه‌ی موزیلا پشت‌صحنه آماده می‌شود تا ورود سریع‌تر باشد
+    LaunchedEffect(Unit) { com.vauth.foxyvpn.data.WebViewFxa.prewarm(context) }
     val freePlan = planCfg.plan("free")
     val storeBot = planCfg.contacts.bot
     // لینک «خرید/پشتیبانی» تا مشخص شدن تنظیمات سرور نشان داده نمی‌شود (بدون پرشِ متن)؛ آفلاین: بعد از ۲.۵ ثانیه
