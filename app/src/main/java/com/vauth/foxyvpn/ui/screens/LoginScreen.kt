@@ -68,7 +68,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
@@ -188,14 +190,10 @@ private fun String.stripZeroWidth(): String = filterNot { isZeroWidth(it) }
 fun LoginScreen(
     authRepository: FxaAuthRepository,
     onSignedIn: () -> Unit,
-    onOpenAdmin: () -> Unit = {},
     onOpenSupport: () -> Unit = {},
 ) {
     // کد فعال‌سازی (قالب FOX-XXXX-XXXX-XXXX)
     var code by remember { mutableStateOf("") }
-    // ۵ بار ضربه‌ی پشت‌سرهم روی لوگو: ورود ادمین (فقط برای صاحب برنامه)
-    var logoTaps by remember { mutableStateOf(0) }
-    var lastLogoTap by remember { mutableStateOf(0L) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -206,6 +204,10 @@ fun LoginScreen(
     val planCfg by rememberPlanConfig()
     val freePlan = planCfg.plan("free")
     val storeBot = planCfg.contacts.bot
+    // لینک «خرید/پشتیبانی» تا مشخص شدن تنظیمات سرور نشان داده نمی‌شود (بدون پرشِ متن)؛ آفلاین: بعد از ۲.۵ ثانیه
+    var linkReady by remember { mutableStateOf(storeBot.isNotBlank()) }
+    LaunchedEffect(storeBot) { if (storeBot.isNotBlank()) linkReady = true else { delay(2500); linkReady = true } }
+    val linkAlpha by androidx.compose.animation.core.animateFloatAsState(if (linkReady) 1f else 0f, androidx.compose.animation.core.tween(250), label = "support-link")
 
     val extras = LocalFoxExtras.current
     val c = remember(extras) { extras.toLoginColors() }
@@ -302,19 +304,7 @@ fun LoginScreen(
                         .collapsible { heroExpand },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        modifier = Modifier.pointerInput(Unit) {
-                            detectTapGestures(onTap = {
-                                val now = System.currentTimeMillis()
-                                logoTaps = if (now - lastLogoTap < 1_500L) logoTaps + 1 else 1
-                                lastLogoTap = now
-                                if (logoTaps >= 5) {
-                                    logoTaps = 0
-                                    onOpenAdmin()
-                                }
-                            })
-                        },
-                    ) { LoginLogo() }
+                    LoginLogo()
 
                     Spacer(Modifier.height(14.dp))
 
@@ -431,12 +421,12 @@ fun LoginScreen(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
-                        SupportLink(
+                        Box(Modifier.alpha(linkAlpha)) { SupportLink(
                             text = if (storeBot.isNotBlank()) tr("Need more data? Buy a plan") else tr("Need more data? Message support"),
                             icon = if (storeBot.isNotBlank()) Icons.Filled.ShoppingCart else Icons.Filled.SupportAgent,
                             colors = c,
                             onClick = { if (storeBot.isNotBlank()) runCatching { uriHandler.openUri(tgUrl(storeBot)) } else openSupport() },
-                        )
+                        ) }
                     }
 
                     // ───── پیام خطا ─────
