@@ -291,6 +291,21 @@ class FxaAuthRepository(
         }
 
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        // تازه‌سازی توکن: اول WebView واقعی (سریع‌تر و مطمئن‌تر)؛ فقط اگر خودِ WebView خراب شد سراغ حل‌کننده می‌رویم
+        if (response.code == 406 && viaWebViewOk) {
+            try {
+                val viaWv = viaWebView()
+                response.close()
+                return@withContext viaWv
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (api: FxaApiError) {
+                response.close()
+                throw api
+            } catch (_: Exception) {
+                // WebView در دسترس نبود یا شکست خورد؛ ادامه با حل‌کننده‌ی داخلی
+            }
+        }
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
