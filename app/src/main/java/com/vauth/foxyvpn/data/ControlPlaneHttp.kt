@@ -30,6 +30,7 @@ class SimpleCookieJar : CookieJar {
     @Volatile private var prefs: android.content.SharedPreferences? = null
 
     fun attachStorage(context: android.content.Context) {
+        ControlPlaneHttp.appContext = context.applicationContext
         if (prefs != null) return
         val sp = context.applicationContext.getSharedPreferences("fox_cp_cookies", android.content.Context.MODE_PRIVATE)
         prefs = sp
@@ -153,6 +154,10 @@ object ControlPlaneHttp {
 
     @Volatile
     var socketProtector: ((Socket) -> Boolean)? = null
+
+    /** برای راه‌حل جایگزین با WebView (WebViewFxa)؛ در attachStorage پر می‌شود. */
+    @Volatile
+    var appContext: android.content.Context? = null
 
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
