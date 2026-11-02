@@ -50,7 +50,6 @@ object FoxyRoutes {
     const val THEME_SETUP = "theme_setup"
     const val SPLASH = "splash"
     const val LOGIN = "login"
-    const val ADMIN_LOGIN = "admin_login"
     const val WELCOME = "welcome"
     const val UPGRADED = "upgraded"
     const val HOME = "home"
@@ -136,7 +135,6 @@ fun FoxyNavGraph(
                 onSignedIn = {
                     navController.navigate(FoxyRoutes.WELCOME) { popUpTo(FoxyRoutes.LOGIN) { inclusive = true } }
                 },
-                onOpenAdmin = {},
                 onOpenSupport = { navController.navigate(FoxyRoutes.SUPPORT) },
             )
         }
