@@ -563,8 +563,9 @@ fun HomeScreen(
     var tipOpen by remember { mutableStateOf(false) }
     LaunchedEffect(headerMode) {
         if (headerMode == HeaderMode.UPGRADE && !hintPrefs.getBoolean("upgrade_tip", false)) {
-            delay(1500); tipOpen = true; delay(5000); tipOpen = false
-            hintPrefs.edit().putBoolean("upgrade_tip", true).apply()
+            delay(1500)
+            hintPrefs.edit().putBoolean("upgrade_tip", true).apply() // همان لحظه‌ی نمایش ثبت می‌شود تا با هر بار ورود دوباره نیاید
+            tipOpen = true; delay(4000); tipOpen = false
         } else tipOpen = false
     }
     val offerKey = PAID_KEYS.filter { k ->
@@ -1933,7 +1934,12 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
         // راهنمای یک‌باره
         if (tip != null) {
             val dy = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
-            androidx.compose.ui.window.Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, dy)) {
+            // dismissOnClickOutside=false: وگرنه پنجره‌ی پاپ‌آپ اولین لمسِ بیرون از خودش (از جمله خودِ دکمه) را می‌بلعد
+            androidx.compose.ui.window.Popup(
+                alignment = Alignment.TopEnd,
+                offset = androidx.compose.ui.unit.IntOffset(0, dy),
+                properties = androidx.compose.ui.window.PopupProperties(focusable = false, dismissOnClickOutside = false),
+            ) {
                 Box(
                     Modifier.clip(RoundedCornerShape(14.dp)).background(c.accent).padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
