@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -679,10 +680,24 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
+                                        icon = Icons.Filled.WorkspacePremium,
+                                        title = tr("Plans & pricing"),
+                                        subtitle = tr("Compare plans and buy"),
+                                        onClick = { (onOpenPlans ?: onOpenAccount).invoke() },
+                                    )
+                                    SettingRow(
+                                        c = c,
                                         icon = Icons.Filled.SupportAgent,
                                         title = tr("Support"),
                                         subtitle = tr("Bot, Telegram and help"),
                                         onClick = { onOpenSupport?.invoke() ?: openTelegram(context) },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Language,
+                                        title = tr("Official website"),
+                                        subtitle = tr("Plans, guides and the latest download"),
+                                        onClick = { runCatching { uriHandler.openUri(SITE_URL) } },
                                     )
                                     SettingRow(
                                         c = c,
