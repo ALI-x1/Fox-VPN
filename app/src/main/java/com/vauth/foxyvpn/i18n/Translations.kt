@@ -593,6 +593,8 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "You're up to date" to "آخرین نسخه را دارید",
     "Update" to "آپدیت",
     "Redeem a code" to "وارد کردن کد",
+    "Plans & pricing" to "قیمت و پلن‌ها",
+    "Compare plans and buy" to "مقایسه‌ی پلن‌ها و خرید",
     "Upgrade your plan with a code" to "با کد، پلنتان را ارتقا دهید",
     "Bot, Telegram and help" to "ربات، تلگرام و راهنما",
     "%.1f GB left" to "%.1f گیگابایت مانده",
