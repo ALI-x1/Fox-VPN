@@ -237,15 +237,10 @@ fun SupportScreen(onBack: () -> Unit, onOpenPlans: () -> Unit = {}) {
             ) {
                 ScreenHeader(c, tr("Support"), tr("We're here to help"), onBack)
                 HeroBadge(c, Icons.Filled.SupportAgent, tr("Have a question or a problem? Pick the fastest way to reach us."))
-                ContactOption(
-                    c, Icons.Filled.LocalOffer, tr("Plans & prices"), tr("See what each plan includes"),
-                    enabled = true, actionIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight, index = 0,
-                ) { onOpenPlans() }
-                ContactOptions(c, cfg.contacts, 1, msg)
-                SiteOption(c, index = 3)
+                ContactOptions(c, cfg.contacts, 0, msg)
                 ContactOption(
                     c, Icons.Filled.Receipt, tr("Copy support info"), tr("Version, plan and device ID"),
-                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 4,
+                    enabled = true, actionIcon = Icons.Filled.ContentCopy, index = 2,
                 ) { copyText(context, supportInfo(context), tr("Support info")) }
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.innerCard).padding(14.dp),
