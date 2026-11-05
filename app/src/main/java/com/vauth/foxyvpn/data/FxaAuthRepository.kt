@@ -67,10 +67,10 @@ class FxaAuthRepository(
         }
         LoginTrace.reset(); LoginTrace.log("session token captured")
         try {
-            kotlinx.coroutines.withTimeout(40_000L) { completeLogin(clean) }
+            kotlinx.coroutines.withTimeout(70_000L) { completeLogin(clean) }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            LoginTrace.log("TIMEOUT 40s")
-            error("Timed out (40s) at: " + LoginTrace.stage.value)
+            LoginTrace.log("TIMEOUT 70s")
+            error("Timed out (70s) at: " + LoginTrace.stage.value)
         } catch (e: Exception) {
             LoginTrace.log("FAILED: " + (e.message ?: e.javaClass.simpleName))
             throw e
