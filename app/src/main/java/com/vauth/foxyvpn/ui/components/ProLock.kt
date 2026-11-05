@@ -54,6 +54,7 @@ object Perks {
         if (code == null) return false
         val c = code.uppercase()
         val fl = LicenseState.status.value?.fl
+        if (!LicenseState.monetized) return true
         if (fl != null) return c in fl || (c == "UK" && "GB" in fl)
         return c in FREE_COUNTRIES
     }
@@ -78,7 +79,7 @@ object Perks {
         LaunchedEffect(Unit) { LicenseState.load(context) }
         val lic by LicenseState.status.collectAsState()
         val admin = remember { runCatching { RedeemClient(context.applicationContext).adminMode }.getOrDefault(false) }
-        return admin || lic == null || lic?.plan == "pro" || lic?.plan == "max" || lic?.plan == "vip"
+        return admin || lic == null || lic?.mon != true || lic?.plan == "pro" || lic?.plan == "max" || lic?.plan == "vip"
     }
 }
 
