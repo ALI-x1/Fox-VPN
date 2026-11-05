@@ -669,8 +669,8 @@ fun SettingsScreen(
                                         .settingsCard(c, 24.dp)
                                 ) {
                                     val licStatus by com.vauth.foxyvpn.data.LicenseState.status.collectAsState()
-                                    AccountHeaderRow(c = c, license = licStatus, onClick = onOpenAccount)
-                                    SettingRow(
+                                    AccountHeaderRow(c = c, license = licStatus?.takeIf { it.mon }, onClick = onOpenAccount)
+                                    if (licStatus?.mon == true) SettingRow(
                                         c = c,
                                         icon = Icons.Filled.CardGiftcard,
                                         title = tr("Redeem a code"),
@@ -678,7 +678,7 @@ fun SettingsScreen(
                                         // صفحه‌ی «کد و ارتقا»، نه صفحه‌ی اشتراک حساب
                                         onClick = { RedeemRequest.pending = true; if (authRepository == null) (onOpenPlans ?: onOpenAccount).invoke() },
                                     )
-                                    SettingRow(
+                                    if (licStatus?.mon == true) SettingRow(
                                         c = c,
                                         icon = Icons.Filled.WorkspacePremium,
                                         title = tr("Plans & pricing"),
