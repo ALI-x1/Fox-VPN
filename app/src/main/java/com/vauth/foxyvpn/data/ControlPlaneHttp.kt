@@ -192,9 +192,11 @@ object ControlPlaneHttp {
     var appContext: android.content.Context? = null
 
     val client: OkHttpClient by lazy {
+        val sf = ProtectingSocketFactory()
         OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            .socketFactory(ProtectingSocketFactory())
+            .dns(FallbackDns(sf))
+            .socketFactory(sf)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(30, TimeUnit.SECONDS)
