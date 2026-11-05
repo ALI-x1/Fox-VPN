@@ -169,6 +169,8 @@ fun AdminLoginScreen(
     var browserUrl by remember { mutableStateOf<String?>(null) }
     var browserBusy by remember { mutableStateOf(false) }
     var browserError by remember { mutableStateOf<String?>(null) }
+    var showPaste by remember { mutableStateOf(false) }
+    var pasteText by remember { mutableStateOf("") }
     if (browserUrl != null) {
         BrowserLoginScreen(
             startUrl = browserUrl!!,
@@ -192,6 +194,29 @@ fun AdminLoginScreen(
     }
 
     val c = LocalFoxExtras.current.toAdminLoginColors()
+    if (showPaste) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPaste = false },
+            title = { Text("Session token") },
+            text = {
+                OutlinedTextField(value = pasteText, onValueChange = { pasteText = it }, singleLine = false, placeholder = { Text("64 hex characters") })
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val tok = pasteText
+                    showPaste = false
+                    isLoading = true
+                    errorMessage = null
+                    scope.launch {
+                        val r = authRepository.completeBrowserLogin(tok)
+                        isLoading = false
+                        r.onSuccess { onSignedIn() }.onFailure { errorMessage = it.message ?: "Sign-in failed" }
+                    }
+                }) { Text("Sign in") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showPaste = false }) { Text("Cancel") } },
+        )
+    }
 
     // کدوم فیلد فوکوس داره؟ (برای تشخیص «کیبورد واقعاً بازه»)
     var emailFocused by remember { mutableStateOf(false) }
@@ -427,6 +452,12 @@ fun AdminLoginScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(tr("Sign in with browser instead"), color = c.accent)
+                                }
+                                androidx.compose.material3.TextButton(
+                                    onClick = { showPaste = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Paste session token", color = c.accent)
                                 }
                             }
                         } else {
