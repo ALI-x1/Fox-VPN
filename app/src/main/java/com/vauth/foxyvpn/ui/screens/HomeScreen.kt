@@ -544,17 +544,22 @@ fun HomeScreen(
     // سفارشی‌ها (از ربات): هر ۱۰ ثانیه بینشون عوض می‌شه
     val slots = remember(planCfg) { planCfg.contacts.slots() }
     var rotIdx by remember { mutableStateOf(0) }
-    LaunchedEffect(planCfg.hdr, slots.size) {
-        if (planCfg.hdr == "custom" && slots.size > 1) while (true) { delay(10_000); rotIdx++ }
+    val anyCustom = planCfg.hdr == "custom" || planCfg.hdrf == "custom"
+    LaunchedEffect(anyCustom, slots.size) {
+        if (anyCustom && slots.size > 1) while (true) { delay(10_000); rotIdx++ }
     }
-    val slot = if (planCfg.hdr == "custom" && slots.isNotEmpty()) slots[rotIdx % slots.size] else null
+    val slot = if (anyCustom && slots.isNotEmpty()) slots[rotIdx % slots.size] else null
     // رایگان/کم‌حجم/نزدیک انقضا ← تاج ارتقا؛ کاربر پولیِ سرحال ← قلب (یا سفارشی‌های صاحب برنامه از ربات)
     val headerMode = when {
-        !monOn -> HeaderMode.NONE
+        !monOn -> if (planCfg.hdrf == "custom" && slot != null) HeaderMode.CUSTOM else HeaderMode.NONE
         isAdmin || license == null -> HeaderMode.CALM
-        needsUpgrade -> HeaderMode.UPGRADE
+        needsUpgrade -> when {
+            planCfg.hdrf == "off" -> HeaderMode.NONE
+            planCfg.hdrf == "custom" && slot != null -> HeaderMode.CUSTOM
+            else -> HeaderMode.UPGRADE
+        }
         planCfg.hdr == "off" -> HeaderMode.NONE
-        slot != null -> HeaderMode.CUSTOM
+        planCfg.hdr == "custom" && slot != null -> HeaderMode.CUSTOM
         else -> HeaderMode.HEART
     }
     var showRefHome by remember { mutableStateOf(false) }
