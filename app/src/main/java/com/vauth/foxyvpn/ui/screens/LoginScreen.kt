@@ -401,7 +401,7 @@ fun LoginScreen(
                             },
                         )
                         Spacer(Modifier.height(12.dp))
-                        val freeSub = com.vauth.foxyvpn.i18n.bidi(
+                        val freeSub = if (!planCfg.mon) null else com.vauth.foxyvpn.i18n.bidi(
                             trf("%s · %d days free", gbLabel(freePlan.gb), freePlan.days).replace("\u202B", "").replace("\u202C", ""),
                         )
                         if (codeReady) {
@@ -422,8 +422,8 @@ fun LoginScreen(
                                 onClick = { focusManager.clearFocus(); doFree() },
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
-                        Box(Modifier.alpha(linkAlpha)) { SupportLink(
+                        if (planCfg.mon) Spacer(Modifier.height(12.dp))
+                        if (planCfg.mon) Box(Modifier.alpha(linkAlpha)) { SupportLink(
                             text = if (storeBot.isNotBlank()) tr("Need more data? Buy a plan") else tr("Need more data? Message support"),
                             icon = if (storeBot.isNotBlank()) Icons.Filled.ShoppingCart else Icons.Filled.SupportAgent,
                             colors = c,
