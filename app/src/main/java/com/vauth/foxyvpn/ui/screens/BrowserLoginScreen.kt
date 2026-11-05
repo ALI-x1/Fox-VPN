@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -338,6 +339,14 @@ fun BrowserLoginScreen(
         }
         if (busy) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            val stage by com.vauth.foxyvpn.data.LoginTrace.stage.collectAsState()
+            if (stage.isNotBlank()) {
+                Text(
+                    text = stage,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
         } else if (!pageLoaded || pageProgress < 100) {
             LinearProgressIndicator(
                 progress = { pageProgress / 100f },
@@ -353,12 +362,18 @@ fun BrowserLoginScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+            androidx.compose.material3.TextButton(
+                onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(errorMessage + "\n\n" + com.vauth.foxyvpn.data.LoginTrace.dump())) },
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) { Text("Copy log") }
         }
         Box(Modifier.weight(1f)) {
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
                         webViewInstance = this
+                        com.vauth.foxyvpn.data.WebViewFxa.liveView = this
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.loadWithOverviewMode = true
@@ -438,6 +453,7 @@ fun BrowserLoginScreen(
                 modifier = Modifier.fillMaxSize(),
                 onRelease = { view ->
                     webViewInstance = null
+                    if (com.vauth.foxyvpn.data.WebViewFxa.liveView === view) com.vauth.foxyvpn.data.WebViewFxa.liveView = null
                     bridgeInstance = null
                     view.stopLoading()
                     view.destroy()
