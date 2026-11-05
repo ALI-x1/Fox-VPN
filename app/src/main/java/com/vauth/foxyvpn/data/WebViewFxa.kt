@@ -70,6 +70,13 @@ object WebViewFxa {
                     }
                 }, "FoxBridge")
                 view.webViewClient = object : WebViewClient() {
+                    // خطای شبکه‌ی صفحه‌ی اصلی ← به‌جای ۵۰ ثانیه منتظر ماندن، همان لحظه خطای واقعی رو برگردون
+                    override fun onReceivedError(v: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                        if (request.isForMainFrame && !finished) {
+                            finished = true
+                            if (cont.isActive) cont.resumeWith(Result.failure(java.io.IOException("WebView: " + error.description)))
+                        }
+                    }
                     override fun onPageFinished(v: WebView, url: String?) {
                         if (finished || injections >= MAX_INJECTIONS) return
                         if (url == null || !url.startsWith("https://accounts.firefox.com")) return
