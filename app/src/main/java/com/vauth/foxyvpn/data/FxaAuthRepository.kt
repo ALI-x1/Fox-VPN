@@ -302,8 +302,8 @@ class FxaAuthRepository(
         }
 
         val viaWebViewOk = method == "POST"
-        suspend fun viaWebView(): JSONObject {
-            val (code, text) = WebViewFxa.postJson(path, jsonBody, buildRequest().header("Authorization"))
+        suspend fun viaWebView(hidden: Boolean = true): JSONObject {
+            val (code, text) = WebViewFxa.postJson(path, jsonBody, buildRequest().header("Authorization"), hidden)
             if (code >= 400) {
                 val eb = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
                 throw FxaApiError(eb.optString("message", text.ifEmpty { "HTTP $code" }), if (eb.has("errno")) eb.optInt("errno") else null, code)
@@ -314,7 +314,7 @@ class FxaAuthRepository(
         // ورود با مرورگر: همون WebViewِ واردشده در دسترسه ← اول از توش (بدون DNS/چالش/UA مشکل‌دار)
         if (viaWebViewOk && WebViewFxa.liveView != null) {
             LoginTrace.log("$path: via signed-in WebView")
-            try { return@withContext viaWebView() }
+            try { return@withContext viaWebView(hidden = false) }
             catch (e: FxaApiError) { throw e }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { LoginTrace.log("$path: WebView failed (" + (e.message ?: e.javaClass.simpleName) + ") -> OkHttp") }
@@ -326,19 +326,23 @@ class FxaAuthRepository(
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
+            LoginTrace.log("$path: 406 challenge #$attempts (body " + challengedBody.length + " chars)")
             try {
                 challengeSolver.solveAndInstall(challengedBody, "${url.scheme}://${url.host}")
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (solveFailure: Exception) {
+                LoginTrace.log("$path: solver failed: " + (solveFailure.message ?: solveFailure.javaClass.simpleName))
                 // حل‌کننده‌ی داخلی نشد؛ برای تازه‌سازی توکن، همان درخواست را از داخل WebView واقعی امتحان کن
                 if (viaWebViewOk) return@withContext viaWebView()
                 throw solveFailure
             }
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+            LoginTrace.log("$path: after solve HTTP " + response.code)
             attempts++
         }
         if (response.code == 406 && viaWebViewOk) {
+            LoginTrace.log("$path: still 406 -> hidden WebView")
             response.close()
             return@withContext viaWebView()
         }
