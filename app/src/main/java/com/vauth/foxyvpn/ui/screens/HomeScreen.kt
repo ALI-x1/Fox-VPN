@@ -327,6 +327,8 @@ fun HomeScreen(
     val license by LicenseState.status.collectAsState()
     val useLicense = !isAdmin && license != null
     val block = if (isAdmin) null else LicenseState.blockOf(license)
+    // سوییچ پولی‌سازی (از ربات): خاموش = برنامه ساده و رایگان؛ بدون کارت حجم، دکمه‌ی ارتقا و آفر
+    val monOn = isAdmin || license?.mon == true
 
     // وقتی برنامه تو پس‌زمینه‌ست (یا صفحه خاموشه) حلقه‌های تکراری زیر متوقف می‌شن تا باتری هدر نره.
     val lifecycleOwner = LocalContext.current.findActivity() as? LifecycleOwner
@@ -548,6 +550,7 @@ fun HomeScreen(
     val slot = if (planCfg.hdr == "custom" && slots.isNotEmpty()) slots[rotIdx % slots.size] else null
     // رایگان/کم‌حجم/نزدیک انقضا ← تاج ارتقا؛ کاربر پولیِ سرحال ← قلب (یا سفارشی‌های صاحب برنامه از ربات)
     val headerMode = when {
+        !monOn -> HeaderMode.NONE
         isAdmin || license == null -> HeaderMode.CALM
         needsUpgrade -> HeaderMode.UPGRADE
         planCfg.hdr == "off" -> HeaderMode.NONE
@@ -568,7 +571,7 @@ fun HomeScreen(
             tipOpen = true; delay(4000); tipOpen = false
         } else tipOpen = false
     }
-    val offerKey = PAID_KEYS.filter { k ->
+    val offerKey = if (!monOn) null else PAID_KEYS.filter { k ->
         val i = planCfg.plan(k); i.disc > 0 && i.dend > nowOffer && rank(k) >= rank(license?.plan)
     }.minByOrNull { planCfg.plan(it).dend }
     val offerBanner: HomeBanner? = offerKey?.let { k ->
@@ -1056,7 +1059,7 @@ fun HomeScreen(
                 }
 
                 // ───── پنل پایین: Data remaining (چسبیده به لبه‌ی پایین) ─────
-                DataRemainingCard(
+                if (monOn) DataRemainingCard(
                     remainingGb = dataRemainingGb,
                     totalGb = dataTotalGb,
                     unlimited = dataUnlimited,
