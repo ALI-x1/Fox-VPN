@@ -58,7 +58,7 @@ object WebViewFxa {
             if (raw.isNotEmpty()) {
                 val o = JSONObject(raw)
                 val s = o.getInt("s")
-                if (s < 0 || s == 406) throw java.io.IOException("live view: " + o.optString("t"))
+                if (s < 0 || s == 406) throw java.io.IOException("HTTP $s, body " + o.optString("t").length + " chars " + o.optString("t").take(80))
                 return@withContext s to o.optString("t")
             }
         }
@@ -66,12 +66,12 @@ object WebViewFxa {
     }
 
     /** POST به https://api.accounts.firefox.com/v1[path]؛ جواب = (کد HTTP، متن). */
-    suspend fun postJson(path: String, body: JSONObject, authorization: String? = null): Pair<Int, String> {
+    suspend fun postJson(path: String, body: JSONObject, authorization: String? = null, hiddenAllowed: Boolean = true): Pair<Int, String> {
         liveView?.let { lv ->
             LoginTrace.log("WebView(live) $path")
             try { return withTimeout(15_000L) { runLive(lv, path, body, authorization) } }
-            catch (e: kotlinx.coroutines.TimeoutCancellationException) { LoginTrace.log("WebView(live) timeout 15s") }
-            catch (e: java.io.IOException) { LoginTrace.log("WebView(live) failed: " + e.message) }
+            catch (e: kotlinx.coroutines.TimeoutCancellationException) { LoginTrace.log("WebView(live) timeout 15s"); if (!hiddenAllowed) throw java.io.IOException("live timeout") }
+            catch (e: java.io.IOException) { LoginTrace.log("WebView(live) failed: " + e.message); if (!hiddenAllowed) throw e }
         }
         val ctx = ControlPlaneHttp.appContext ?: currentApplication() ?: throw IllegalStateException("no app context for WebView fallback")
         LoginTrace.log("WebView(hidden) $path")
