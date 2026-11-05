@@ -184,6 +184,10 @@ fun AccountScreen(
 
                 when {
                     isAdmin -> AdminCard(c, onAccent, entitlement, statusColors.connected)
+                    license != null && !license!!.mon -> Column(Modifier.fillMaxWidth().accCard(c, 24).padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(tr("Free and unlimited"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = c.textPrimary)
+                        Text(tr("Everything in the app is open for you. Enjoy!"), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                    }
                     license != null -> {
                         val lic = license!!
                         PlanHero(c, onAccent, lic, cfg.plan(lic.plan ?: "").days, nowSec, if (isAdmin) null else onOpenPlans)
@@ -208,7 +212,7 @@ fun AccountScreen(
                         if (license?.plan == "vip") QuickAction(c, Icons.Filled.WorkspacePremium, tr("Upgrade"), Modifier.weight(1f), onOpenPlans)
                         QuickAction(c, Icons.Filled.SupportAgent, tr("Support"), Modifier.weight(1f), onOpenSupport)
                     }
-                    RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
+                    if (license?.mon != false) RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded)
                 }
 
                 Spacer(Modifier.height(8.dp))
