@@ -5,6 +5,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -20,10 +21,61 @@ object WebViewFxa {
     private const val PAGE = "https://accounts.firefox.com/"
     private const val MAX_INJECTIONS = 5
 
+    /** WebViewِ قابل‌مشاهده‌ی ورود با مرورگر؛ همون که کاربر توش وارد شده (کوکی/چالش/UA درست). null وقتی بسته‌ست. */
+    @Volatile var liveView: WebView? = null
+
+    private suspend fun evalString(view: WebView, js: String): String = suspendCancellableCoroutine { c ->
+        view.evaluateJavascript(js) { raw ->
+            val v = if (raw == null || raw == "null") "" else runCatching { org.json.JSONArray("[$raw]").getString(0) }.getOrDefault("")
+            if (c.isActive) c.resume(v)
+        }
+    }
+
+    /** درخواست رو توی همون WebViewِ واردشده اجرا می‌کنه (بدون WebViewِ مخفیِ جدید). نتیجه رو با poll می‌خونه. */
+    private suspend fun runLive(view: WebView, path: String, body: JSONObject, authorization: String?): Pair<Int, String> = withContext(Dispatchers.Main) {
+        val key = "__fox" + System.nanoTime()
+        val bodyLiteral = JSONObject.quote(body.toString())
+        val authJs = if (authorization.isNullOrEmpty()) "" else ", 'Authorization': " + JSONObject.quote(authorization)
+        val script = """
+            (async function(){
+              try {
+                if (location.hostname.indexOf('firefox.com') < 0) { window.$key = JSON.stringify({s:-1,t:'origin ' + location.hostname}); return; }
+                var r, t;
+                for (var i = 0; i < 3; i++) {
+                  r = await fetch('https://api.accounts.firefox.com/v1$path', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'$authJs }, body: $bodyLiteral });
+                  t = await r.text();
+                  if (r.status !== 406) break;
+                  await new Promise(function(res){ setTimeout(res, 1500); });
+                }
+                window.$key = JSON.stringify({s:r.status,t:t});
+              } catch (e) { window.$key = JSON.stringify({s:-2,t:String(e)}); }
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script, null)
+        repeat(100) {
+            delay(300)
+            val raw = evalString(view, "window.$key||''")
+            if (raw.isNotEmpty()) {
+                val o = JSONObject(raw)
+                val s = o.getInt("s")
+                if (s < 0 || s == 406) throw java.io.IOException("live view: " + o.optString("t"))
+                return@withContext s to o.optString("t")
+            }
+        }
+        throw java.io.IOException("live view: no response")
+    }
+
     /** POST به https://api.accounts.firefox.com/v1[path]؛ جواب = (کد HTTP، متن). */
     suspend fun postJson(path: String, body: JSONObject, authorization: String? = null): Pair<Int, String> {
+        liveView?.let { lv ->
+            LoginTrace.log("WebView(live) $path")
+            try { return withTimeout(15_000L) { runLive(lv, path, body, authorization) } }
+            catch (e: kotlinx.coroutines.TimeoutCancellationException) { LoginTrace.log("WebView(live) timeout 15s") }
+            catch (e: java.io.IOException) { LoginTrace.log("WebView(live) failed: " + e.message) }
+        }
         val ctx = ControlPlaneHttp.appContext ?: currentApplication() ?: throw IllegalStateException("no app context for WebView fallback")
-        return withTimeout(50_000L) { withContext(Dispatchers.Main) { runInWebView(ctx, path, body, authorization) } }
+        LoginTrace.log("WebView(hidden) $path")
+        return withTimeout(30_000L) { withContext(Dispatchers.Main) { runInWebView(ctx, path, body, authorization) } }
     }
 
     /** اگر attachStorage صدا زده نشده بود (مثلاً برنچ ادمین)، Application فعلی را از خود اندروید می‌گیریم. */
