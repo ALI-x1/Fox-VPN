@@ -65,7 +65,17 @@ class FxaAuthRepository(
         if (!Regex("^[0-9a-f]{64}$").matches(clean)) {
             error("The sign-in page did not hand over a usable session token")
         }
-        completeLogin(clean)
+        LoginTrace.reset(); LoginTrace.log("session token captured")
+        try {
+            kotlinx.coroutines.withTimeout(40_000L) { completeLogin(clean) }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            LoginTrace.log("TIMEOUT 40s")
+            error("Timed out (40s) at: " + LoginTrace.stage.value)
+        } catch (e: Exception) {
+            LoginTrace.log("FAILED: " + (e.message ?: e.javaClass.simpleName))
+            throw e
+        }
+        LoginTrace.log("signed in")
     }
 
     companion object {
@@ -301,7 +311,18 @@ class FxaAuthRepository(
             return if (text.isEmpty()) JSONObject() else JSONObject(text)
         }
 
+        // ورود با مرورگر: همون WebViewِ واردشده در دسترسه ← اول از توش (بدون DNS/چالش/UA مشکل‌دار)
+        if (viaWebViewOk && WebViewFxa.liveView != null) {
+            LoginTrace.log("$path: via signed-in WebView")
+            try { return@withContext viaWebView() }
+            catch (e: FxaApiError) { throw e }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { LoginTrace.log("$path: WebView failed (" + (e.message ?: e.javaClass.simpleName) + ") -> OkHttp") }
+        }
+
+        LoginTrace.log("$path: OkHttp request")
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        LoginTrace.log("$path: OkHttp HTTP " + response.code)
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
