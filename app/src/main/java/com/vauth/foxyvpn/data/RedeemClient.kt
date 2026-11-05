@@ -42,13 +42,15 @@ data class LicenseStatus(
     val nn: Long = 0,
     /** کشورهای رایگانِ باز برای این کاربر امروز (سرور می‌فرسته و روزبه‌روز کم می‌شه)؛ null = لیست ثابت اپ. */
     val fl: List<String>? = null,
+    /** سوییچ پولی‌سازی سرور: false = برنامه ساده و رایگانِ کامل (بدون پلن/سقف/خرید). سرورِ قدیمی نمی‌فرسته ← true. */
+    val mon: Boolean = true,
 ) {
     fun toJson(): String = JSONObject()
         .put("state", state).put("plan", plan ?: JSONObject.NULL)
         .put("expiresAt", expiresAt ?: JSONObject.NULL).put("totalBytes", totalBytes ?: JSONObject.NULL)
         .put("usedBytes", usedBytes).put("dailyBytes", dailyBytes ?: JSONObject.NULL)
         .put("dailyUsed", dailyUsed).put("resetAt", resetAt)
-        .put("fl", fl?.let { org.json.JSONArray(it) } ?: JSONObject.NULL).toString()
+        .put("fl", fl?.let { org.json.JSONArray(it) } ?: JSONObject.NULL).put("mon", mon).toString()
 
     companion object {
         private fun JSONObject.longOrNull(key: String): Long? = if (isNull(key) || !has(key)) null else optLong(key)
@@ -65,6 +67,7 @@ data class LicenseStatus(
             poll = j.optInt("poll", 0),
             nn = j.optLong("nn", 0L),
             fl = j.optJSONArray("fl")?.let { a -> (0 until a.length()).map { a.getString(it).uppercase() } },
+            mon = j.optBoolean("mon", true),
         )
 
         fun parse(text: String?): LicenseStatus? =
@@ -89,6 +92,9 @@ enum class LicenseBlock(private val en: String, val needsNewCode: Boolean) {
 object LicenseState {
     private val _status = MutableStateFlow<LicenseStatus?>(null)
     val status: StateFlow<LicenseStatus?> = _status.asStateFlow()
+
+    /** آیا بخش پولی (پلن، سقف، خرید، قفل‌ها) برای این کاربر روشنه؟ بدون وضعیت سرور = خاموش (ساده/رایگان). */
+    val monetized: Boolean get() = _status.value?.mon == true
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences("foxvpn_redeem", Context.MODE_PRIVATE)
