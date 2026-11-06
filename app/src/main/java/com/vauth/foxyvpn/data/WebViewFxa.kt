@@ -39,7 +39,16 @@ object WebViewFxa {
         val bodyLiteral = JSONObject.quote(body.toString())
         val authJs = if (authorization.isNullOrEmpty()) "" else ", 'Authorization': " + JSONObject.quote(authorization)
         var last = "no response"
+        val origUa = view.settings.userAgentString
+        val defaultUa = runCatching { android.webkit.WebSettings.getDefaultUserAgent(view.context) }.getOrDefault(origUa)
+        try {
         for (cycle in 1..3) {
+            // دور ۱: UA پیش‌فرض WebView (هم‌خوان با TLS کروم)، دور ۲: همراه کوکی، دور ۳: UA فایرفاکس
+            val useDefaultUa = cycle != 3
+            val withCred = cycle == 2
+            view.settings.userAgentString = if (useDefaultUa) defaultUa else origUa
+            LoginTrace.log("WebView(live) try $cycle/3 ua=" + (if (useDefaultUa) "default" else "firefox") + " cred=" + withCred)
+            val credJs = if (withCred) ", credentials: 'include'" else ""
             val key = "__fox" + System.nanoTime()
             val script = """
                 (async function(){
@@ -47,11 +56,12 @@ object WebViewFxa {
                     if (location.hostname.indexOf('firefox.com') < 0) { window.$key = JSON.stringify({s:-1,t:'origin ' + location.hostname}); return; }
                     var r, t;
                     for (var i = 0; i < 2; i++) {
-                      r = await fetch('https://api.accounts.firefox.com/v1$path', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'$authJs }, body: $bodyLiteral });
+                      r = await fetch('https://api.accounts.firefox.com/v1$path', { method: 'POST'$credJs, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'$authJs }, body: $bodyLiteral });
                       t = await r.text();
                       if (r.status !== 406) break;
                       await new Promise(function(res){ setTimeout(res, 1200); });
                     }
+                    if (r.status === 406 && !t) { try { t = 'hdrs=' + Array.from(r.headers.keys()).join(',') + ' ct=' + r.headers.get('content-type'); } catch (e2) {} }
                     window.$key = JSON.stringify({s:r.status,t:t});
                   } catch (e) { window.$key = JSON.stringify({s:-2,t:String(e)}); }
                 })();
@@ -68,7 +78,9 @@ object WebViewFxa {
             LoginTrace.log("WebView(live) 406 -> reload page (cycle $cycle/3)")
             view.reload()
             delay(4_000) // صفحه + اسکریپت چالش فرصت حل‌شدن داشته باشن
+            LoginTrace.log("WebView(live) cycle $cycle result: $last")
         }
+        } finally { runCatching { view.settings.userAgentString = origUa } }
         throw java.io.IOException(last)
     }
 
