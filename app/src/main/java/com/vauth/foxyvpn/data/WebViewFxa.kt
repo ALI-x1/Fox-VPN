@@ -32,8 +32,9 @@ object WebViewFxa {
     }
 
     /**
-     * درخواست رو توی همون WebViewِ واردشده اجرا می‌کنه. اگه Fastly جواب ۴۰۶ (بدنه‌ی خالی) داد، خود صفحه رو reload می‌کنیم
-     * تا اسکریپت چالشِ Fastly توی مرورگر واقعی حل بشه و کوکی‌ش ست بشه، بعد دوباره امتحان می‌کنیم (۳ دور).
+     * درخواست رو توی همون WebViewِ واردشده اجرا می‌کنه. ۴۰۶ با بدنه‌ی خالیِ Fastly یعنی چالش؛ از fetchِ بین‌دامنه‌ای حل نمی‌شه.
+     * پس WebView رو به‌صورت «صفحه» می‌بریم روی خودِ api.accounts.firefox.com (مرورگر چالش رو حل می‌کنه و کوکی همون‌جا ست می‌شه)
+     * و بعد درخواست رو از همون origin (same-origin، بدون CORS و با کوکی) می‌فرستیم.
      */
     private suspend fun runLive(view: WebView, path: String, body: JSONObject, authorization: String?): Pair<Int, String> = withContext(Dispatchers.Main) {
         val bodyLiteral = JSONObject.quote(body.toString())
@@ -42,44 +43,36 @@ object WebViewFxa {
         val origUa = view.settings.userAgentString
         val defaultUa = runCatching { android.webkit.WebSettings.getDefaultUserAgent(view.context) }.getOrDefault(origUa)
         try {
-        for (cycle in 1..3) {
-            // دور ۱: UA پیش‌فرض WebView (هم‌خوان با TLS کروم)، دور ۲: همراه کوکی، دور ۳: UA فایرفاکس
-            val useDefaultUa = cycle != 3
-            val withCred = cycle == 2
-            view.settings.userAgentString = if (useDefaultUa) defaultUa else origUa
-            LoginTrace.log("WebView(live) try $cycle/3 ua=" + (if (useDefaultUa) "default" else "firefox") + " cred=" + withCred)
-            val credJs = if (withCred) ", credentials: 'include'" else ""
-            val key = "__fox" + System.nanoTime()
-            val script = """
-                (async function(){
-                  try {
-                    if (location.hostname.indexOf('firefox.com') < 0) { window.$key = JSON.stringify({s:-1,t:'origin ' + location.hostname}); return; }
-                    var r, t;
-                    for (var i = 0; i < 2; i++) {
-                      r = await fetch('https://api.accounts.firefox.com/v1$path', { method: 'POST'$credJs, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'$authJs }, body: $bodyLiteral });
-                      t = await r.text();
-                      if (r.status !== 406) break;
-                      await new Promise(function(res){ setTimeout(res, 1200); });
-                    }
-                    if (r.status === 406 && !t) { try { t = 'hdrs=' + Array.from(r.headers.keys()).join(',') + ' ct=' + r.headers.get('content-type'); } catch (e2) {} }
-                    window.$key = JSON.stringify({s:r.status,t:t});
-                  } catch (e) { window.$key = JSON.stringify({s:-2,t:String(e)}); }
-                })();
-            """.trimIndent()
-            view.evaluateJavascript(script, null)
-            var raw = ""
-            repeat(60) { if (raw.isEmpty()) { delay(300); raw = evalString(view, "window.$key||''") } }
-            if (raw.isEmpty()) { last = "no response"; continue }
-            val o = JSONObject(raw)
-            val s = o.getInt("s")
-            if (s >= 0 && s != 406) return@withContext s to o.optString("t")
-            last = "HTTP $s, body " + o.optString("t").length + " chars " + o.optString("t").take(80)
-            if (s == -1) break
-            LoginTrace.log("WebView(live) 406 -> reload page (cycle $cycle/3)")
-            view.reload()
-            delay(4_000) // صفحه + اسکریپت چالش فرصت حل‌شدن داشته باشن
-            LoginTrace.log("WebView(live) cycle $cycle result: $last")
-        }
+            view.settings.userAgentString = defaultUa
+            LoginTrace.log("WebView(live) -> open api.accounts.firefox.com as a page")
+            view.loadUrl("https://api.accounts.firefox.com/v1/")
+            delay(6_000)
+            LoginTrace.log("page: " + evalString(view, "location.href + ' | ' + document.title + ' | ' + (document.body ? document.body.innerText.slice(0,100).replace(/\\s+/g,' ') : '')"))
+            for (cycle in 1..4) {
+                val key = "__fox" + System.nanoTime()
+                val script = """
+                    (async function(){
+                      try {
+                        var r = await fetch('https://api.accounts.firefox.com/v1$path', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'$authJs }, body: $bodyLiteral });
+                        var t = await r.text();
+                        if (r.status === 406 && !t) { try { t = 'hdrs=' + Array.from(r.headers.keys()).join(',') } catch (e2) {} }
+                        window.$key = JSON.stringify({s:r.status,t:t});
+                      } catch (e) { window.$key = JSON.stringify({s:-2,t:String(e)}); }
+                    })();
+                """.trimIndent()
+                LoginTrace.log("WebView(live) POST try $cycle/4 (same-origin)")
+                view.evaluateJavascript(script, null)
+                var raw = ""
+                repeat(40) { if (raw.isEmpty()) { delay(300); raw = evalString(view, "window.$key||''") } }
+                if (raw.isEmpty()) { last = "no response"; continue }
+                val o = JSONObject(raw)
+                val s = o.getInt("s")
+                if (s >= 0 && s != 406) return@withContext s to o.optString("t")
+                last = "HTTP $s, body " + o.optString("t").length + " chars " + o.optString("t").take(80)
+                LoginTrace.log("WebView(live) try $cycle result: $last")
+                delay(5_000) // چالش فرصت حل‌شدن/ریلود داشته باشه
+                LoginTrace.log("page: " + evalString(view, "location.href + ' | ' + document.title"))
+            }
         } finally { runCatching { view.settings.userAgentString = origUa } }
         throw java.io.IOException(last)
     }
@@ -88,8 +81,8 @@ object WebViewFxa {
     suspend fun postJson(path: String, body: JSONObject, authorization: String? = null, hiddenAllowed: Boolean = true): Pair<Int, String> {
         liveView?.let { lv ->
             LoginTrace.log("WebView(live) $path")
-            try { return withTimeout(45_000L) { runLive(lv, path, body, authorization) } }
-            catch (e: kotlinx.coroutines.TimeoutCancellationException) { LoginTrace.log("WebView(live) timeout 45s"); if (!hiddenAllowed) throw java.io.IOException("live timeout") }
+            try { return withTimeout(60_000L) { runLive(lv, path, body, authorization) } }
+            catch (e: kotlinx.coroutines.TimeoutCancellationException) { LoginTrace.log("WebView(live) timeout 60s"); if (!hiddenAllowed) throw java.io.IOException("live timeout") }
             catch (e: java.io.IOException) { LoginTrace.log("WebView(live) failed: " + e.message); if (!hiddenAllowed) throw e }
         }
         val ctx = ControlPlaneHttp.appContext ?: currentApplication() ?: throw IllegalStateException("no app context for WebView fallback")
