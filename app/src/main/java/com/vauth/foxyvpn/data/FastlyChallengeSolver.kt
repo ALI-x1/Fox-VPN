@@ -62,7 +62,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
 
         var lastError: Exception? = null
         for (base in listOf("https://api.accounts.firefox.com", "https://accounts.firefox.com")) {
-            for (userAgent in listOf(MOZILLA_VPN_USER_AGENT, SOLVER_USER_AGENT)) {
+            for (userAgent in listOf(FIREFOX_DESKTOP_UA, MOZILLA_VPN_USER_AGENT, SOLVER_USER_AGENT)) {
                 try {
                     val page = fetchPage(newSolverClient(SimpleCookieJar()), base + "/", userAgent)
                     if (!looksLikeChallenge(page)) continue
@@ -108,6 +108,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Accept", HTML_ACCEPT)
+            .header("Accept-Encoding", "identity")
             .build()
         client.newCall(request).execute().use { response ->
             return response.body?.string().orEmpty()
@@ -123,6 +124,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Accept", accept)
+            .header("Accept-Encoding", "identity")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw FastlyChallengeError("GET $url returned HTTP ${response.code}")
@@ -157,6 +159,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
             .url(patUrl)
             .header("Accept", "text/plain")
             .header("Content-Type", "application/json")
+            .header("Accept-Encoding", "identity")
             .header("User-Agent", userAgent)
             .header("Origin", baseOrigin(prefixUrl))
             .post(ByteArray(0).toRequestBody(null))
@@ -237,12 +240,10 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
     private fun solveChallengePage(
         page: String,
         origin: String,
-        userAgent: String = MOZILLA_VPN_USER_AGENT,
+        userAgent: String = FIREFOX_DESKTOP_UA,
     ) {
+        // جار تازه (مثل کلاینت آرمان): کوکی قدیمی با IP/کلاینت دیگه باعث ۴۰۰ روی script.js می‌شد
         val solverJar = SimpleCookieJar()
-        for (cookie in cookieJar.snapshotAll()) {
-            solverJar.set(cookie.name, cookie.value, cookie.domain)
-        }
         val solver = newSolverClient(solverJar)
 
         val prefixMatch = CHALLENGE_PREFIX_REGEX.find(page)
@@ -265,6 +266,7 @@ class FastlyChallengeSolver(private val cookieJar: SimpleCookieJar) {
                 .url("$prefixUrl/fst-post-back")
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
+                .header("Accept-Encoding", "identity")
                 .header("User-Agent", userAgent)
                 .header("Origin", origin)
                 .post(postBody)
