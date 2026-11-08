@@ -176,7 +176,6 @@ object ControlPlaneHttp {
                 val r = chain.request()
                 chain.proceed(if (r.header("Accept-Encoding") == null) r.newBuilder().header("Accept-Encoding", "identity").build() else r)
             }
-            .dns(FallbackDns(sf))
             .socketFactory(sf)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
