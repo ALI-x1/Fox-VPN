@@ -12,6 +12,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.SocketFactory
 
+/** UA دسکتاپ فایرفاکس (همون که کلاینت آرمان برای همه‌ی درخواست‌های FxA می‌فرسته). */
+const val FIREFOX_DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0"
+
 private const val TAG = "ControlPlaneHttp"
 
 const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:android 14; iap:true)"
@@ -106,6 +109,12 @@ class SimpleCookieJar : CookieJar {
         persist()
     }
 
+    /** کوکی‌های قدیمیِ (IP-bound) چالش رو پاک می‌کنه؛ کوکی کهنه خودش باعث ۴۰۶/۴۰۰ می‌شد. */
+    fun clear() {
+        byDomain.clear()
+        persist()
+    }
+
     fun snapshotAll(): List<Cookie> = byDomain.values.flatten()
 }
 
@@ -160,9 +169,15 @@ object ControlPlaneHttp {
     var appContext: android.content.Context? = null
 
     val client: OkHttpClient by lazy {
+        val sf = ProtectingSocketFactory()
         OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            .socketFactory(ProtectingSocketFactory())
+            .addInterceptor { chain ->
+                val r = chain.request()
+                chain.proceed(if (r.header("Accept-Encoding") == null) r.newBuilder().header("Accept-Encoding", "identity").build() else r)
+            }
+            .dns(FallbackDns(sf))
+            .socketFactory(sf)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(30, TimeUnit.SECONDS)
