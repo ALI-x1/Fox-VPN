@@ -96,10 +96,10 @@ class FxaAuthRepository(
         try {
             lastDiag = ""
             LoginTrace.log("refresh: start")
-            kotlinx.coroutines.withTimeout(45_000L) { ensureFreshAccessToken(force = true) }
+            kotlinx.coroutines.withTimeout(75_000L) { ensureFreshAccessToken(force = true) }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             runCatching { tokenStore.clear() }
-            throw FxaRefreshFailure("Timed out (45s); last: " + lastDiag.ifBlank { "no response" }, permanent = false)
+            throw FxaRefreshFailure("Timed out (75s); last: " + lastDiag.ifBlank { "no response" }, permanent = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -422,37 +422,10 @@ class FxaAuthRepository(
             return if (text.isEmpty()) JSONObject() else JSONObject(text)
         }
 
-        // اگر به‌تازگی برای همین درخواست ۴۰۶ دیده‌ایم، درخواست OkHttp محکوم به شکست را رد می‌کنیم و مستقیم WebView
-        if (viaWebViewOk && WebViewFxa.challengeRecent() && ControlPlaneHttp.appContext != null) {
-            try {
-                return@withContext viaWebView()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (api: FxaApiError) {
-                throw api
-            } catch (_: Exception) {
-                // WebView شکست خورد؛ مسیر معمولی (OkHttp + حل‌کننده) را امتحان می‌کنیم
-            }
-        }
         LoginTrace.log("api-host $path: sending")
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
         LoginTrace.log("api-host $path: HTTP " + response.code)
         if (response.code == 406 && viaWebViewOk) WebViewFxa.sawChallengeAt = System.currentTimeMillis()
-        // تازه‌سازی توکن: اول WebView واقعی (سریع‌تر و مطمئن‌تر)؛ فقط اگر خودِ WebView خراب شد سراغ حل‌کننده می‌رویم
-        if (response.code == 406 && viaWebViewOk) {
-            try {
-                val viaWv = viaWebView()
-                response.close()
-                return@withContext viaWv
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (api: FxaApiError) {
-                response.close()
-                throw api
-            } catch (_: Exception) {
-                // WebView در دسترس نبود یا شکست خورد؛ ادامه با حل‌کننده‌ی داخلی
-            }
-        }
         var attempts = 1
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
@@ -463,14 +436,17 @@ class FxaAuthRepository(
                 throw cancellation
             } catch (solveFailure: Exception) {
                 // حل‌کننده‌ی داخلی نشد؛ برای تازه‌سازی توکن، همان درخواست را از داخل WebView واقعی امتحان کن
+                LoginTrace.log("api-host: solver failed: " + (solveFailure.message ?: solveFailure.javaClass.simpleName).take(80))
                 if (viaWebViewOk) return@withContext viaWebView()
                 throw solveFailure
             }
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+            LoginTrace.log("api-host: after solve HTTP " + response.code)
             attempts++
         }
         if (response.code == 406 && viaWebViewOk) {
             response.close()
+            LoginTrace.log("api-host: still 406 -> WebView")
             return@withContext viaWebView()
         }
 
