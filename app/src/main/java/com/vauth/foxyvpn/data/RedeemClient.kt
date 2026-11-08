@@ -171,6 +171,22 @@ class RedeemClient(context: Context) {
         .build()
 
     /** آدرس Worker اصلی این دستگاه (برای عیب‌یابی)؛ null اگه تنظیم نشده. */
+    /** توکن دسترسی از طرف سرور (وقتی موزیلا درخواست مستقیم گوشی رو ۴۰۶ می‌کنه). null = نشد؛ مسیر مستقیم ادامه می‌ده. */
+    suspend fun serverToken(): JSONObject? = withContext(Dispatchers.IO) {
+        val code = activeCode ?: return@withContext null
+        val bases = (listOfNotNull(homeWorker?.takeIf { it in workers }) + workers).distinct()
+        for (base in bases) {
+            val r = runCatching { post(base, "/v1/tok", JSONObject().put("code", code).put("deviceId", deviceId)) }.getOrNull() ?: continue
+            LoginTrace.log("server-token: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(80) else "")
+            if (r.code == 200) {
+                val j = runCatching { JSONObject(r.text) }.getOrNull()
+                if (j != null && j.optBoolean("ok") && j.optString("accessToken").isNotBlank()) return@withContext j
+            }
+            if (r.code in 400..499 && r.code != 429) break
+        }
+        null
+    }
+
     fun diagBase(): String? = homeWorker?.takeIf { it in workers } ?: workers.firstOrNull()
 
     /** گزارش عیب‌یابی رو برای پشتیبانی می‌فرسته (بدون خودِ کد). */
