@@ -59,6 +59,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import com.vauth.foxyvpn.data.LoginTrace
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -247,16 +249,21 @@ fun LoginScreen(
         if (!RedeemClient.isComplete(value) || isLoading) return
         errorMessage = null
         isLoading = true
+        LoginTrace.reset()
         scope.launch {
+            LoginTrace.log("redeem: contacting server")
             val grant = redeemClient.redeem(value).getOrElse {
                 isLoading = false
+                LoginTrace.log("redeem FAILED: " + (it.message ?: it.javaClass.simpleName))
                 errorMessage = it.message ?: tr("Could not verify the code")
                 return@launch
             }
+            LoginTrace.log("redeem ok; signing in with granted key")
             val result = redeemClient.loginWithFailover(grant) { authRepository.loginWithRefreshToken(it) }
             isLoading = false
             result.onSuccess { onSignedIn() }
                 .onFailure {
+                    LoginTrace.log("sign-in FAILED: " + (it.message ?: it.javaClass.simpleName))
                     redeemClient.activeCode = null
                     // دلیل فنیِ کوتاه (برای پشتیبانی)؛ بدون این، همه‌ی خطاها یک پیام یکسان می‌شدند
                     val why = (it.message ?: it::class.java.simpleName).replace(Regex("\\s+"), " ").replace(Regex("https?://[^/ ]+/_fs-ch-[A-Za-z0-9]+/"), "…/").takeLast(90)
@@ -448,6 +455,13 @@ fun LoginScreen(
                                     MaterialTheme.colorScheme.error.copy(alpha = 0.35f),
                                     RoundedCornerShape(16.dp),
                                 )
+                                .clickable {
+                                    runCatching {
+                                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        cm.setPrimaryClip(android.content.ClipData.newPlainText("login-log", (errorMessage ?: "") + "\n\n" + LoginTrace.dump()))
+                                        android.widget.Toast.makeText(context, "Log copied", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -459,12 +473,18 @@ fun LoginScreen(
                             )
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                text = errorMessage ?: lastError,
+                                text = (errorMessage ?: lastError) + "\n\n⧉ Tap to copy log",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
                     }
+                }
+
+                val stageText by LoginTrace.stage.collectAsState()
+                if (isLoading && stageText.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(stageText, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 }
 
                 Spacer(Modifier.height(20.dp))
