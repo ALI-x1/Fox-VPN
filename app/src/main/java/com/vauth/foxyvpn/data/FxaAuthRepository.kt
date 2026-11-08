@@ -155,7 +155,7 @@ class FxaAuthRepository(
         }
 
         val tokenData = try {
-            fxaDo("POST", "/oauth/token", jsonBody = body)
+            refreshViaOauthHost(body) ?: fxaDo("POST", "/oauth/token", jsonBody = body)
         } catch (rejected: FxaApiError) {
             throw FxaRefreshFailure(
                 rejected.message ?: tr("FxA rejected the refresh token"),
@@ -308,6 +308,36 @@ class FxaAuthRepository(
             throw FxaApiError(eb.optString("message", t2.ifEmpty { "HTTP $c2" }), if (eb.has("errno")) eb.optInt("errno") else null, c2)
         }
         JSONObject(t2).takeIf { it.optString("access_token").isNotBlank() }
+    }
+
+    /**
+     * تازه‌سازی با پروفایل درخواست فایرفاکس روی oauth.accounts.firefox.com (مثل کلاینت آرمان).
+     * null = ۴۰۶/خطای شبکه؛ مسیر قبلی ادامه می‌دهد. خطای واقعیِ موزیلا (۴xx) پرتاب می‌شود.
+     */
+    private suspend fun refreshViaOauthHost(body: JSONObject): JSONObject? = withContext(Dispatchers.IO) {
+        val bytes = body.toString().toByteArray(Charsets.UTF_8)
+        val jsonType = "application/json; charset=utf-8".toMediaType()
+        for (ua in listOf("MozillaVPN/2.24.0 (sys:android 14)", FIREFOX_DESKTOP_UA)) {
+            try {
+                val req = Request.Builder().url("https://oauth.accounts.firefox.com/v1/token").firefoxOauthProfile(ua)
+                    .post(bytes.toRequestBody(jsonType)).build()
+                val (code, text) = ControlPlaneHttp.client.newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                if (code == 406 || code >= 500) continue
+                if (code >= 400) {
+                    val eb = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+                    throw FxaApiError(eb.optString("message", text.ifEmpty { "HTTP $code" }), if (eb.has("errno")) eb.optInt("errno") else null, code)
+                }
+                val j = JSONObject(text)
+                if (j.optString("access_token").isNotBlank()) return@withContext j
+            } catch (e: FxaApiError) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        null
     }
 
     private suspend fun oauthToken(sessionToken: String): JSONObject {
