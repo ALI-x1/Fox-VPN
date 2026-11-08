@@ -160,7 +160,7 @@ class FxaAuthRepository(
         }
 
         val tokenData = try {
-            refreshViaOauthHost(body) ?: run { LoginTrace.log("refresh: falling back to api host"); null } ?: fxaDo("POST", "/oauth/token", jsonBody = body)
+            serverRefresh() ?: refreshViaOauthHost(body) ?: run { LoginTrace.log("refresh: falling back to api host"); null } ?: fxaDo("POST", "/oauth/token", jsonBody = body)
         } catch (rejected: FxaApiError) {
             throw FxaRefreshFailure(
                 rejected.message ?: tr("FxA rejected the refresh token"),
@@ -350,6 +350,19 @@ class FxaAuthRepository(
                 continue
             }
         }
+        null
+    }
+
+    /** اپ در FoxyVpnApp پرش می‌کنه: توکن دسترسی از سرور خودمان (مسیر مطمئن وقتی Fastly گوشی را ۴۰۶ می‌کند). */
+    var serverTokenProvider: (suspend () -> JSONObject?)? = null
+
+    private suspend fun serverRefresh(): JSONObject? = try {
+        serverTokenProvider?.invoke()?.let {
+            JSONObject().put("access_token", it.optString("accessToken")).put("expires_in", it.optLong("expiresIn", 3600L).toInt())
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
         null
     }
 
