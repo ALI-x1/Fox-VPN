@@ -47,9 +47,9 @@ android {
         applicationId = "com.foxvpn.app"
         minSdk = 26
         targetSdk = 35
-        // در بیلد ریلیز، CI عدد تگ (مثلاً v51 ← 51) را می‌دهد؛ بیلد محلی/دیباگ همان 44
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 127
-        versionName = "1.2.2"
+
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 130
+        versionName = "2.0.0"
 
         externalNativeBuild {
             ndkBuild {
