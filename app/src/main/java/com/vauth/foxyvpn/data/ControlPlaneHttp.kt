@@ -16,6 +16,9 @@ import javax.net.SocketFactory
 
 private const val TAG = "ControlPlaneHttp"
 
+/** UA دسکتاپ فایرفاکس (همون که کلاینت آرمان برای همه‌ی درخواست‌های FxA می‌فرسته). */
+const val FIREFOX_DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0"
+
 const val MOZILLA_VPN_USER_AGENT = "MozillaVPN/2.35.0 (sys:android 14; iap:true)"
 
 fun Request.Builder.applyMozillaVpnHeaders(): Request.Builder {
@@ -51,6 +54,12 @@ class SimpleCookieJar : CookieJar {
                 synchronized(bucket) { bucket.removeAll { it.name == c.name }; bucket.add(c) }
             }
         }
+    }
+
+    /** کوکی‌های قدیمیِ (IP-bound) چالش رو پاک می‌کنه؛ کوکی کهنه خودش باعث ۴۰۶/۴۰۰ می‌شد. */
+    fun clear() {
+        byDomain.clear()
+        persist()
     }
 
     private fun persist() {
@@ -195,6 +204,11 @@ object ControlPlaneHttp {
         val sf = ProtectingSocketFactory()
         OkHttpClient.Builder()
             .cookieJar(cookieJar)
+            // Accept-Encoding: identity روی همه‌ی درخواست‌ها (هر دو پروژه‌ی دیگه گزارش کردن gzip تنها با ۴۰۶ همراهه)
+            .addInterceptor { chain ->
+                val r = chain.request()
+                chain.proceed(if (r.header("Accept-Encoding") == null) r.newBuilder().header("Accept-Encoding", "identity").build() else r)
+            }
             .dns(FallbackDns(sf))
             .socketFactory(sf)
             .connectTimeout(30, TimeUnit.SECONDS)
