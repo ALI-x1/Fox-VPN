@@ -94,7 +94,12 @@ class FxaAuthRepository(
     suspend fun loginWithRefreshToken(refreshToken: String): Result<Unit> = runCatching {
         tokenStore.saveAuth(RuntimeAuth(accessToken = "pending", refreshToken = refreshToken, expiresAtEpochSeconds = 0L))
         try {
-            ensureFreshAccessToken(force = true)
+            lastDiag = ""
+            LoginTrace.log("refresh: start")
+            kotlinx.coroutines.withTimeout(45_000L) { ensureFreshAccessToken(force = true) }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            runCatching { tokenStore.clear() }
+            throw FxaRefreshFailure("Timed out (45s); last: " + lastDiag.ifBlank { "no response" }, permanent = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -155,7 +160,7 @@ class FxaAuthRepository(
         }
 
         val tokenData = try {
-            refreshViaOauthHost(body) ?: fxaDo("POST", "/oauth/token", jsonBody = body)
+            refreshViaOauthHost(body) ?: run { LoginTrace.log("refresh: falling back to api host"); null } ?: fxaDo("POST", "/oauth/token", jsonBody = body)
         } catch (rejected: FxaApiError) {
             throw FxaRefreshFailure(
                 rejected.message ?: tr("FxA rejected the refresh token"),
@@ -321,7 +326,13 @@ class FxaAuthRepository(
             try {
                 val req = Request.Builder().url("https://oauth.accounts.firefox.com/v1/token").firefoxOauthProfile(ua)
                     .post(bytes.toRequestBody(jsonType)).build()
-                val (code, text) = ControlPlaneHttp.client.newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                val quick = ControlPlaneHttp.client.newBuilder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                    .callTimeout(14, java.util.concurrent.TimeUnit.SECONDS).build()
+                val (code, text) = quick.newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                lastDiag = "oauth-host HTTP $code"
+                LoginTrace.log("refresh: oauth-host ($ua) HTTP $code")
                 if (code == 406 || code >= 500) continue
                 if (code >= 400) {
                     val eb = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
@@ -334,11 +345,15 @@ class FxaAuthRepository(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                lastDiag = "oauth-host " + (e.message ?: e.javaClass.simpleName).take(60)
+                LoginTrace.log("refresh: oauth-host ($ua) error: " + lastDiag)
                 continue
             }
         }
         null
     }
+
+    @Volatile private var lastDiag: String = ""
 
     private suspend fun oauthToken(sessionToken: String): JSONObject {
         // مثل FoxyVPN رسمی و آرمان: اول با UAِ Mozilla VPN، بعد UA دسکتاپ فایرفاکس؛ تا تأییدشدن نشست (errno 104/138) هر ۳ ثانیه تکرار
@@ -419,7 +434,9 @@ class FxaAuthRepository(
                 // WebView شکست خورد؛ مسیر معمولی (OkHttp + حل‌کننده) را امتحان می‌کنیم
             }
         }
+        LoginTrace.log("api-host $path: sending")
         var response: Response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        LoginTrace.log("api-host $path: HTTP " + response.code)
         if (response.code == 406 && viaWebViewOk) WebViewFxa.sawChallengeAt = System.currentTimeMillis()
         // تازه‌سازی توکن: اول WebView واقعی (سریع‌تر و مطمئن‌تر)؛ فقط اگر خودِ WebView خراب شد سراغ حل‌کننده می‌رویم
         if (response.code == 406 && viaWebViewOk) {
@@ -440,6 +457,7 @@ class FxaAuthRepository(
         while (response.code == 406 && attempts < FXA_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
             try {
+                LoginTrace.log("api-host: solving 406 challenge #$attempts")
                 challengeSolver.solveAndInstall(challengedBody, "${url.scheme}://${url.host}")
             } catch (cancellation: CancellationException) {
                 throw cancellation
