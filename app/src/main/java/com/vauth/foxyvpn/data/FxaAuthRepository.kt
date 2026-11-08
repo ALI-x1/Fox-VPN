@@ -244,7 +244,94 @@ class FxaAuthRepository(
         }
     }
 
+    /** پروفایل درخواست OAuth فایرفاکس (همون که کلاینت آرمان می‌فرسته). */
+    private fun Request.Builder.firefoxOauthProfile(ua: String): Request.Builder = this
+        .header("User-Agent", ua)
+        .header("Accept-Encoding", "identity")
+        .header("Accept", "application/json;q=0.9,*/*;q=0.2")
+        .header("Accept-Language", "en-US, en")
+        .header("Cache-Control", "no-cache")
+        .header("Pragma", "no-cache")
+        .header("Sec-Fetch-Dest", "empty")
+        .header("Sec-Fetch-Mode", "no-cors")
+        .header("Sec-Fetch-Site", "none")
+        .header("Priority", "u=4")
+
+    private fun b64url(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+
+    /**
+     * مسیر جایگزین وقتی /oauth/token را Fastly رد می‌کند (۴۰۶): نشست ← /oauth/authorization (Hawk) ← code،
+     * بعد code + PKCE روی oauth.accounts.firefox.com/v1/token (بدون Hawk). null = ۴۰۶ شد؛ برو سراغ راه قبلی.
+     */
+    private suspend fun oauthTokenViaCode(sessionToken: String, ua: String): JSONObject? = withContext(Dispatchers.IO) {
+        val (id, key) = deriveHawkCredentials(sessionToken)
+        val verifier = b64url(ByteArray(32).also { SecureRandom().nextBytes(it) })
+        val challenge = b64url(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.UTF_8)))
+        val state = b64url(ByteArray(12).also { SecureRandom().nextBytes(it) })
+        val jsonType = "application/json; charset=utf-8".toMediaType()
+
+        val authUrl = "$FXA_AUTH_SERVER/oauth/authorization".toHttpUrl()
+        val authBytes = JSONObject().apply {
+            put("client_id", FIREFOX_CLIENT_ID)
+            put("response_type", "code")
+            put("scope", OAUTH_SCOPE)
+            put("state", state)
+            put("access_type", "offline")
+            put("code_challenge", challenge)
+            put("code_challenge_method", "S256")
+        }.toString().toByteArray(Charsets.UTF_8)
+        val authReq = Request.Builder().url(authUrl).firefoxOauthProfile(ua)
+            .header("Authorization", hawkHeader("POST", authUrl, id, key, authBytes))
+            .post(authBytes.toRequestBody(jsonType)).build()
+        val (c1, t1) = ControlPlaneHttp.client.newCall(authReq).execute().use { it.code to it.body?.string().orEmpty() }
+        if (c1 == 406) return@withContext null
+        if (c1 >= 400) {
+            val eb = try { JSONObject(t1) } catch (e: Exception) { JSONObject() }
+            throw FxaApiError(eb.optString("message", t1.ifEmpty { "HTTP $c1" }), if (eb.has("errno")) eb.optInt("errno") else null, c1)
+        }
+        val auth = JSONObject(t1)
+        val code = auth.optString("code")
+        if (code.isBlank() || auth.optString("state") != state) throw IllegalStateException("invalid OAuth authorization response")
+
+        val tokenBytes = JSONObject().apply {
+            put("client_id", FIREFOX_CLIENT_ID)
+            put("grant_type", "authorization_code")
+            put("code", code)
+            put("code_verifier", verifier)
+        }.toString().toByteArray(Charsets.UTF_8)
+        val tokenReq = Request.Builder().url("https://oauth.accounts.firefox.com/v1/token").firefoxOauthProfile(ua)
+            .post(tokenBytes.toRequestBody(jsonType)).build()
+        val (c2, t2) = ControlPlaneHttp.client.newCall(tokenReq).execute().use { it.code to it.body?.string().orEmpty() }
+        if (c2 == 406) return@withContext null
+        if (c2 >= 400) {
+            val eb = try { JSONObject(t2) } catch (e: Exception) { JSONObject() }
+            throw FxaApiError(eb.optString("message", t2.ifEmpty { "HTTP $c2" }), if (eb.has("errno")) eb.optInt("errno") else null, c2)
+        }
+        JSONObject(t2).takeIf { it.optString("access_token").isNotBlank() }
+    }
+
     private suspend fun oauthToken(sessionToken: String): JSONObject {
+        // مثل FoxyVPN رسمی و آرمان: اول با UAِ Mozilla VPN، بعد UA دسکتاپ فایرفاکس؛ تا تأییدشدن نشست (errno 104/138) هر ۳ ثانیه تکرار
+        for (ua in listOf("MozillaVPN/2.24.0 (sys:android 14)", FIREFOX_DESKTOP_UA)) {
+            var viaCode: JSONObject? = null
+            for (attempt in 0 until 12) {
+                try {
+                    viaCode = oauthTokenViaCode(sessionToken, ua)
+                    break
+                } catch (e: FxaApiError) {
+                    if ((e.errno == 104 || e.errno == 138) && attempt < 11) {
+                        kotlinx.coroutines.delay(3_000L)
+                        continue
+                    }
+                    throw e
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    break
+                }
+            }
+            if (viaCode != null) return viaCode
+        }
         val body = JSONObject().apply {
             put("client_id", FIREFOX_CLIENT_ID)
             put("grant_type", "fxa-credentials")
