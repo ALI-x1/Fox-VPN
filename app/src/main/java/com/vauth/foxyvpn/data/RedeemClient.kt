@@ -187,6 +187,31 @@ class RedeemClient(context: Context) {
         null
     }
 
+    /** پاس پراکسی از طرف سرور (وقتی Guardian موزیلا به آی‌پی گوشی ۴۵۱ می‌دهد). null = نشد. */
+    suspend fun serverPass(): ProxyPass? = withContext(Dispatchers.IO) {
+        val code = activeCode ?: return@withContext null
+        val bases = (listOfNotNull(homeWorker?.takeIf { it in workers }) + workers).distinct()
+        for (base in bases) {
+            val r = runCatching { post(base, "/v1/tok", JSONObject().put("code", code).put("deviceId", deviceId).put("pass", true)) }.getOrNull() ?: continue
+            LoginTrace.log("server-pass: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(100) else "")
+            AppLogger.i("RedeemClient", "server-pass: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(100) else "")
+            if (r.code == 200) {
+                val p = runCatching { JSONObject(r.text).optJSONObject("pass") }.getOrNull() ?: continue
+                val token = p.optString("token")
+                if (token.isBlank()) continue
+                return@withContext ProxyPass(
+                    token = token,
+                    expiresAtEpochSeconds = p.optLong("expiresAt", 0L).takeIf { it > 0 } ?: jwtExpiryEpochSeconds(token),
+                    quotaMax = p.optLong("quotaMax", 0L).takeIf { it > 0 },
+                    quotaRemaining = p.optLong("quotaRemaining", -1L).takeIf { it >= 0 },
+                    quotaReset = p.optLong("quotaReset", 0L).takeIf { it > 0 },
+                )
+            }
+            if (r.code in 400..499 && r.code != 429) break
+        }
+        null
+    }
+
     fun diagBase(): String? = homeWorker?.takeIf { it in workers } ?: workers.firstOrNull()
 
     /** گزارش عیب‌یابی رو برای پشتیبانی می‌فرسته (بدون خودِ کد). */
