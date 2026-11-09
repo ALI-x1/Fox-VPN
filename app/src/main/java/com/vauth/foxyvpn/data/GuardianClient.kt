@@ -27,11 +27,32 @@ data class ProxyPass(
     val quotaReset: Long? = null,
 )
 
+/** اپ در FoxyVpnApp پرش می‌کند: پاس پراکسی از سرور خودمان (وقتی Guardian به آی‌پی گوشی ۴۵۱ می‌دهد). */
+object ServerPassHook {
+    @Volatile var provider: (suspend () -> ProxyPass?)? = null
+    @Volatile var preferServer = false
+}
+
 class GuardianClient(
     private val challengeSolver: FastlyChallengeSolver = FastlyChallengeSolver(ControlPlaneHttp.cookieJar),
 ) {
 
-    suspend fun fetchProxyPass(endpoint: String, accessToken: String): ProxyPass = withContext(Dispatchers.IO) {
+    suspend fun fetchProxyPass(endpoint: String, accessToken: String): ProxyPass {
+        if (ServerPassHook.preferServer) {
+            ServerPassHook.provider?.invoke()?.let { return it }
+        }
+        try {
+            return fetchProxyPassDirect(endpoint, accessToken)
+        } catch (e: GuardianHttpError) {
+            if (e.statusCode != 451) throw e
+            AppLogger.w(TAG, "Guardian says unavailable in region (HTTP 451); asking our server for the proxy pass")
+            val viaServer = ServerPassHook.provider?.invoke() ?: throw e
+            ServerPassHook.preferServer = true
+            return viaServer
+        }
+    }
+
+    private suspend fun fetchProxyPassDirect(endpoint: String, accessToken: String): ProxyPass = withContext(Dispatchers.IO) {
         val url = "${endpoint.trimEnd('/')}/api/v1/fpn/token"
         authorizedRequest("GET", url, accessToken).use { resp ->
             when (resp.code) {
