@@ -194,7 +194,7 @@ class RedeemClient(context: Context) {
         for (base in bases) {
             val r = runCatching { post(base, "/v1/tok", JSONObject().put("code", code).put("deviceId", deviceId).put("pass", true)) }.getOrNull() ?: continue
             LoginTrace.log("server-pass: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(100) else "")
-            AppLogger.i("RedeemClient", "server-pass: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(100) else "")
+            AppLogger.i("RedeemClient", "server-pass: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(240) else "")
             if (r.code == 200) {
                 val p = runCatching { JSONObject(r.text).optJSONObject("pass") }.getOrNull() ?: continue
                 val token = p.optString("token")
