@@ -128,6 +128,9 @@ fun LogsScreen(onBack: () -> Unit) {
                     }) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = tr("Copy logs"))
                     }
+                    androidx.compose.material3.TextButton(onClick = { com.vauth.foxyvpn.data.ConnectTrace.copy(context) }) {
+                        androidx.compose.material3.Text("Connect")
+                    }
                     IconButton(onClick = { AppLogger.clear() }) {
                         Icon(Icons.Filled.DeleteSweep, contentDescription = tr("Clear logs"))
                     }
