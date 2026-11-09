@@ -553,6 +553,7 @@ class FoxyVpnService : VpnService() {
         EdgeAddressResolver.invalidate()
         runCatching {
             AppLogger.i(TAG, "connect: starting")
+            com.vauth.foxyvpn.data.ConnectTrace.begin(applicationContext)
             val tokenStore = TokenStore(applicationContext)
             if (tokenStore.loadAuth() == null) error(tr("Not signed in"))
             val proxyStateStore = ProxyStateStore(applicationContext)
@@ -736,6 +737,7 @@ class FoxyVpnService : VpnService() {
                     }
                 }
                 val guardian = GuardianClient()
+                com.vauth.foxyvpn.data.ConnectTrace.step("requesting Guardian proxy pass (token expires in " + (auth.expiresAtEpochSeconds - System.currentTimeMillis() / 1000) + "s)")
 
                 suspend fun passWith(token: String): ProxyPass = try {
                     guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, token)
@@ -774,6 +776,7 @@ class FoxyVpnService : VpnService() {
 
                 val edgeAddress = customEdgeAddress
                     ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses)
+                com.vauth.foxyvpn.data.ConnectTrace.step("dialing ${target.host}:${target.port} edge=${edgeAddress ?: "system DNS"}")
 
                 val session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
                     target.host,
@@ -1044,6 +1047,7 @@ class FoxyVpnService : VpnService() {
                 friendlyErrorMessage(failure)
             }
             AppLogger.e(TAG, "connect failed", failure)
+            com.vauth.foxyvpn.data.ConnectTrace.step("FAILED: " + com.vauth.foxyvpn.data.ConnectTrace.chain(failure))
             _lastError.value = message
             teardown()
             exitForeground()
