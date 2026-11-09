@@ -109,7 +109,16 @@ class GuardianClient(
             if (method == "POST") builder.post(ByteArray(0).toRequestBody(null))
             return builder.build()
         }
-        var response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        val tag = "$method ${url.substringAfter("//").substringAfter('/')}"
+        val t0 = System.currentTimeMillis()
+        AppLogger.i(TAG, "guardian $tag: sending")
+        var response = try {
+            ControlPlaneHttp.client.newCall(buildRequest()).execute()
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "guardian $tag: network error after ${System.currentTimeMillis() - t0}ms: ${e.javaClass.simpleName}: ${e.message}")
+            throw e
+        }
+        AppLogger.i(TAG, "guardian $tag: HTTP ${response.code} in ${System.currentTimeMillis() - t0}ms")
         var attempts = 1
         while (response.code == 406 && attempts < GUARDIAN_MAX_CHALLENGE_ATTEMPTS) {
             val challengedBody = response.use { it.body?.string().orEmpty() }
@@ -126,6 +135,7 @@ class GuardianClient(
                 )
             }
             response = ControlPlaneHttp.client.newCall(buildRequest()).execute()
+            AppLogger.i(TAG, "guardian $tag: after challenge solve HTTP ${response.code}")
             attempts++
         }
         return response
