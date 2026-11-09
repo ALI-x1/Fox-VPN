@@ -106,6 +106,10 @@ object AppLogger {
         _entries.value = emptyList()
     }
 
+    fun lastId(): Long = entryCounter.get()
+
+    fun since(id: Long): List<LogEntry> = buffer.filter { it.id > id }
+
     fun exportAsText(): String = buffer.toList().joinToString("\n") { entry ->
         val ts = timeFormat.format(Date(entry.timestampMillis))
         "$ts ${entry.level.name.padEnd(5)} [${entry.tag}] ${entry.message}"
