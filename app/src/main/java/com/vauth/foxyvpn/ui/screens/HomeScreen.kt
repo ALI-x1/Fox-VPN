@@ -1438,10 +1438,12 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit, modifier: Modifi
     val tone = MaterialTheme.colorScheme.error
     val shape = RoundedCornerShape(16.dp)
     val c = LocalFoxExtras.current
+    val bannerCtx = LocalContext.current
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
+            .clickable { com.vauth.foxyvpn.data.ConnectTrace.copy(bannerCtx) }
             .background(tone.copy(alpha = 0.12f))
             .border(1.dp, tone.copy(alpha = 0.35f), shape)
             .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
