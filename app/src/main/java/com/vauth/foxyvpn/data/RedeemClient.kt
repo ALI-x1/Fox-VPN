@@ -188,7 +188,25 @@ class RedeemClient(context: Context) {
     }
 
     /** پاس پراکسی از طرف سرور (وقتی Guardian موزیلا به آی‌پی گوشی ۴۵۱ می‌دهد). null = نشد. */
-    suspend fun serverPass(): ProxyPass? = withContext(Dispatchers.IO) {
+    suspend fun serverPass(accessToken: String): ProxyPass? = withContext(Dispatchers.IO) {
+        // ۱) مسیر بدون کد: هر Workerی (به ترتیب تصادفی تا سقف روزانه پخش شود) پاس را با توکن خود اپ می‌گیرد
+        for (base in workers.shuffled()) {
+            val r = runCatching { post(base, "/v1/gp", JSONObject().put("t", accessToken)) }.getOrNull() ?: continue
+            AppLogger.i("RedeemClient", "pass relay ${base.substringAfter("//").substringBefore('.')}: HTTP ${r.code}" + if (r.code != 200) " " + r.text.take(160) else "")
+            if (r.code == 200) {
+                val p = runCatching { JSONObject(r.text).optJSONObject("pass") }.getOrNull() ?: continue
+                val token = p.optString("token")
+                if (token.isBlank()) continue
+                return@withContext ProxyPass(
+                    token = token,
+                    expiresAtEpochSeconds = p.optLong("expiresAt", 0L).takeIf { it > 0 } ?: jwtExpiryEpochSeconds(token),
+                    quotaMax = p.optLong("quotaMax", 0L).takeIf { it > 0 },
+                    quotaRemaining = p.optLong("quotaRemaining", -1L).takeIf { it >= 0 },
+                    quotaReset = p.optLong("quotaReset", 0L).takeIf { it > 0 },
+                )
+            }
+        }
+        // ۲) راه قدیمی: Worker خانه با کد دستگاه
         val code = activeCode ?: return@withContext null
         val bases = (listOfNotNull(homeWorker?.takeIf { it in workers }) + workers).distinct()
         for (base in bases) {
@@ -504,6 +522,13 @@ class RedeemClient(context: Context) {
             BASE_URL,
             "", // Worker دوم، مثلاً "https://fox-redeem.partner1.workers.dev"
             "", // Worker سوم
+            "", // ۴ (فقط برای پخش بار پاس Guardian کافی‌ست؛ دیتابیس نمی‌خواهد)
+            "", // ۵
+            "", // ۶
+            "", // ۷
+            "", // ۸
+            "", // ۹
+            "", // ۱۰
         )
 
         /** تعداد Workerهای تنظیم‌شده. */
