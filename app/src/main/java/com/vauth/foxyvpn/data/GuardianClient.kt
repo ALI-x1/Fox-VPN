@@ -29,8 +29,13 @@ data class ProxyPass(
 
 /** اپ در FoxyVpnApp پرش می‌کند: پاس پراکسی از سرور خودمان (وقتی Guardian به آی‌پی گوشی ۴۵۱ می‌دهد). */
 object ServerPassHook {
-    @Volatile var provider: (suspend () -> ProxyPass?)? = null
-    @Volatile var preferServer = false
+    @Volatile var provider: (suspend (String) -> ProxyPass?)? = null
+    /** بعد از اولین ۴۵۱ ماندگار می‌شود تا اتصال‌های بعدی (حتی بعد از بستن اپ) مستقیم از سرور بگیرند و ~۰٫۷ ثانیه صرفه‌جویی شود. */
+    @Volatile private var memo: Boolean? = null
+    private fun prefs() = ControlPlaneHttp.appContext?.getSharedPreferences("fox_guard", android.content.Context.MODE_PRIVATE)
+    var preferServer: Boolean
+        get() = memo ?: (runCatching { prefs()?.getBoolean("prefer_server", false) }.getOrNull() ?: false).also { memo = it }
+        set(v) { memo = v; runCatching { prefs()?.edit()?.putBoolean("prefer_server", v)?.apply() } }
 }
 
 class GuardianClient(
@@ -39,14 +44,14 @@ class GuardianClient(
 
     suspend fun fetchProxyPass(endpoint: String, accessToken: String): ProxyPass {
         if (ServerPassHook.preferServer) {
-            ServerPassHook.provider?.invoke()?.let { return it }
+            ServerPassHook.provider?.invoke(accessToken)?.let { return it }
         }
         try {
             return fetchProxyPassDirect(endpoint, accessToken)
         } catch (e: GuardianHttpError) {
             if (e.statusCode != 451) throw e
             AppLogger.w(TAG, "Guardian says unavailable in region (HTTP 451); asking our server for the proxy pass")
-            val viaServer = ServerPassHook.provider?.invoke() ?: throw e
+            val viaServer = ServerPassHook.provider?.invoke(accessToken) ?: throw e
             ServerPassHook.preferServer = true
             return viaServer
         }
