@@ -48,7 +48,7 @@ class FoxyVpnApp : Application() {
         guardianClient = GuardianClient()
         serverListClient = ServerListClient()
         authRepository = FxaAuthRepository(tokenStore)
-        com.vauth.foxyvpn.data.ServerPassHook.provider = { com.vauth.foxyvpn.data.RedeemClient(this).serverPass() }
+        com.vauth.foxyvpn.data.ServerPassHook.provider = { t -> com.vauth.foxyvpn.data.RedeemClient(this).serverPass(t) }
         authRepository.serverTokenProvider = { com.vauth.foxyvpn.data.RedeemClient(this).serverToken() }
         createNotificationChannel()
         // اگه پروسه‌ی قبلی بدون پاک‌کردن نوتیف کشته شده، نوتیفِ جامانده را بردار
