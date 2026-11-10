@@ -203,7 +203,9 @@ fun LoginScreen(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val redeemClient = remember { RedeemClient(context.applicationContext) }
-    val planCfg by rememberPlanConfig()
+    val (planState, cfgReadyState) = com.vauth.foxyvpn.data.rememberPlanConfigReady()
+    val planCfg by planState
+    val cfgReady by cfgReadyState
     // صفحه‌ی موزیلا پشت‌صحنه آماده می‌شود تا ورود سریع‌تر باشد
     LaunchedEffect(Unit) { com.vauth.foxyvpn.data.WebViewFxa.prewarm(context) }
     val freePlan = planCfg.plan("free")
@@ -408,6 +410,11 @@ fun LoginScreen(
                             },
                         )
                         Spacer(Modifier.height(12.dp))
+                        if (!cfgReady) {
+                            Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.Center) {
+                                androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = c.textSecondary)
+                            }
+                        } else {
                         val freeSub = if (!planCfg.mon) null else com.vauth.foxyvpn.i18n.bidi(
                             trf("%s · %d days free", gbLabel(freePlan.gb), freePlan.days).replace("\u202B", "").replace("\u202C", ""),
                         )
@@ -436,6 +443,7 @@ fun LoginScreen(
                             colors = c,
                             onClick = { if (storeBot.isNotBlank()) runCatching { uriHandler.openUri(tgUrl(storeBot)) } else openSupport() },
                         ) }
+                        }
                     }
 
                     // ───── پیام خطا ─────
