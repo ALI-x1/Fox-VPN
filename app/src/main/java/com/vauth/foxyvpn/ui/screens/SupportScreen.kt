@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlowShape
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -183,7 +184,7 @@ private fun HeroBadge(c: FoxExtras, icon: ImageVector, text: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(26.dp), ambientColor = c.accent.copy(alpha = 0.3f), spotColor = c.accent.copy(alpha = 0.3f))
+            .softGlowShape(RoundedCornerShape(26.dp), c.accent, spread = 8f, strength = 0.20f)
             .clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(c.accentLight, c.accent)))
             .padding(18.dp),
