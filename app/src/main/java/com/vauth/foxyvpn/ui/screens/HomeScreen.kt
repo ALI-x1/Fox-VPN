@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlowShape
+import com.vauth.foxyvpn.ui.components.softGlow
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import android.os.Build
@@ -295,7 +297,7 @@ private const val EXIT_CHECK_RETRY_MS = 2_000L
 private fun Modifier.foxCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
-        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
+        .softGlowShape(shape, c.accent, spread = 6f, strength = 0.10f)
         .clip(shape)
         .background(color)
         .border(1.dp, c.cardBorder, shape)
@@ -1181,7 +1183,7 @@ private fun ConnectButton(
             Box(
                 modifier = Modifier
                     .size(buttonSize)
-                    .shadow(28.dp, CircleShape, ambientColor = ringColor, spotColor = ringColor)
+                    .softGlow(ringColor, spread = 24f, strength = 0.30f)
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(listOf(c.buttonFillCenter, c.buttonFillEdge))
@@ -1665,7 +1667,7 @@ private fun ChangeServerButton(c: FoxExtras, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier = Modifier
-            .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+            .softGlowShape(shape, c.accent, spread = 6f, strength = 0.30f)
             .clip(shape)
             .background(Brush.linearGradient(listOf(c.accent, c.accent.copy(alpha = 0.82f))))
             .clickable(onClick = onClick)
@@ -1749,7 +1751,7 @@ private fun DataRemainingCard(
 
     Column(
         modifier = modifier
-            .shadow(14.dp, shape, ambientColor = c.accent.copy(alpha = 0.2f), spotColor = c.accent.copy(alpha = 0.2f))
+            .softGlowShape(shape, c.accent, spread = 14f, strength = 0.14f)
             .clip(shape)
             .background(c.card)
             .border(1.dp, c.cardBorder, shape)
