@@ -393,8 +393,9 @@ fun PlansScreen(
 internal fun Modifier.planCard(c: FoxExtras, radius: Int, fill: Color, border: Color, width: Int = 1): Modifier {
     val shape = RoundedCornerShape(radius.dp)
     return this
-        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
+        .softGlowRect(c.accent, corner = radius.toFloat(), spread = 6f, strength = 0.10f)
         .clip(shape)
+        .background(c.card)
         .background(fill)
         .border(width.dp, border, shape)
 }
