@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlowShape
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import android.content.Context
@@ -1082,12 +1083,7 @@ private fun LocationCardShell(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                6.dp,
-                shape,
-                ambientColor = c.accent.copy(alpha = 0.15f),
-                spotColor = c.accent.copy(alpha = 0.15f),
-            )
+            .softGlowShape(shape, c.accent, spread = 6f, strength = 0.10f)
             .clip(shape)
             .background(c.card)
             .then(if (highlight) Modifier.background(c.accent.copy(alpha = 0.08f)) else Modifier)
