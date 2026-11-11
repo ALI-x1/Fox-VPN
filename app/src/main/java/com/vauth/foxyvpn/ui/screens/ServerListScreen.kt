@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.fadeScale
 import com.vauth.foxyvpn.ui.components.softGlowShape
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
@@ -1164,7 +1165,7 @@ private fun CityCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    LocationCardShell(modifier = if (locked) modifier.alpha(0.72f) else modifier, c = c, isSelected = isSelected, onClick = onClick) {
+    LocationCardShell(modifier = if (locked) modifier.fadeScale(0.72f) else modifier, c = c, isSelected = isSelected, onClick = onClick) {
         // پرچم کشور (نشان انتخاب‌شده روی گوشه‌ی پرچمه تا جای اسم کشور تنگ نشه)
         val context = LocalContext.current
         val flagRes = remember(countryCode) { flagResId(context, countryCode) }

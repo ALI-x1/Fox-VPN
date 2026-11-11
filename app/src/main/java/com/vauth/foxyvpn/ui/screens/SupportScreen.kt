@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.fadeScale
 import com.vauth.foxyvpn.ui.components.softGlowShape
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -134,8 +135,7 @@ internal fun ContactOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(a * (if (enabled) 1f else 0.55f))
-            .scale(0.96f + 0.04f * a)
+            .fadeScale(a * (if (enabled) 1f else 0.55f), 0.96f + 0.04f * a)
             .clip(shape)
             .background(c.card)
             .border(1.dp, if (enabled) tint.copy(alpha = 0.35f) else c.cardBorder, shape)

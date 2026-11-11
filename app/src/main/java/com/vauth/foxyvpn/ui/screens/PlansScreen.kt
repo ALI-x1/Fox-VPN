@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.fadeScale
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 
@@ -347,7 +348,7 @@ fun PlansScreen(
                 PLANS.forEachIndexed { i, plan ->
                     val a by animateFloatAsState(if (shown) 1f else 0f, tween(550, delayMillis = 120 * i), label = "plan-in")
                     PlanCard(
-                        modifier = Modifier.alpha(a).scale(0.94f + 0.06f * a),
+                        modifier = Modifier.fadeScale(a, 0.94f + 0.06f * a),
                         plan = plan,
                         c = c,
                         active = plan.key == currentKey,

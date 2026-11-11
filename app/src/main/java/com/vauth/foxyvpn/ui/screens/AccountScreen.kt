@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.fadeScale
 import com.vauth.foxyvpn.ui.components.softGlowShape
 import com.vauth.foxyvpn.ui.components.softGlow
 import androidx.compose.animation.core.animateFloatAsState
@@ -243,7 +244,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     val shape = RoundedCornerShape(28.dp)
     val pillShape = RoundedCornerShape(12.dp)
     Box(
-        modifier = Modifier.fillMaxWidth().alpha(a).scale(0.95f + 0.05f * a)
+        modifier = Modifier.fillMaxWidth().fadeScale(a, 0.95f + 0.05f * a)
             .softGlowShape(shape, c.accent, spread = 12f, strength = 0.20f)
             .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape),
     ) {
