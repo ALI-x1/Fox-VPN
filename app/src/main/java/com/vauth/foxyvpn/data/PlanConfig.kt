@@ -43,9 +43,12 @@ data class ContactInfo(
     val s1: String = "",
     val s2: String = "",
     val s3: String = "",
+    val s4: String = "",
+    val s5: String = "",
+    val s6: String = "",
 ) {
     /** دکمه‌های سفارشیِ صفحه‌ی اصلی: «ایموجی لینک» ← (ایموجی، مقصد) */
-    fun slots(): List<Pair<String, String>> = listOf(s1, s2, s3).mapNotNull { raw ->
+    fun slots(): List<Pair<String, String>> = listOf(s1, s2, s3, s4, s5, s6).mapNotNull { raw ->
         val t = raw.trim()
         val i = t.indexOfFirst { it.isWhitespace() }
         if (i <= 0) null else t.substring(0, i) to t.substring(i).trim()
@@ -62,7 +65,7 @@ data class TempOpen(val codes: Set<String>, val untilMs: Long) {
 /** تخفیف خودکار تمدید: وقتی [days] روز یا کمتر به انقضا مانده، کد [code] با [pct]٪ خودکار اعمال می‌شود. */
 data class RenewOffer(val pct: Int, val days: Int, val code: String)
 
-data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null, val hdr: String = "heart", val mon: Boolean = false, val hdrf: String = "upgrade") {
+data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null, val hdr: String = "heart", val mon: Boolean = false, val hdrf: String = "upgrade", val hi: String = "heart", val hfill: String = "keep", val hrot: Int = 10) {
     fun plan(key: String): PlanInfo = plans[key] ?: DEFAULT.plans.getValue(key)
 
     companion object {
@@ -102,7 +105,7 @@ object PlanConfigStore {
             ContactInfo(
                 cj.optString("card"), cj.optString("crypto"), cj.optString("donate"), cj.optString("tg"),
                 cj.optString("bot"), cj.optString("note"), cj.optString("cur"),
-                cj.optString("s1"), cj.optString("s2"), cj.optString("s3"),
+                cj.optString("s1"), cj.optString("s2"), cj.optString("s3"), cj.optString("s4"), cj.optString("s5"), cj.optString("s6"),
             ),
             j.optJSONObject("temp")?.let { t ->
                 val arr = t.optJSONArray("codes")
@@ -113,13 +116,13 @@ object PlanConfigStore {
             j.optString("hdr", "heart").ifBlank { "heart" },
             j.optBoolean("mon", true),
             j.optString("hdrf", "upgrade").ifBlank { "upgrade" },
+            j.optString("hi", "heart").ifBlank { "heart" },
+            j.optString("hfill", "keep").ifBlank { "keep" },
+            j.optInt("hrot", 10).coerceIn(4, 120),
         )
     }.getOrNull()
 
     private val DEFAULT_KEYS = listOf("free", "pro", "max", "vip")
-
-    fun hasCache(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) != null
 
     fun cached(context: Context): PlanConfig {
         val t = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
@@ -163,21 +166,6 @@ fun rememberPlanConfig(): State<PlanConfig> {
     val state = remember { mutableStateOf(PlanConfigStore.cached(context)) }
     LaunchedEffect(Unit) { state.value = PlanConfigStore.refresh(context) }
     return state
-}
-
-/** مثل [rememberPlanConfig] ولی «آماده» هم می‌دهد: اگر کشی نبود تا اولین پاسخ سرور (حداکثر ۲٫۵ ثانیه) false می‌ماند تا دکمه‌ها نپرند. */
-@Composable
-fun rememberPlanConfigReady(): Pair<State<PlanConfig>, State<Boolean>> {
-    val context = LocalContext.current
-    val state = remember { mutableStateOf(PlanConfigStore.cached(context)) }
-    val ready = remember { mutableStateOf(PlanConfigStore.hasCache(context)) }
-    LaunchedEffect(Unit) {
-        val quick = kotlinx.coroutines.withTimeoutOrNull(2500L) { PlanConfigStore.refresh(context) }
-        if (quick != null) state.value = quick
-        ready.value = true
-        if (quick == null) state.value = PlanConfigStore.refresh(context)
-    }
-    return state to ready
 }
 
 /** قالب عدد پول با جداکننده‌ی هزارگان. */
