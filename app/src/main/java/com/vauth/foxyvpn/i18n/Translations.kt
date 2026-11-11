@@ -154,6 +154,7 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Exit location check on" to "بررسی موقعیت خروج روشن شد",
     "FASTEST" to "سریع‌ترین",
     "Failed to establish TUN interface" to "ایجاد رابط TUN ناموفق بود",
+    "Another VPN is active. Tap Connect again and allow the VPN request." to "VPN دیگری فعال است. دوباره Connect را بزن و درخواست VPN را تأیید کن.",
     "Failed to load account info" to "بارگذاری اطلاعات حساب ناموفق بود",
     "Failed to load server list" to "بارگذاری فهرست سرورها ناموفق بود",
     "Failed to start the tun2socks tunnel (hev-socks5-tunnel)" to "راه‌اندازی تونل tun2socks (hev-socks5-tunnel) ناموفق بود",
