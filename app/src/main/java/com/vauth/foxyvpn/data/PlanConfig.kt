@@ -65,7 +65,7 @@ data class TempOpen(val codes: Set<String>, val untilMs: Long) {
 /** تخفیف خودکار تمدید: وقتی [days] روز یا کمتر به انقضا مانده، کد [code] با [pct]٪ خودکار اعمال می‌شود. */
 data class RenewOffer(val pct: Int, val days: Int, val code: String)
 
-data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null, val hdr: String = "heart", val mon: Boolean = false, val hdrf: String = "upgrade", val hi: String = "heart", val hfill: String = "keep", val hrot: Int = 10) {
+data class PlanConfig(val plans: Map<String, PlanInfo>, val contacts: ContactInfo, val temp: TempOpen? = null, val renew: RenewOffer? = null, val hdr: String = "heart", val mon: Boolean = false, val hdrf: String = "upgrade", val hi: String = "heart", val hfill: String = "keep", val hrot: Int = 10, val hbadge: String = "theme", val hanim: String = "soft", val hbtxt: String = "") {
     fun plan(key: String): PlanInfo = plans[key] ?: DEFAULT.plans.getValue(key)
 
     companion object {
@@ -119,6 +119,9 @@ object PlanConfigStore {
             j.optString("hi", "heart").ifBlank { "heart" },
             j.optString("hfill", "keep").ifBlank { "keep" },
             j.optInt("hrot", 10).coerceIn(4, 120),
+            j.optString("hbadge", "theme").ifBlank { "theme" },
+            j.optString("hanim", "soft").ifBlank { "soft" },
+            j.optString("hbtxt", "").take(6),
         )
     }.getOrNull()
 
