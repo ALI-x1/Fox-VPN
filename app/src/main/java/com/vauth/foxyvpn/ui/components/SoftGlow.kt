@@ -6,6 +6,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.drawOutline
 
 /**
  * جایگزین سبک و بدون‌ایراد برای `.shadow()` روی شکل‌های نیمه‌شفاف.
@@ -39,5 +42,17 @@ fun Modifier.softGlowRect(color: Color, corner: Float = 20f, spread: Float = 10f
                 size = androidx.compose.ui.geometry.Size(size.width + 2 * s, size.height + 2 * s),
                 cornerRadius = CornerRadius((corner * d) + s),
             )
+        }
+    }
+
+/** هاله‌ی نرم دور هر شکل دلخواه (گرد، مستطیل گرد…)؛ جایگزین `.shadow()` بدون دیده‌شدن از زیر پس‌زمینه‌ی نیمه‌شفاف. */
+fun Modifier.softGlowShape(shape: Shape, color: Color, spread: Float = 10f, strength: Float = 0.12f): Modifier =
+    drawBehind {
+        val d = density
+        for (i in 1..3) {
+            val s = spread * d * i / 3f
+            val sz = androidx.compose.ui.geometry.Size(size.width + 2 * s, size.height + 2 * s)
+            val outline = shape.createOutline(sz, layoutDirection, this)
+            translate(left = -s, top = -s + 3f * d) { drawOutline(outline, color.copy(alpha = strength / i)) }
         }
     }
