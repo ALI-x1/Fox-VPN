@@ -135,6 +135,7 @@ import androidx.compose.ui.draw.scale
 import android.content.Context
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.AcUnit
@@ -554,10 +555,10 @@ fun HomeScreen(
     // رایگان/کم‌حجم/نزدیک انقضا ← تاج ارتقا؛ کاربر پولیِ سرحال ← قلب (یا سفارشی‌های صاحب برنامه از ربات)
     val headerMode = when {
         !monOn -> if (planCfg.hdrf == "custom" && slot != null) HeaderMode.CUSTOM else HeaderMode.NONE
-        isAdmin || license == null -> HeaderMode.CALM
+        isAdmin || license == null -> if (planCfg.hdrf == "custom" && slot != null) HeaderMode.CUSTOM else HeaderMode.CALM
         needsUpgrade -> when {
             planCfg.hdrf == "off" -> HeaderMode.NONE
-            planCfg.hdrf == "custom" && slot != null -> HeaderMode.CUSTOM
+            planCfg.hdrf == "custom" -> if (slot != null) HeaderMode.CUSTOM else HeaderMode.HEART // «سفارشی» انتخاب شده ولی هنوز دکمه‌ای ساخته نشده: تاج نشان نده
             else -> HeaderMode.UPGRADE
         }
         planCfg.hdr == "off" -> HeaderMode.NONE
@@ -804,7 +805,7 @@ fun HomeScreen(
                                 Spacer(Modifier.width(8.dp))
                             }
                             if (headerMode != HeaderMode.NONE) UpgradeHeaderButton(
-                                c = c, mode = headerMode, discPct = headerDisc, slotEmoji = slot?.first ?: "", iconKey = planCfg.hi, fillMode = planCfg.hfill,
+                                c = c, mode = headerMode, discPct = headerDisc, slotEmoji = slot?.first ?: "", iconKey = planCfg.hi, fillMode = planCfg.hfill, badge = planCfg.hbadge, badgeText = planCfg.hbtxt, anim = planCfg.hanim,
                                 tip = if (tipOpen) tr("Get more data here") else null,
                                 onClick = {
                                     if (headerMode == HeaderMode.HEART || headerMode == HeaderMode.CUSTOM) {
@@ -1886,7 +1887,7 @@ private enum class HeaderMode { UPGRADE, HEART, CUSTOM, CALM, NONE }
  * انیمیشن فقط تو حالت UPGRADE ساخته می‌شه (در بقیه‌ی حالت‌ها مصرف باتری صفر).
  */
 @Composable
-private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", iconKey: String = "heart", fillMode: String = "keep", onClick: () -> Unit) {
+private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", iconKey: String = "heart", fillMode: String = "keep", badge: String = "theme", badgeText: String = "", anim: String = "soft", onClick: () -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val ctxH = androidx.compose.ui.platform.LocalContext.current
     // حالت «پر/خالی»: خطی و بی‌رنگ؛ با لمس پر و هم‌رنگ تم (keep = می‌مونه · flash = لحظه‌ای)
@@ -1894,19 +1895,20 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
     val fprefs = remember { ctxH.getSharedPreferences("foxvpn_hints", android.content.Context.MODE_PRIVATE) }
     var filled by remember(fillId, fillMode) { mutableStateOf(fillMode == "keep" && fprefs.getBoolean("hdr_fill_$fillId", false)) }
     LaunchedEffect(filled, fillMode) { if (filled && fillMode != "keep") { delay(1400); filled = false } }
-    val pop by androidx.compose.animation.core.animateFloatAsState(if (filled) 1.12f else 1f, androidx.compose.animation.core.spring(0.45f, 600f), label = "hdr-pop")
-    val iconTint by animateColorAsState(if (filled) c.accent else c.textSecondary.copy(alpha = 0.85f), tween(350), label = "hdr-tint")
-    Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-        if (mode == HeaderMode.UPGRADE) {
+    val pop by androidx.compose.animation.core.animateFloatAsState(if (filled) 1.12f else 1f, androidx.compose.animation.core.spring(0.7f, 220f), label = "hdr-pop")
+    val iconTint by animateColorAsState(if (filled) c.accent else c.textSecondary.copy(alpha = 0.85f), tween(650), label = "hdr-tint")
+    // zIndex منفی + دامنه‌ی کوچک: هاله هیچ‌وقت روی دکمه‌های کناری (تنظیمات/تم) نمی‌افته و اگر برسه زیرشان می‌رود
+    Box(modifier = Modifier.size(42.dp).zIndex(-1f), contentAlignment = Alignment.Center) {
+        if (mode == HeaderMode.UPGRADE && anim != "off") {
             val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-halo")
             val p = t.animateFloat(
                 initialValue = 0f, targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(1800, easing = androidx.compose.animation.core.LinearOutSlowInEasing)),
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(if (anim == "normal") 2200 else 3800, easing = androidx.compose.animation.core.LinearOutSlowInEasing)),
                 label = "halo",
             )
             Box(
                 Modifier.matchParentSize()
-                    .graphicsLayer { val k = 1f + 0.55f * p.value; scaleX = k; scaleY = k; alpha = 0.55f * (1f - p.value) }
+                    .graphicsLayer { val k = 1f + (if (anim == "normal") 0.28f else 0.2f) * p.value; scaleX = k; scaleY = k; alpha = (if (anim == "normal") 0.5f else 0.35f) * (1f - p.value) }
                     .border(2.dp, c.accent, CircleShape),
             )
         }
@@ -1940,12 +1942,25 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
                 }
             }
         }
-        // نقطه‌ی قرمز: «یه کاری داری»
+        // نشان روی تاج (از ربات): نقطه‌ی قرمز · نقطه هم‌رنگ تم · درخشش · متن کوتاه · هیچ
         if (mode == HeaderMode.UPGRADE && discPct <= 0) {
-            Box(
-                Modifier.align(Alignment.TopEnd).offset(x = 1.dp, y = (-1).dp).size(11.dp)
-                    .clip(CircleShape).background(MaterialTheme.colorScheme.error).border(1.5.dp, c.card, CircleShape),
-            )
+            val tr = Modifier.align(Alignment.TopEnd).offset(x = 1.dp, y = (-1).dp)
+            when (badge) {
+                "none" -> {}
+                "spark" -> Icon(
+                    androidx.compose.material.icons.Icons.Filled.AutoAwesome, null, tint = c.accent,
+                    modifier = tr.size(14.dp),
+                )
+                "text" -> Box(
+                    tr.offset(x = 4.dp).clip(RoundedCornerShape(7.dp)).background(c.accent).border(1.dp, c.card, RoundedCornerShape(7.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                ) { Text(badgeText.ifBlank { "NEW" }, fontSize = 9.sp, fontWeight = FontWeight.Black, color = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White, maxLines = 1) }
+                else -> Box(
+                    tr.size(11.dp).clip(CircleShape)
+                        .background(if (badge == "dot") MaterialTheme.colorScheme.error else c.accent)
+                        .border(1.5.dp, c.card, CircleShape),
+                )
+            }
         }
         // نشان تخفیف
         if (mode == HeaderMode.UPGRADE && discPct > 0) {
@@ -2051,31 +2066,4 @@ private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(b.tone.copy(alpha = 0.14f))
-            .border(1.dp, b.tone.copy(alpha = 0.45f), shape)
-            .then(if (b.onClick != null) Modifier.clickable(onClick = b.onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier.size(30.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
-            contentAlignment = Alignment.Center,
-        ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = com.vauth.foxyvpn.i18n.bidi(b.text),
-            modifier = Modifier.weight(1f),
-            color = c.textPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            lineHeight = 18.sp,
-            maxLines = 2,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
-        if (b.onClick != null) {
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Filled.ArrowForwardIos, contentDescription = null, tint = b.tone, modifier = Modifier.size(14.dp))
-        }
-    }
-}
+ 
