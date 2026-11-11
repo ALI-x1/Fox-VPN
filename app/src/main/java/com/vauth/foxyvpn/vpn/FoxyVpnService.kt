@@ -86,7 +86,7 @@ private class ConnectUnreachable(message: String) : IllegalStateException(messag
 
 private const val UNHEALTHY_REDIAL_COOLDOWN_MS = 30_000L
 
-private const val PROXY_PASS_RENEWAL_FRACTION = 0.5
+private const val PROXY_PASS_RENEWAL_FRACTION = 0.75
 private const val PROXY_PASS_RENEWAL_SAFETY_MARGIN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FLOOR_MS = 15_000L
@@ -695,7 +695,20 @@ class FoxyVpnService : VpnService() {
                         "local proxy at $socksBindAddress:$socksPort",
                 )
             } else {
-                val fd = establishTun(excludedApps, customDnsServer) ?: error(tr("Failed to establish TUN interface"))
+                // وقتی VPN دیگری فعال بوده، اندروید چند لحظه طول می‌کشه تا اجازه رو از اون بگیره؛ چند بار دوباره تلاش می‌کنیم
+                var fd = establishTun(excludedApps, customDnsServer)
+                var tries = 0
+                while (fd == null && tries < 4) {
+                    tries++
+                    AppLogger.w(TAG, "establishTun returned null (another VPN may still hold the tunnel); retry $tries/4")
+                    delay(700L)
+                    ensureGenerationCurrent(myGeneration)
+                    fd = establishTun(excludedApps, customDnsServer)
+                }
+                if (fd == null) {
+                    val other = runCatching { VpnService.prepare(this) != null }.getOrDefault(false)
+                    error(if (other) tr("Another VPN is active. Tap Connect again and allow the VPN request.") else tr("Failed to establish TUN interface"))
+                }
                 tunFd = fd
                 tunnelInterfaceActive = true
 
