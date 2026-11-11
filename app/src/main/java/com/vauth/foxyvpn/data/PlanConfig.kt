@@ -124,6 +124,9 @@ object PlanConfigStore {
 
     private val DEFAULT_KEYS = listOf("free", "pro", "max", "vip")
 
+    fun hasCache(context: Context): Boolean =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) != null
+
     fun cached(context: Context): PlanConfig {
         val t = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
         val at = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("at", 0L)
@@ -166,6 +169,21 @@ fun rememberPlanConfig(): State<PlanConfig> {
     val state = remember { mutableStateOf(PlanConfigStore.cached(context)) }
     LaunchedEffect(Unit) { state.value = PlanConfigStore.refresh(context) }
     return state
+}
+
+/** مثل [rememberPlanConfig] ولی «آماده» هم می‌دهد: اگر کشی نبود تا اولین پاسخ سرور (حداکثر ۲٫۵ ثانیه) false می‌ماند تا دکمه‌ها نپرند. */
+@Composable
+fun rememberPlanConfigReady(): Pair<State<PlanConfig>, State<Boolean>> {
+    val context = LocalContext.current
+    val state = remember { mutableStateOf(PlanConfigStore.cached(context)) }
+    val ready = remember { mutableStateOf(PlanConfigStore.hasCache(context)) }
+    LaunchedEffect(Unit) {
+        val quick = kotlinx.coroutines.withTimeoutOrNull(2500L) { PlanConfigStore.refresh(context) }
+        if (quick != null) state.value = quick
+        ready.value = true
+        if (quick == null) state.value = PlanConfigStore.refresh(context)
+    }
+    return state to ready
 }
 
 /** قالب عدد پول با جداکننده‌ی هزارگان. */
