@@ -545,8 +545,8 @@ fun HomeScreen(
     val slots = remember(planCfg) { planCfg.contacts.slots() }
     var rotIdx by remember { mutableStateOf(0) }
     val anyCustom = planCfg.hdr == "custom" || planCfg.hdrf == "custom"
-    LaunchedEffect(anyCustom, slots.size) {
-        if (anyCustom && slots.size > 1) while (true) { delay(10_000); rotIdx++ }
+    LaunchedEffect(anyCustom, slots.size, planCfg.hrot) {
+        if (anyCustom && slots.size > 1) while (true) { delay(planCfg.hrot * 1000L); rotIdx++ }
     }
     val slot = if (anyCustom && slots.isNotEmpty()) slots[rotIdx % slots.size] else null
     // رایگان/کم‌حجم/نزدیک انقضا ← تاج ارتقا؛ کاربر پولیِ سرحال ← قلب (یا سفارشی‌های صاحب برنامه از ربات)
@@ -802,7 +802,7 @@ fun HomeScreen(
                                 Spacer(Modifier.width(8.dp))
                             }
                             if (headerMode != HeaderMode.NONE) UpgradeHeaderButton(
-                                c = c, mode = headerMode, discPct = headerDisc, slotEmoji = slot?.first ?: "",
+                                c = c, mode = headerMode, discPct = headerDisc, slotEmoji = slot?.first ?: "", iconKey = planCfg.hi, fillMode = planCfg.hfill,
                                 tip = if (tipOpen) tr("Get more data here") else null,
                                 onClick = {
                                     if (headerMode == HeaderMode.HEART || headerMode == HeaderMode.CUSTOM) {
@@ -1884,9 +1884,16 @@ private enum class HeaderMode { UPGRADE, HEART, CUSTOM, CALM, NONE }
  * انیمیشن فقط تو حالت UPGRADE ساخته می‌شه (در بقیه‌ی حالت‌ها مصرف باتری صفر).
  */
 @Composable
-private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", onClick: () -> Unit) {
+private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", iconKey: String = "heart", fillMode: String = "keep", onClick: () -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val heart = Color(0xFFE9556D)
+    val ctxH = androidx.compose.ui.platform.LocalContext.current
+    // حالت «پر/خالی»: خطی و بی‌رنگ؛ با لمس پر و هم‌رنگ تم (keep = می‌مونه · flash = لحظه‌ای)
+    val fillId = if (mode == HeaderMode.CUSTOM) slotEmoji else iconKey
+    val fprefs = remember { ctxH.getSharedPreferences("foxvpn_hints", android.content.Context.MODE_PRIVATE) }
+    var filled by remember(fillId, fillMode) { mutableStateOf(fillMode == "keep" && fprefs.getBoolean("hdr_fill_$fillId", false)) }
+    LaunchedEffect(filled, fillMode) { if (filled && fillMode != "keep") { delay(1400); filled = false } }
+    val pop by androidx.compose.animation.core.animateFloatAsState(if (filled) 1.12f else 1f, androidx.compose.animation.core.spring(0.45f, 600f), label = "hdr-pop")
+    val iconTint by animateColorAsState(if (filled) c.accent else c.textSecondary.copy(alpha = 0.85f), tween(350), label = "hdr-tint")
     Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
         if (mode == HeaderMode.UPGRADE) {
             val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-halo")
@@ -1906,23 +1913,28 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
                 .matchParentSize()
                 .clip(CircleShape)
                 .background(Brush.linearGradient(listOf(c.accentLight.copy(alpha = 0.30f), c.accent.copy(alpha = 0.16f))))
-                .border(1.dp, animateColorAsState(if (mode == HeaderMode.HEART) heart else c.accent, tween(500), label = "hdr-bd").value.copy(alpha = 0.55f), CircleShape)
+                .border(1.dp, c.accent.copy(alpha = if (filled) 0.7f else 0.45f), CircleShape)
                 .clickable {
+                    if (mode == HeaderMode.HEART || mode == HeaderMode.CUSTOM) { filled = true; if (fillMode == "keep") fprefs.edit().putBoolean("hdr_fill_$fillId", true).apply() }
                     haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                     onClick()
                 },
             contentAlignment = Alignment.Center,
         ) {
             Crossfade(targetState = mode to slotEmoji, animationSpec = tween(500), label = "hdr-ic") { (m, em) ->
-                if (m == HeaderMode.CUSTOM) {
-                    Text(em, fontSize = 20.sp)
-                } else {
+                val key = if (m == HeaderMode.CUSTOM) em else iconKey
+                val sz = Modifier.size(24.dp).graphicsLayer { scaleX = pop; scaleY = pop }
+                if (m == HeaderMode.UPGRADE || m == HeaderMode.CALM) {
                     Icon(
-                        imageVector = if (m == HeaderMode.HEART) Icons.Filled.Favorite else Icons.Filled.WorkspacePremium,
-                        contentDescription = if (m == HeaderMode.HEART) tr("Support the project") else tr("Upgrade"),
-                        tint = if (m == HeaderMode.HEART) heart else c.accent,
-                        modifier = Modifier.size(25.dp),
+                        imageVector = androidx.compose.material.icons.Icons.Filled.WorkspacePremium,
+                        contentDescription = tr("Upgrade"), tint = c.accent, modifier = Modifier.size(25.dp),
                     )
+                } else if (key.equals("logo", true)) {
+                    Icon(painter = painterResource(id = R.drawable.ic_fox_mono), contentDescription = null, tint = iconTint, modifier = sz)
+                } else {
+                    val vec = com.vauth.foxyvpn.ui.components.HeaderIcons.vector(key, filled)
+                    if (vec != null) Icon(imageVector = vec, contentDescription = tr("Support the project"), tint = iconTint, modifier = sz)
+                    else Text(key, fontSize = 20.sp, modifier = Modifier.graphicsLayer { scaleX = pop; scaleY = pop; alpha = if (filled) 1f else 0.7f }) // ایموجی دلخواه
                 }
             }
         }
