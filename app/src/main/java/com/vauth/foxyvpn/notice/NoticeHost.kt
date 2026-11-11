@@ -136,6 +136,25 @@ fun NoticeHost() {
 
     val n = queue.firstOrNull() ?: return
     fun next() { NoticeClient.markShown(ctx, n); queue = queue.drop(1) }
+    if (n.mode == "splash") {
+        // پیام ورود: دستی (دکمه) · خودکار بعد از N ثانیه · اجباری (دکمه بعد از N ثانیه فعال می‌شه، بستن/برگشت نیست)
+        var left by remember(n.id, n.worker) { mutableStateOf(n.auto) }
+        LaunchedEffect(n.id, n.worker) {
+            while (left > 0) { kotlinx.coroutines.delay(1000); left-- }
+            if (n.auto > 0 && !n.force) next()
+        }
+        val locked = n.force && left > 0
+        val label = n.btn.ifBlank { if (n.url.isNotBlank()) tr("Open") else tr("Continue") }
+        NoticeScreen(
+            title = n.title, body = n.body, fx = n.fx,
+            primary = if (locked) "$label ($left)" else label,
+            primaryEnabled = !locked,
+            onPrimary = { if (n.url.isNotBlank()) open(n.url); next() },
+            canDismiss = !n.force && n.auto == 0,
+            onDismiss = { next() },
+        )
+        return
+    }
     if (n.mode == "screen") {
         NoticeScreen(
             title = n.title, body = n.body, code = n.ccode, fx = n.fx.ifBlank { "confetti" },
