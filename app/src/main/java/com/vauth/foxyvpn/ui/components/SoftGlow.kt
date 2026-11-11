@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawOutline
 
@@ -55,4 +56,16 @@ fun Modifier.softGlowShape(shape: Shape, color: Color, spread: Float = 10f, stre
             val outline = shape.createOutline(sz, layoutDirection, this)
             translate(left = -s, top = -s + 3f * d) { drawOutline(outline, color.copy(alpha = strength / i)) }
         }
+    }
+
+/**
+ * محو شدن (و کمی بزرگ‌شدن) بدون بافر جدا: با `.alpha()` معمولی هاله‌های بیرون از کادر (softGlow) تا پایان انیمیشن بریده
+ * می‌شدن و بعدش یهو ظاهر می‌شدن. اینجا شفافیت مستقیم روی هر فرمان رسم اعمال می‌شه.
+ */
+fun Modifier.fadeScale(alpha: Float, scale: Float = 1f): Modifier =
+    this.graphicsLayer {
+        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+        this.alpha = alpha
+        scaleX = scale
+        scaleY = scale
     }
