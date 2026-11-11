@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlowShape
 import com.vauth.foxyvpn.i18n.tr
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -147,11 +148,7 @@ private fun FoxExtras.toLoginColors() = LoginColors(
 private fun Modifier.loginCard(c: LoginColors, radius: Dp): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
-        .shadow(
-            6.dp, shape,
-            ambientColor = c.accent.copy(alpha = 0.15f),
-            spotColor = c.accent.copy(alpha = 0.15f),
-        )
+        .softGlowShape(shape, c.accent, spread = 6f, strength = 0.10f)
         .clip(shape)
         .background(c.card)
         .border(1.dp, c.cardBorder, shape)
@@ -639,11 +636,7 @@ private fun LoginPrimaryButton(
     val shape = RoundedCornerShape(20.dp)
     val bg = if (enabled || isLoading) {
         Modifier
-            .shadow(
-                10.dp, shape,
-                ambientColor = colors.accent.copy(alpha = 0.35f),
-                spotColor = colors.accent.copy(alpha = 0.35f),
-            )
+            .softGlowShape(shape, colors.accent, spread = 10f, strength = 0.22f)
             .clip(shape)
             .background(Brush.horizontalGradient(listOf(colors.accentLight, colors.accent)))
     } else {
