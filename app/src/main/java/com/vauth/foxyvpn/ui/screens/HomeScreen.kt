@@ -190,6 +190,8 @@ private fun rememberEntrance(entered: Boolean, index: Int): State<Float> = anima
 /** محو شدن + کمی بالا اومدن؛ فقط در فاز draw خونده می‌شه، پس recompose نداره. */
 private fun Modifier.entrance(progress: State<Float>): Modifier = graphicsLayer {
     val p = progress.value
+    // ModulateAlpha: بدون بافر جدا، تا هاله‌های بیرون از کادر (softGlow) وسط انیمیشن بریده نشن و بعدش یهو ظاهر نشن
+    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
     alpha = p
     translationY = (1f - p) * 20.dp.toPx()
 }

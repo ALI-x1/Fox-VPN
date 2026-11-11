@@ -167,7 +167,10 @@ private fun Modifier.reveal(progress: () -> Float, offsetPx: Float = 40f): Modif
  */
 private fun Modifier.collapsible(progress: () -> Float): Modifier = this
     .clipToBounds()
-    .graphicsLayer { alpha = progress().coerceIn(0f, 1f) }
+    .graphicsLayer {
+        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+        alpha = progress().coerceIn(0f, 1f)
+    }
     .layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
         val p = progress().coerceIn(0f, 1f)
