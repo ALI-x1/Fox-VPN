@@ -1269,7 +1269,20 @@ class FoxyVpnService : VpnService() {
     override fun onRevoke() {
         AppLogger.w(TAG, "onRevoke: vpn-holders now = ${describeVpnHolders()} | ours uid=${android.os.Process.myUid()}")
         AppLogger.w(TAG, "onRevoke: " + com.vauth.foxyvpn.data.SystemWatch.snapshotAtRevoke(this))
-        requestDisconnect("VPN permission was revoked by the system")
+        // اگر اجازه‌ی VPN هنوز مال ماست (برنامه‌ی دیگری نگرفته؛ مثلاً بعد از ری‌استارت گوشی سیستم/Google Play Services بی‌دلیل قطعش می‌کنه)
+        // خودمان دوباره وصل می‌شیم؛ حداکثر ۳ بار در ۱۰ دقیقه؛ با تأخیر کم تا کاربر قطعی حس نکنه
+        val stillOurs = runCatching { VpnService.prepare(this) == null }.getOrDefault(false)
+        val nowMs = System.currentTimeMillis()
+        revokeRetries.removeAll { nowMs - it > 10 * 60_000L }
+        val retry = stillOurs && revokeRetries.size < 3
+        requestDisconnect("VPN permission was revoked by the system" + if (retry) " (permission still ours → auto-reconnect)" else "")
+        if (retry) {
+            revokeRetries.add(nowMs)
+            val appCtx = applicationContext
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                runCatching { start(appCtx) }.onFailure { AppLogger.w(TAG, "auto-reconnect after revoke failed", it) }
+            }, 800L)
+        }
         super.onRevoke()
     }
 
@@ -1387,6 +1400,8 @@ class FoxyVpnService : VpnService() {
                 context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             }
         }
+
+        private val revokeRetries = java.util.Collections.synchronizedList(mutableListOf<Long>())
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FoxyVpnService::class.java).setAction(ACTION_CONNECT))
