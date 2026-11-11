@@ -31,17 +31,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 object HeaderIcons {
     private val pairs: Map<String, Pair<ImageVector, ImageVector>> = mapOf(
-        "heart" to (OHeart to FHeart),
-        "gift" to (OGift to FGift),
-        "fire" to (OFire to FFire),
-        "star" to (OStar to FStar),
-        "bolt" to (OBolt to FBolt),
-        "crown" to (OCrown to FCrown),
-        "prize" to (OPrize to FPrize),
-        "diamond" to (ODiamond to FDiamond),
-        "bell" to (OBell to FBell),
-        "chat" to (OChat to FChat),
-        "spark" to (OAutoAwesome to FAutoAwesome),
+        "heart" to (Icons.Outlined.OHeart to Icons.Filled.FHeart),
+        "gift" to (Icons.Outlined.OGift to Icons.Filled.FGift),
+        "fire" to (Icons.Outlined.OFire to Icons.Filled.FFire),
+        "star" to (Icons.Outlined.OStar to Icons.Filled.FStar),
+        "bolt" to (Icons.Outlined.OBolt to Icons.Filled.FBolt),
+        "crown" to (Icons.Outlined.OCrown to Icons.Filled.FCrown),
+        "prize" to (Icons.Outlined.OPrize to Icons.Filled.FPrize),
+        "diamond" to (Icons.Outlined.ODiamond to Icons.Filled.FDiamond),
+        "bell" to (Icons.Outlined.OBell to Icons.Filled.FBell),
+        "chat" to (Icons.Outlined.OChat to Icons.Filled.FChat),
+        "spark" to (Icons.Outlined.OAutoAwesome to Icons.Filled.FAutoAwesome),
     )
 
     fun isKnown(key: String): Boolean = key == "logo" || key.lowercase() in pairs
