@@ -100,6 +100,7 @@ fun NoticeScreen(
     secondary: String? = null,
     onSecondary: (() -> Unit)? = null,
     canDismiss: Boolean = true,
+    primaryEnabled: Boolean = true,
     onDismiss: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
@@ -199,7 +200,7 @@ fun NoticeScreen(
                     .softGlowRect(c.accent, 20f, 10f, 0.16f)
                     .clip(shape)
                     .background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)), shape)
-                    .clickable(onClick = onPrimary),
+                    .clickable(enabled = primaryEnabled, onClick = onPrimary),
                 contentAlignment = Alignment.Center,
             ) { Text(primary, color = onAccent, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) }
             if (secondary != null && onSecondary != null) {
