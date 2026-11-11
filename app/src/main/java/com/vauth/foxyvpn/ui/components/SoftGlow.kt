@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.drawscope.drawOutline
+import androidx.compose.ui.graphics.drawOutline
 
 /**
  * جایگزین سبک و بدون‌ایراد برای `.shadow()` روی شکل‌های نیمه‌شفاف.
