@@ -29,7 +29,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** یک اعلان همگانی از ربات. [worker] = ایندکس Worker که ازش اومده (شماره‌ی اعلان‌ها برای هر Worker جداست). */
-data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false, val ev: String = "open", val fx: String = "", val ccode: String = "")
+data class Notice(val worker: Int, val id: Long, val title: String, val body: String, val url: String, val mode: String = "both", val rep: Boolean = false, val ev: String = "open", val fx: String = "", val ccode: String = "", val auto: Int = 0, val force: Boolean = false, val btn: String = "")
 
 /** اعلان «نسخه‌ی جدید». [force] = اجباری: پنجره بسته نمی‌شه تا کاربر آپدیت کنه. */
 data class UpdateInfo(val versionCode: Int, val versionName: String, val notes: String, val url: String, val force: Boolean, val fx: String = "confetti", val rep: Boolean = false, val mode: String = "screen")
@@ -89,7 +89,7 @@ object NoticeClient {
                 val arr = j.optJSONArray("notices")
                 val list = (0 until (arr?.length() ?: 0)).map { i ->
                     val o = arr!!.getJSONObject(i)
-                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1, o.optString("ev", "open"), o.optString("fx"), o.optString("ccode"))
+                    Notice(worker, o.optLong("id"), o.optString("title"), o.optString("body"), o.optString("url"), o.optString("mode", "both"), o.optInt("rep", 0) == 1, o.optString("ev", "open"), o.optString("fx"), o.optString("ccode"), o.optInt("auto", 0), o.optInt("force", 0) == 1, o.optString("btn"))
                 }
                 val u = j.optJSONObject("update")?.let {
                     UpdateInfo(it.optInt("versionCode"), it.optString("versionName"), it.optString("notes"), it.optString("url"), it.optBoolean("force"), it.optString("fx", "confetti"), it.optBoolean("rep"), it.optString("mode", "screen"))
@@ -165,7 +165,7 @@ object NoticeClient {
         // rep = «هر بار ورود»: با «بعداً» فقط تا بستن همین اجرا کنار می‌ره؛ دفعه‌ی بعد که اپ باز بشه دوباره می‌آد
         val u = r.update?.takeIf { it.force || it.rep || it.versionCode > dismissed }
         if (r.ok) cacheForce(c, r.update)
-        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" }), u, whatsNew = r.whatsNew, ok = r.ok)
+        NoticeResult(launchFilter(r.notices.filter { it.mode != "push" && it.ev != "connect" && !splashSeen(c, it) }), u, whatsNew = r.whatsNew, ok = r.ok)
     }
 
     /**
@@ -227,7 +227,16 @@ object NoticeClient {
 
     fun launchFilter(list: List<Notice>): List<Notice> = list.filter { !it.rep || "${it.worker}:${it.id}" !in shownThisLaunch }
 
+    /** پیام ورود (splash): «فقط بار اول» با شناسه‌ی جدا از اعلان‌ها ذخیره می‌شه؛ با ویرایش مدیر شناسه عوض می‌شه و دوباره می‌آد. */
+    private fun splashSeen(c: Context, n: Notice): Boolean =
+        n.mode == "splash" && !n.rep && prefs(c).getLong("splash_seen_${n.worker}", 0L) >= n.id
+
     fun markShown(c: Context, n: Notice) {
+        if (n.mode == "splash") {
+            if (n.rep) shownThisLaunch.add("${n.worker}:${n.id}")
+            else prefs(c).edit().putLong("splash_seen_${n.worker}", n.id).apply()
+            return
+        }
         if (n.ev == "connect") {
             if (!n.rep) {
                 val p = prefs(c)
@@ -302,6 +311,7 @@ object NoticeClient {
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ensureChannel(c)
         for (n in r.notices) {
+            if (n.mode == "splash") continue // پیام ورود فقط داخل اپ نمایش داده می‌شه
             if (n.ev == "connect") continue // این‌ها موقع وصل‌شدن به VPN نشون داده می‌شن
             // اعلان‌های «هر ورود» هر بار از سرور برمی‌گردن؛ نوتیف فقط یک بار برای هر اعلان
             val isNew = n.id > p.getLong("notif_${n.worker}", 0L)
