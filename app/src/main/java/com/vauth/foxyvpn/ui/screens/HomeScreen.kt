@@ -2066,4 +2066,31 @@ private fun StatusBannerBar(b: HomeBanner, c: FoxExtras) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
- 
+            .clip(shape)
+            .background(b.tone.copy(alpha = 0.14f))
+            .border(1.dp, b.tone.copy(alpha = 0.45f), shape)
+            .then(if (b.onClick != null) Modifier.clickable(onClick = b.onClick) else Modifier)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(30.dp).clip(CircleShape).background(b.tone.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(b.icon, contentDescription = null, tint = b.tone, modifier = Modifier.size(20.dp)) }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = com.vauth.foxyvpn.i18n.bidi(b.text),
+            modifier = Modifier.weight(1f),
+            color = c.textPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 18.sp,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        if (b.onClick != null) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.ArrowForwardIos, contentDescription = null, tint = b.tone, modifier = Modifier.size(14.dp))
+        }
+    }
+}
