@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlowShape
+import com.vauth.foxyvpn.ui.components.softGlow
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.filled.ContentCopy
@@ -93,7 +95,7 @@ private fun onAccentColor(c: FoxExtras): Color = if (c.accent.luminance() > 0.3f
 private fun Modifier.accCard(c: FoxExtras, radius: Int, borderColor: Color = c.cardBorder, width: Int = 1): Modifier {
     val shape = RoundedCornerShape(radius.dp)
     return this
-        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
+        .softGlowShape(shape, c.accent, spread = 6f, strength = 0.10f)
         .clip(shape)
         .background(c.card)
         .border(width.dp, borderColor, shape)
@@ -242,7 +244,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     val pillShape = RoundedCornerShape(12.dp)
     Box(
         modifier = Modifier.fillMaxWidth().alpha(a).scale(0.95f + 0.05f * a)
-            .shadow(12.dp, shape, ambientColor = c.accent.copy(alpha = 0.3f), spotColor = c.accent.copy(alpha = 0.3f))
+            .softGlowShape(shape, c.accent, spread = 12f, strength = 0.20f)
             .clip(shape).background(c.card).border(2.dp, Brush.linearGradient(listOf(c.accentLight, c.accent)), shape),
     ) {
     Column(
@@ -251,7 +253,7 @@ private fun PlanHero(c: FoxExtras, onAccent: Color, lic: LicenseStatus, planDays
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(68.dp).shadow(8.dp, CircleShape, ambientColor = c.accent.copy(alpha = 0.5f), spotColor = c.accent.copy(alpha = 0.5f))
+                modifier = Modifier.size(68.dp).softGlow(c.accent, spread = 8f, strength = 0.35f)
                     .clip(CircleShape).background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
                 contentAlignment = Alignment.Center,
             ) { Icon(if (frozen) Icons.Filled.AcUnit else planIcon(lic.plan), null, tint = onAccent, modifier = Modifier.size(36.dp)) }
