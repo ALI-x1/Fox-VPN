@@ -48,8 +48,8 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 130
-        versionName = "2.0.0"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 142
+        versionName = "2.1.0"
 
         externalNativeBuild {
             ndkBuild {
