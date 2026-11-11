@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.softGlow
+import com.vauth.foxyvpn.ui.components.softGlowRect
 import com.vauth.foxyvpn.i18n.tr
 import com.vauth.foxyvpn.i18n.trf
 import com.vauth.foxyvpn.i18n.Lang
@@ -189,8 +191,9 @@ private val SxDanger = Color(0xFFE5484D)
 private fun Modifier.settingsCard(c: FoxExtras, radius: Dp, color: Color = c.card): Modifier {
     val shape: Shape = RoundedCornerShape(radius)
     return this
-        .shadow(6.dp, shape, ambientColor = c.accent.copy(alpha = 0.15f), spotColor = c.accent.copy(alpha = 0.15f))
+        .softGlowRect(c.accent, corner = radius.value, spread = 6f, strength = 0.10f)
         .clip(shape)
+        .background(c.card)
         .background(color)
         .border(1.dp, c.cardBorder, shape)
 }
@@ -1301,7 +1304,7 @@ private fun AccountHeaderRow(c: FoxExtras, license: com.vauth.foxyvpn.data.Licen
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .shadow(8.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
+                .softGlow(c.accent, spread = 8f, strength = 0.35f)
                 .clip(CircleShape)
                 .background(Brush.linearGradient(listOf(c.accentLight, c.accent))),
             contentAlignment = Alignment.Center,
@@ -1429,13 +1432,10 @@ private fun QuickTile(
     Column(
         modifier = modifier
             .heightIn(min = 140.dp)
-            .shadow(
-                if (active) 8.dp else 4.dp, shape,
-                ambientColor = c.accent.copy(alpha = 0.18f),
-                spotColor = c.accent.copy(alpha = 0.18f),
-            )
+            .softGlowRect(c.accent, corner = 24f, spread = if (active) 8f else 4f, strength = if (active) 0.16f else 0.10f)
             .clip(shape)
-            .background(if (active) activeBrush else SolidColor(c.card))
+            .background(c.card) // پایه‌ی مات: بدون این، زیر گرادیان نیمه‌شفاف چیز دیگری دیده می‌شد
+            .then(if (active) Modifier.background(activeBrush) else Modifier)
             .border(1.dp, if (active) c.accent.copy(alpha = 0.65f) else c.cardBorder, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 16.dp),
@@ -1445,10 +1445,7 @@ private fun QuickTile(
         Box(
             modifier = Modifier
                 .size(54.dp)
-                .then(
-                    if (active) Modifier.shadow(10.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
-                    else Modifier
-                )
+                .then(if (active) Modifier.softGlow(c.accent, spread = 10f, strength = 0.35f) else Modifier)
                 .clip(CircleShape)
                 .background(
                     if (active) Brush.linearGradient(listOf(c.accentLight, c.accent))
