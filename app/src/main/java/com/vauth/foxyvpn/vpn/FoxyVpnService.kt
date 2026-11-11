@@ -1268,6 +1268,7 @@ class FoxyVpnService : VpnService() {
 
     override fun onRevoke() {
         AppLogger.w(TAG, "onRevoke: vpn-holders now = ${describeVpnHolders()} | ours uid=${android.os.Process.myUid()}")
+        AppLogger.w(TAG, "onRevoke: " + com.vauth.foxyvpn.data.SystemWatch.snapshotAtRevoke(this))
         requestDisconnect("VPN permission was revoked by the system")
         super.onRevoke()
     }
