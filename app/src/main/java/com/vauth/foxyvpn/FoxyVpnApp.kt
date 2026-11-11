@@ -41,6 +41,7 @@ class FoxyVpnApp : Application() {
         NettyLoggingBridge.install()
         installConscrypt()
         UpstreamTrust.init(this)
+        com.vauth.foxyvpn.data.SystemWatch.install(this) // لاگ تشخیصی [Watch]
         com.vauth.foxyvpn.data.ControlPlaneHttp.cookieJar.attachStorage(this) // کوکی چالش Fastly ماندگار: اتصال اول سریع
         tokenStore = TokenStore(this)
         proxyStateStore = ProxyStateStore(this)
