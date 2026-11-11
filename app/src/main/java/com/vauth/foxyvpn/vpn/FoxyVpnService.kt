@@ -907,6 +907,15 @@ class FoxyVpnService : VpnService() {
             statusLabel = connectedText
             updateNotification(connectedText)
             AppLogger.i(TAG, "connect: CONNECTED via ${establishedCandidate.authority}")
+            // تشخیص «VPN permission revoked»: ۲ دقیقه‌ی اول هر ۳ ثانیه نگاه می‌کنیم آیا شبکه‌ی VPN دیگری (مال برنامه‌ی دیگر) ظاهر شد
+            scope.launch {
+                var last = ""
+                repeat(40) {
+                    delay(3000)
+                    val now = describeVpnHolders()
+                    if (now != last) { AppLogger.i(TAG, "vpn-holders: $now"); last = now }
+                }
+            }
 
             startProxyPassRenewal(myGeneration, currentPassExpiry) { mintProxyPass() }
 
@@ -1243,7 +1252,22 @@ class FoxyVpnService : VpnService() {
         runCatching { resources.tunFd?.close() }.onFailure { AppLogger.w(TAG, "error closing TUN interface", it) }
     }
 
+    /** شبکه‌های VPN فعال و صاحبشان (uid/نام بسته)؛ برای پیدا کردن برنامه‌ای که اجازه‌ی VPN را می‌گیرد. */
+    private fun describeVpnHolders(): String = runCatching {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val out = mutableListOf<String>()
+        for (n in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(n) ?: continue
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            val uid = if (Build.VERSION.SDK_INT >= 31) caps.ownerUid else -1
+            val pk = if (uid >= 0) packageManager.getPackagesForUid(uid)?.joinToString("+") else null
+            out += "uid=$uid pkg=${pk ?: "?"}${if (uid == android.os.Process.myUid()) " (ours)" else ""}"
+        }
+        if (out.isEmpty()) "none" else out.joinToString(" | ")
+    }.getOrElse { "n/a (${it.javaClass.simpleName})" }
+
     override fun onRevoke() {
+        AppLogger.w(TAG, "onRevoke: vpn-holders now = ${describeVpnHolders()} | ours uid=${android.os.Process.myUid()}")
         requestDisconnect("VPN permission was revoked by the system")
         super.onRevoke()
     }
