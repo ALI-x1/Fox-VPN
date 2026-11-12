@@ -4,6 +4,10 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+env:
+  LIBBOX_URL: https://github.com/Vauth/sing-box/releases/download/v1.0.0-masque/libbox.aar
+  LIBBOX_SHA256: a6a28c7f3cb53f4251d1578f4772f79831395503fdbf91920c6c1e33cc80281c
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,6 +36,15 @@ jobs:
 
       - name: Generate Gradle wrapper (if missing)
         run: gradle wrapper --gradle-version 8.10.2 || true
+
+      - name: Fetch and verify libbox core
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 300 \
+            --proto '=https' --proto-redir '=https' -o app/libs/libbox.aar "$LIBBOX_URL"
+          echo "$LIBBOX_SHA256  app/libs/libbox.aar" | sha256sum --check --strict
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --no-daemon
@@ -92,6 +105,15 @@ jobs:
         run: |
           N="$(echo "${GITHUB_REF_NAME}" | sed -n 's/^v\([0-9]\{1,6\}\)$/\1/p')"
           if [ -n "$N" ]; then echo "VERSION_CODE=$N" >> "$GITHUB_ENV"; else echo "Tag is not numeric; keeping the default versionCode."; fi
+
+      - name: Fetch and verify libbox core
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 300 \
+            --proto '=https' --proto-redir '=https' -o app/libs/libbox.aar "$LIBBOX_URL"
+          echo "$LIBBOX_SHA256  app/libs/libbox.aar" | sha256sum --check --strict
 
       - name: Assemble release APK
         env:
