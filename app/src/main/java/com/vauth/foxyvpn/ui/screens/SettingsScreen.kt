@@ -268,6 +268,12 @@ fun SettingsScreen(
 
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
     var dohProvider by remember { mutableStateOf(settingsStore.dohProvider) }
+    var upstreamProtocol by remember { mutableStateOf(settingsStore.upstreamProtocol) }
+    var ipVersion by remember { mutableStateOf(settingsStore.ipVersion) }
+    var customMtu by remember { mutableStateOf(settingsStore.customMtu) }
+    var showProtocolDialog by rememberSaveable { mutableStateOf(false) }
+    var showIpVersionDialog by rememberSaveable { mutableStateOf(false) }
+    var showMtuDialog by rememberSaveable { mutableStateOf(false) }
     var customDnsEnabled by remember { mutableStateOf(settingsStore.customDnsEnabled) }
     var customDnsServer by remember { mutableStateOf(settingsStore.customDnsServer) }
     var socksBindAddress by remember { mutableStateOf(settingsStore.socksBindAddress) }
@@ -316,6 +322,39 @@ fun SettingsScreen(
     if (showBug) BugReportDialog(onDismiss = { showBug = false })
     if (showRef) ReferralDialog(onDismiss = { showRef = false })
 
+    if (showProtocolDialog) {
+        ChoicePickerDialog(
+            title = tr("Protocol"),
+            current = upstreamProtocol,
+            options = listOf(
+                Triple("h2", "HTTP/2 (TCP)", tr("Default. One shared connection, fast and light")),
+                Triple("h1", "HTTP/1.1 (TLS)", tr("A separate connection per tunnel. Try it if HTTP/2 keeps dropping")),
+                Triple("h3", "HTTP/3 (QUIC)", tr("Over UDP. Fast on bad networks; needs UDP 443 open")),
+            ),
+            onDismiss = { showProtocolDialog = false },
+            onConfirm = { upstreamProtocol = it; settingsStore.upstreamProtocol = it; showProtocolDialog = false },
+        )
+    }
+    if (showIpVersionDialog) {
+        ChoicePickerDialog(
+            title = tr("IP version"),
+            current = ipVersion,
+            options = listOf(
+                Triple("auto", tr("Automatic"), tr("IPv4 first, then IPv6")),
+                Triple("v4", "IPv4", tr("Connect to the server over IPv4 only")),
+                Triple("v6", "IPv6", tr("Connect to the server over IPv6 only")),
+            ),
+            onDismiss = { showIpVersionDialog = false },
+            onConfirm = { ipVersion = it; settingsStore.ipVersion = it; showIpVersionDialog = false },
+        )
+    }
+    if (showMtuDialog) {
+        MtuPickerDialog(
+            current = customMtu,
+            onDismiss = { showMtuDialog = false },
+            onConfirm = { customMtu = it; settingsStore.customMtu = it; showMtuDialog = false },
+        )
+    }
     if (showDohProviderDialog) {
         DohProviderPickerDialog(
             current = dohProvider,
@@ -475,6 +514,9 @@ fun SettingsScreen(
                 upstreamProxyUsername = settingsStore.upstreamProxyUsername
                 upstreamProxyPassword = settingsStore.upstreamProxyPassword
                 excludedApps = settingsStore.excludedApps
+                upstreamProtocol = settingsStore.upstreamProtocol
+                ipVersion = settingsStore.ipVersion
+                customMtu = settingsStore.customMtu
             },
             confirmLabel = tr("Reset"),
         ) {
@@ -561,7 +603,7 @@ fun SettingsScreen(
         dohProvider, customDnsEnabled, customDnsServer, socksBindAddress, socksPort,
         httpProxyEnabled, httpProxyPort, proxyOnlyMode, customEdgeAddress, upstreamProxyEnabled,
         upstreamProxyType, upstreamProxyHost, upstreamProxyPort, upstreamProxyUsername,
-        upstreamProxyPassword, excludedApps,
+        upstreamProxyPassword, excludedApps, upstreamProtocol, ipVersion, customMtu,
     ) { settingsStore.connectionFingerprint() }
     val connectionChanged = remember(settingsFingerprint, exitCheckEnabled) { !settingsStore.isConnectionDefault() }
     var dismissedFingerprint by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -960,11 +1002,32 @@ fun SettingsScreen(
                                         title = tr("Verify exit location"),
                                         subtitle = tr("Check that the tunnel exits in the selected country"),
                                         checked = exitCheckEnabled,
-                                        divider = false,
                                         onCheckedChange = {
                                             exitCheckEnabled = it
                                             settingsStore.exitCheckEnabled = it
                                         },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Hub,
+                                        title = tr("Protocol"),
+                                        subtitle = when (upstreamProtocol) { "h1" -> "HTTP/1.1 (TLS)"; "h3" -> "HTTP/3 (QUIC)"; else -> "HTTP/2 (TCP)" },
+                                        onClick = { showProtocolDialog = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Public,
+                                        title = tr("IP version"),
+                                        subtitle = when (ipVersion) { "v4" -> "IPv4"; "v6" -> "IPv6"; else -> tr("Automatic") },
+                                        onClick = { showIpVersionDialog = true },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Tune,
+                                        title = "MTU",
+                                        subtitle = if (customMtu == 0) tr("Automatic") else customMtu.toString(),
+                                        divider = false,
+                                        onClick = { showMtuDialog = true },
                                     )
                                 }
                             }
@@ -1823,6 +1886,69 @@ private fun SocksBindAddressPickerDialog(
                 Text(label, modifier = Modifier.padding(start = 8.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun ChoicePickerDialog(
+    title: String,
+    current: String,
+    options: List<Triple<String, String, String>>,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var selected by remember { mutableStateOf(current) }
+    FoxDialog(title = title, onDismiss = onDismiss, onConfirm = { onConfirm(selected) }) {
+        options.forEach { (key, label, detail) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == key, onClick = { selected = key })
+                    .padding(vertical = 4.dp),
+            ) {
+                RadioButton(selected = selected == key, onClick = { selected = key }, colors = foxRadioColors(c))
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(label)
+                    Text(detail, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MtuPickerDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var text by remember { mutableStateOf(if (current == 0) "" else current.toString()) }
+    val parsed = text.toIntOrNull()
+    val isValid = text.isBlank() || (parsed != null && parsed in 1280..9000)
+    FoxDialog(
+        title = "MTU",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(if (text.isBlank()) 0 else parsed ?: 0) },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it.filter(Char::isDigit).take(4) },
+            label = { Text(tr("MTU (1280\u20139000, empty = automatic)")) },
+            singleLine = true,
+            isError = !isValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        Text(
+            tr("Lower it (e.g. 1400) if some sites or apps hang while connected."),
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+        )
     }
 }
 
