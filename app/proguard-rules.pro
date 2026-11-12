@@ -27,3 +27,10 @@
 -dontwarn go.**
 -keep class * implements io.nekohasekai.libbox.PlatformInterface { *; }
 -keep class * implements io.nekohasekai.libbox.CommandServerHandler { *; }
+-keep class com.vauth.foxyvpn.vpn.upstream.H3Core { *; }
+-keep class com.vauth.foxyvpn.vpn.upstream.H3Core$** { *; }
+-keep class * implements io.nekohasekai.libbox.StringIterator { *; }
+-keep class * implements io.nekohasekai.libbox.NetworkInterfaceIterator { *; }
+-keep class * implements io.nekohasekai.libbox.LocalDNSTransport { *; }
+-keep class * implements io.nekohasekai.libbox.InterfaceUpdateListener { *; }
+-keepclassmembers class * implements io.nekohasekai.libbox.** { *; }
