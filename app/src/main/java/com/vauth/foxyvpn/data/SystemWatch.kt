@@ -52,7 +52,9 @@ object SystemWatch {
                 val seen = LinkedHashSet<String>()
                 Regex("[\\x20-\\x7e]{6,160}").findAll(String(bytes, Charsets.ISO_8859_1)).forEach { m ->
                     val t = m.value.trim()
-                    if (keys.any { k -> t.contains(k, ignoreCase = true) } && seen.size < 40) seen.add(t)
+                    val isMessage = t.length >= 25 && t.contains(' ') && !t.startsWith("/") && !t.contains("/apex/") &&
+                        listOf("JNI", "DETECTED", "xception", "failed", "invalid", "pending", "abort", "java_vm", "jni", "panic", "fatal", "go:").any { k -> t.contains(k, ignoreCase = true) }
+                    if ((isMessage || keys.any { k -> t.contains(k, ignoreCase = true) }) && seen.size < 60) seen.add(t)
                 }
                 AppLogger.i(T, "native crash trace (${bytes.size} bytes): ${seen.joinToString(" | ").ifEmpty { "<no keywords>" }}")
             }
