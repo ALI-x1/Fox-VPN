@@ -92,6 +92,9 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Share
@@ -177,10 +180,9 @@ private const val TELEGRAM_URL = "https://t.me/Ali_jahangirr"
 private enum class SettingsPage(val title: String, val subtitle: String) {
     MAIN("Settings", "Tune your connection"),
     APPEARANCE("Appearance", "Theme and colors"),
-    CONNECTION("Connection", "Exit location check"),
+    CONNECTION("Connection", "Protocol, IP version and MTU"),
     DNS("DNS", "Encrypted and custom DNS"),
-    LOCAL_PROXY("Local proxy", "SOCKS5 and HTTP servers"),
-    ADVANCED("Advanced", "Edge address and upstream proxy"),
+    ADVANCED("Advanced", "Local proxy, edge address and upstream"),
 }
 
 // رنگ «خطر» (Sign out) عمداً از تم مستقل است
@@ -860,9 +862,10 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.VerifiedUser,
-                                        title = tr("Exit location check"),
-                                        subtitle = if (exitCheckEnabled) tr("On") else tr("Off"),
+                                        icon = Icons.Filled.SettingsEthernet,
+                                        title = tr("Connection"),
+                                        subtitle = when (upstreamProtocol) { "h1" -> "HTTP/1.1"; "h3" -> "HTTP/3"; else -> "HTTP/2" } +
+                                            " • MTU " + (if (customMtu == 0) com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig.TUN_MTU else customMtu),
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
@@ -874,16 +877,9 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.Router,
-                                        title = tr("Local proxy"),
-                                        subtitle = (if (proxyOnlyMode) tr("Proxy-only • ") else "") + "SOCKS5 $socksPort",
-                                        onClick = { page = SettingsPage.LOCAL_PROXY },
-                                    )
-                                    SettingRow(
-                                        c = c,
                                         icon = Icons.Filled.Tune,
                                         title = tr("Advanced"),
-                                        subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else tr("Edge address and upstream proxy"),
+                                        subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else (if (proxyOnlyMode) tr("Proxy-only • ") else "") + "SOCKS5 $socksPort",
                                         onClick = { page = SettingsPage.ADVANCED },
                                     )
                                     SettingRow(
@@ -1009,7 +1005,7 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.Hub,
+                                        icon = Icons.Filled.SwapVert,
                                         title = tr("Protocol"),
                                         subtitle = when (upstreamProtocol) { "h1" -> "HTTP/1.1 (TLS)"; "h3" -> "HTTP/3 (QUIC)"; else -> "HTTP/2 (TCP)" },
                                         onClick = { showProtocolDialog = true },
@@ -1023,9 +1019,9 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.Tune,
+                                        icon = Icons.Filled.Straighten,
                                         title = "MTU",
-                                        subtitle = if (customMtu == 0) tr("Automatic") else customMtu.toString(),
+                                        subtitle = if (customMtu == 0) "${com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig.TUN_MTU} • " + tr("Automatic") else customMtu.toString(),
                                         divider = false,
                                         onClick = { showMtuDialog = true },
                                     )
@@ -1068,7 +1064,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            SettingsPage.LOCAL_PROXY -> {
+                            SettingsPage.ADVANCED -> {
                                 SettingsSection(c, tr("Local proxy")) {
                                     SettingSwitchRow(
                                         c = c,
@@ -1117,10 +1113,9 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                            }
-
-                            SettingsPage.ADVANCED -> {
-                                SettingsSection(c, tr("Advanced")) {
+                            
+                                Spacer(Modifier.height(16.dp))
+                                SettingsSection(c, tr("Edge and upstream")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Link,
@@ -1937,7 +1932,7 @@ private fun MtuPickerDialog(
         OutlinedTextField(
             value = text,
             onValueChange = { text = it.filter(Char::isDigit).take(4) },
-            label = { Text(tr("MTU (1280\u20139000, empty = automatic)")) },
+            label = { Text(tr("MTU (1280\u20139000, empty = 1400)")) },
             singleLine = true,
             isError = !isValid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1945,7 +1940,7 @@ private fun MtuPickerDialog(
             colors = foxFieldColors(c),
         )
         Text(
-            tr("Lower it (e.g. 1400) if some sites or apps hang while connected."),
+            tr("Lower it (e.g. 1280) if some sites or apps hang while connected."),
             style = MaterialTheme.typography.bodySmall,
             color = c.textSecondary,
         )
