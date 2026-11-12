@@ -276,7 +276,15 @@ internal object H3Core {
                         mtu = runCatching { nif.mtu }.getOrNull() ?: 1500
                         addresses = Strings(
                             nif.interfaceAddresses.mapNotNull { a ->
-                                runCatching { "${a.address.hostAddress}/${a.networkPrefixLength}" }.getOrNull()
+                                runCatching {
+                                    // آدرس IPv6 لینک‌لوکال «%rmnet0» داره و Go اون رو نمی‌تونه parse کنه؛ مثل پروژه‌ی Vauth بدون scope
+                                    val host = if (a.address is Inet6Address) {
+                                        Inet6Address.getByAddress(a.address.address).hostAddress
+                                    } else {
+                                        a.address.hostAddress
+                                    }
+                                    "$host/${a.networkPrefixLength}"
+                                }.getOrNull()
                             },
                         )
                         var f = 0
