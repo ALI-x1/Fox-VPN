@@ -54,7 +54,7 @@ object HevSocks5TunnelConfig {
         return (packed and MAPDNS_NETMASK_BITS) == MAPDNS_NETWORK_BITS
     }
 
-    fun write(context: Context, socksPort: Int, customDnsServer: String? = null): String {
+    fun write(context: Context, socksPort: Int, customDnsServer: String? = null, mtu: Int = TUN_MTU): String {
 
         val mapdnsBlock = if (customDnsServer == null) {
             """
@@ -71,7 +71,7 @@ object HevSocks5TunnelConfig {
 
         val yaml = """
             tunnel:
-              mtu: $TUN_MTU
+              mtu: $mtu
               ipv4: '$TUN_ADDRESS'
               icmp: '$TUNNEL_ICMP_MODE'
             socks5:
