@@ -67,7 +67,7 @@ internal object EdgeAddressResolver {
             .build()
     }
 
-    suspend fun resolve(hostname: String, endpointAddresses: List<String>): String? {
+    suspend fun resolve(hostname: String, endpointAddresses: List<String>, ipVersion: String = "auto"): String? {
         if (endpointAddresses.isEmpty()) return null
 
         val host = hostname.trim().lowercase()
@@ -79,7 +79,7 @@ internal object EdgeAddressResolver {
 
         cache[host]?.let { cached ->
             if (System.currentTimeMillis() - cached.resolvedAtMs < CACHE_TTL_MS) {
-                return cached.addresses.firstOrNull()
+                return pickByVersion(cached.addresses, ipVersion)
             }
         }
 
@@ -103,7 +103,13 @@ internal object EdgeAddressResolver {
             return null
         }
         cache[host] = CacheEntry(addresses, System.currentTimeMillis())
-        return addresses.first()
+        return pickByVersion(addresses, ipVersion)
+    }
+
+    private fun pickByVersion(addresses: List<String>, ipVersion: String): String? = when (ipVersion) {
+        "v4" -> addresses.firstOrNull { !it.contains(':') }
+        "v6" -> addresses.firstOrNull { it.contains(':') }
+        else -> addresses.firstOrNull { !it.contains(':') } ?: addresses.firstOrNull()
     }
 
     fun invalidate() {
