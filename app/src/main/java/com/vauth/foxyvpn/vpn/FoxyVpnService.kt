@@ -794,7 +794,7 @@ class FoxyVpnService : VpnService() {
                 val proto = if (upstreamProxyConfig == null) settingsStore.upstreamProtocol else "h2"
                 val useH1 = proto == "h1"
                 val useH3 = proto == "h3"
-                val session: com.vauth.foxyvpn.vpn.upstream.UpstreamSession = if (useH3) {
+                var session: com.vauth.foxyvpn.vpn.upstream.UpstreamSession = if (useH3) {
                     com.vauth.foxyvpn.vpn.upstream.H3UpstreamSession(
                         applicationContext,
                         { fd -> protect(fd) },
@@ -814,14 +814,30 @@ class FoxyVpnService : VpnService() {
                         edgeAddress,
                     )
                 }
+                var fellBack = false
                 try {
                     session.connect()
                 } catch (failure: Throwable) {
 
                     runCatching { session.close() }
-                    throw failure
+                    if (useH3 && failure !is CancellationException) {
+                        // H3 کار نکرد (مثلاً UDP بسته‌ست): خودکار با HTTP/2 ادامه بده، اتصال نیفته
+                        AppLogger.w(TAG, "connect: HTTP/3 failed (${failure.message}); falling back to HTTP/2")
+                        session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
+                            target.host, target.port, pass.token, upstreamProxyConfig, edgeAddress,
+                        )
+                        fellBack = true
+                        try {
+                            session.connect()
+                        } catch (second: Throwable) {
+                            runCatching { session.close() }
+                            throw second
+                        }
+                    } else {
+                        throw failure
+                    }
                 }
-                AppLogger.i(TAG, "connect: upstream ${if (useH3) "HTTP/3" else if (useH1) "HTTP/1.1" else "HTTP/2"} tunnel established to ${target.authority} (ip=${settingsStore.ipVersion}, mtu=${tunMtu()})")
+                AppLogger.i(TAG, "connect: upstream ${if (useH3 && !fellBack) "HTTP/3" else if (useH1) "HTTP/1.1" else "HTTP/2"} tunnel established to ${target.authority} (ip=${settingsStore.ipVersion}, mtu=${tunMtu()})")
                 return session to pass.expiresAtEpochSeconds
             }
 
