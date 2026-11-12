@@ -46,7 +46,6 @@ import com.vauth.foxyvpn.data.UsageReporter
 import com.vauth.foxyvpn.vpn.tun.HevSocks5Tunnel
 import com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig
 import com.vauth.foxyvpn.vpn.upstream.EdgeAddressResolver
-import com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession
 import com.vauth.foxyvpn.vpn.upstream.UpstreamProxyConfig
 import com.vauth.foxyvpn.vpn.upstream.UpstreamSession
 import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
@@ -722,6 +721,7 @@ class FoxyVpnService : VpnService() {
                     applicationContext,
                     socksPort,
                     customDnsServer,
+                    tunMtu(),
                 )
                 val tunnelStarted = HevSocks5Tunnel.start(tunnelConfigPath, fd.fd)
                 if (!tunnelStarted) error(tr("Failed to start the tun2socks tunnel (hev-socks5-tunnel)"))
@@ -777,7 +777,7 @@ class FoxyVpnService : VpnService() {
 
             var currentPassExpiry: Long? = null
 
-            suspend fun dialUpstream(): Pair<com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession, Long?> {
+            suspend fun dialUpstream(): Pair<com.vauth.foxyvpn.vpn.upstream.UpstreamSession, Long?> {
                 val target = activeCandidate()
                 val pass = mintProxyPass()
                 currentPassExpiry = pass.expiresAtEpochSeconds
@@ -788,16 +788,32 @@ class FoxyVpnService : VpnService() {
                 AppLogger.i(TAG, "connect: acquired Guardian proxy pass$lifetimeNote")
 
                 val edgeAddress = customEdgeAddress
-                    ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses)
+                    ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses, settingsStore.ipVersion)
                 com.vauth.foxyvpn.data.ConnectTrace.step("dialing ${target.host}:${target.port} edge=${edgeAddress ?: "system DNS"}")
 
-                val session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
-                    target.host,
-                    target.port,
-                    pass.token,
-                    upstreamProxyConfig,
-                    edgeAddress,
-                )
+                val proto = if (upstreamProxyConfig == null) settingsStore.upstreamProtocol else "h2"
+                val useH1 = proto == "h1"
+                val useH3 = proto == "h3"
+                val session: com.vauth.foxyvpn.vpn.upstream.UpstreamSession = if (useH3) {
+                    com.vauth.foxyvpn.vpn.upstream.H3UpstreamSession(
+                        applicationContext,
+                        { fd -> protect(fd) },
+                        { firstUsableNetwork() },
+                        target.host, target.port, pass.token, edgeAddress, settingsStore.ipVersion,
+                    )
+                } else if (useH1) {
+                    com.vauth.foxyvpn.vpn.upstream.H1UpstreamSession(
+                        target.host, target.port, pass.token, edgeAddress, settingsStore.ipVersion,
+                    )
+                } else {
+                    com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
+                        target.host,
+                        target.port,
+                        pass.token,
+                        upstreamProxyConfig,
+                        edgeAddress,
+                    )
+                }
                 try {
                     session.connect()
                 } catch (failure: Throwable) {
@@ -805,7 +821,7 @@ class FoxyVpnService : VpnService() {
                     runCatching { session.close() }
                     throw failure
                 }
-                AppLogger.i(TAG, "connect: upstream HTTP/2 tunnel established to ${target.authority}")
+                AppLogger.i(TAG, "connect: upstream ${if (useH3) "HTTP/3" else if (useH1) "HTTP/1.1" else "HTTP/2"} tunnel established to ${target.authority} (ip=${settingsStore.ipVersion}, mtu=${tunMtu()})")
                 return session to pass.expiresAtEpochSeconds
             }
 
@@ -1126,11 +1142,21 @@ class FoxyVpnService : VpnService() {
         host: String,
         upstreamProxy: UpstreamProxyConfig?,
         dohEndpointAddresses: List<String>,
+        ipVersion: String = "auto",
     ): String? {
         if (upstreamProxy != null) return null
-        if (dohEndpointAddresses.isEmpty()) return null
-        return EdgeAddressResolver.resolve(host, dohEndpointAddresses)
+        val viaDoh = if (dohEndpointAddresses.isEmpty()) null else EdgeAddressResolver.resolve(host, dohEndpointAddresses, ipVersion)
+        if (viaDoh != null || ipVersion == "auto") return viaDoh
+        // نسخه IP دستی و DoH جواب نداد: با DNS سیستم و فیلتر نسخه
+        return runCatching {
+            java.net.InetAddress.getAllByName(host).firstOrNull {
+                if (ipVersion == "v6") it is java.net.Inet6Address else it is java.net.Inet4Address
+            }?.hostAddress
+        }.getOrNull()
     }
+
+    private fun tunMtu(): Int =
+        SettingsStore(applicationContext).customMtu.takeIf { it != 0 } ?: HevSocks5TunnelConfig.TUN_MTU
 
     private suspend fun renewAccessToken(tokenStore: TokenStore): RuntimeAuth? {
         val attempt = runCatching { FxaAuthRepository(tokenStore).refreshAccessToken() }
@@ -1198,7 +1224,7 @@ class FoxyVpnService : VpnService() {
             }
             .addDnsServer(dnsServer)
 
-            .setMtu(HevSocks5TunnelConfig.TUN_MTU)
+            .setMtu(tunMtu())
             .setBlocking(true)
             .apply {
 
