@@ -89,6 +89,7 @@ internal object H3Core {
             Libbox.setup(options)
             setupDone = true
         }
+        logFile = File(app.cacheDir, "h3core.log").also { runCatching { it.delete() } }
         val socksPort = ServerSocket(0).use { it.localPort }
         Libbox.setBearerToken(token)
         // مثل Arman: بسته‌ی اولیه‌ی QUIC کوچک‌تر (۱۲۰۰) تا روی شبکه‌های MTU پایین (موبایل) هندشیک تایم‌اوت نشه
@@ -150,9 +151,16 @@ internal object H3Core {
         throw java.io.IOException("HTTP/3 core did not open its local port")
     }
 
+    private var logFile: File? = null
+
+    /** آخرین خطوط لاگ خود هسته (برای فهمیدن چرا QUIC وصل نشد). */
+    fun tailLog(max: Int = 25): List<String> = runCatching {
+        logFile?.takeIf { it.exists() }?.readLines()?.takeLast(max)?.map { it.take(220) }
+    }.getOrNull().orEmpty()
+
     private fun buildConfig(host: String, serverPort: Int, edge: String?, ipVersion: String, socksPort: Int, tuned: Boolean): String {
         val root = JSONObject()
-        root.put("log", JSONObject().put("level", "warn").put("timestamp", true))
+        root.put("log", JSONObject().put("level", "debug").put("timestamp", true).put("output", logFile?.absolutePath ?: ""))
         root.put("certificate", JSONObject().put("store", "mozilla"))
         root.put(
             "dns",
