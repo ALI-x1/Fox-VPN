@@ -48,12 +48,12 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 150
-        versionName = "2.5.0"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 142
+        versionName = "2.1.0"
 
         externalNativeBuild {
             ndkBuild {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
                 arguments += listOf(
 
                     "APP_PLATFORM=android-26",
@@ -68,7 +68,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = true
         }
     }
@@ -131,6 +131,7 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols.add("**/libbox.so")
+            excludes += listOf("lib/x86/**", "lib/x86_64/**")
         }
         resources.excludes.add("META-INF/INDEX.LIST")
         resources.excludes.add("META-INF/*.SF")
