@@ -90,9 +90,16 @@ internal object H3Core {
             setupDone = true
         }
         val socksPort = ServerSocket(0).use { it.localPort }
-        val config = buildConfig(host, serverPort, edgeAddress, ipVersion, socksPort)
         Libbox.setBearerToken(token)
-        Libbox.checkConfig(config)
+        // مثل Arman: بسته‌ی اولیه‌ی QUIC کوچک‌تر (۱۲۰۰) تا روی شبکه‌های MTU پایین (موبایل) هندشیک تایم‌اوت نشه
+        var config = buildConfig(host, serverPort, edgeAddress, ipVersion, socksPort, tuned = true)
+        try {
+            Libbox.checkConfig(config)
+        } catch (t: Throwable) {
+            AppLogger.w(TAG, "HTTP/3 tuning options rejected (${t.message}); using defaults")
+            config = buildConfig(host, serverPort, edgeAddress, ipVersion, socksPort, tuned = false)
+            Libbox.checkConfig(config)
+        }
         runCatching { File(app.filesDir, "command.sock").delete() }
         runCatching { File(app.filesDir, "cache.db").delete() }
         val platform = Platform(app, protect, network)
@@ -143,7 +150,7 @@ internal object H3Core {
         throw java.io.IOException("HTTP/3 core did not open its local port")
     }
 
-    private fun buildConfig(host: String, serverPort: Int, edge: String?, ipVersion: String, socksPort: Int): String {
+    private fun buildConfig(host: String, serverPort: Int, edge: String?, ipVersion: String, socksPort: Int, tuned: Boolean): String {
         val root = JSONObject()
         root.put("log", JSONObject().put("level", "warn").put("timestamp", true))
         root.put("certificate", JSONObject().put("store", "mozilla"))
@@ -173,6 +180,12 @@ internal object H3Core {
             .put("dynamic_bearer_token", true)
             .put("version", 3)
             .put("disable_version_fallback", true)
+            .apply {
+                if (tuned) {
+                    put("initial_packet_size", 1200)
+                    put("keep_alive_period", "30s")
+                }
+            }
             .put("tls", JSONObject().put("enabled", true).put("server_name", host))
         root.put(
             "outbounds",
