@@ -89,10 +89,10 @@ internal object H3Core {
         }
         val socksPort = ServerSocket(0).use { it.localPort }
         val config = buildConfig(host, serverPort, edgeAddress, ipVersion, socksPort)
+        Libbox.setBearerToken(token)
         Libbox.checkConfig(config)
         runCatching { File(app.filesDir, "command.sock").delete() }
         runCatching { File(app.filesDir, "cache.db").delete() }
-        Libbox.setBearerToken(token)
         val platform = Platform(app, protect, network)
         val cs = CommandServer(platform, platform)
         cs.start()
