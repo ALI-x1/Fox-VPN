@@ -1889,7 +1889,7 @@ private enum class HeaderMode { UPGRADE, HEART, CUSTOM, CALM, NONE }
  * انیمیشن فقط تو حالت UPGRADE ساخته می‌شه (در بقیه‌ی حالت‌ها مصرف باتری صفر).
  */
 @Composable
-private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", iconKey: String = "heart", fillMode: String = "keep", badge: String = "theme", badgeText: String = "", anim: String = "soft", onClick: () -> Unit) {
+private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, tip: String?, slotEmoji: String = "", iconKey: String = "heart", fillMode: String = "keep", badge: String = "theme", badgeText: String = "", anim: String = "normal", onClick: () -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val ctxH = androidx.compose.ui.platform.LocalContext.current
     // حالت «پر/خالی»: خطی و بی‌رنگ؛ با لمس پر و هم‌رنگ تم (keep = می‌مونه · flash = لحظه‌ای)
@@ -1905,12 +1905,12 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
             val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "upgrade-halo")
             val p = t.animateFloat(
                 initialValue = 0f, targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(if (anim == "normal") 2200 else 3800, easing = androidx.compose.animation.core.LinearOutSlowInEasing)),
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(if (anim == "normal") 1800 else 2800, easing = androidx.compose.animation.core.LinearOutSlowInEasing)),
                 label = "halo",
             )
             Box(
                 Modifier.matchParentSize()
-                    .graphicsLayer { val k = 1f + (if (anim == "normal") 0.28f else 0.2f) * p.value; scaleX = k; scaleY = k; alpha = (if (anim == "normal") 0.5f else 0.35f) * (1f - p.value) }
+                    .graphicsLayer { val k = 1f + (if (anim == "normal") 0.55f else 0.42f) * p.value; scaleX = k; scaleY = k; alpha = (if (anim == "normal") 0.55f else 0.45f) * (1f - p.value) }
                     .border(2.dp, c.accent, CircleShape),
             )
         }
@@ -1929,11 +1929,11 @@ private fun UpgradeHeaderButton(c: FoxExtras, mode: HeaderMode, discPct: Int, ti
         ) {
             Crossfade(targetState = mode to slotEmoji, animationSpec = tween(500), label = "hdr-ic") { (m, em) ->
                 val key = if (m == HeaderMode.CUSTOM) em else iconKey
-                val sz = Modifier.size(24.dp).graphicsLayer { scaleX = pop; scaleY = pop }
+                val sz = Modifier.size(28.dp).graphicsLayer { scaleX = pop; scaleY = pop }
                 if (m == HeaderMode.UPGRADE || m == HeaderMode.CALM) {
                     Icon(
                         imageVector = androidx.compose.material.icons.Icons.Filled.WorkspacePremium,
-                        contentDescription = tr("Upgrade"), tint = c.accent, modifier = Modifier.size(25.dp),
+                        contentDescription = tr("Upgrade"), tint = c.accent, modifier = Modifier.size(28.dp),
                     )
                 } else if (key.equals("logo", true)) {
                     Icon(painter = painterResource(id = R.drawable.ic_fox_mono), contentDescription = null, tint = iconTint, modifier = sz)
