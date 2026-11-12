@@ -8,7 +8,7 @@ object HevSocks5TunnelConfig {
 
     const val TUN_ADDRESS = "10.8.0.2"
 
-    const val TUN_MTU = 8500
+    const val TUN_MTU = 1400
 
     private const val TUNNEL_ICMP_MODE = "reply"
 
