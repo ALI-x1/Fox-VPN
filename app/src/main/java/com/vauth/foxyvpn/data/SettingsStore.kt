@@ -134,7 +134,23 @@ class SettingsStore(context: Context) {
      * اثرانگشت تنظیماتی که روی اتصال اثر می‌ذارن (تم، زبان و وصل‌شدن خودکار حساب نمی‌شن).
      * برای تشخیص اینکه «اتصال فعلی با تنظیمات جدید فرق داره» استفاده می‌شه.
      */
+    /** پروتکل ارتباط با سرور: "h2" (پیش‌فرض)، "h1" یا "h3" */
+    var upstreamProtocol: String
+        get() = prefs.getString(KEY_UPSTREAM_PROTOCOL, "h2")?.takeIf { it == "h1" || it == "h3" } ?: "h2"
+        set(value) { prefs.edit().putString(KEY_UPSTREAM_PROTOCOL, if (value == "h1" || value == "h3") value else "h2").apply() }
+
+    /** نسخه IP برای وصل‌شدن به سرور: "auto" (اول IPv4 بعد IPv6)، "v4"، "v6" */
+    var ipVersion: String
+        get() = prefs.getString(KEY_IP_VERSION, "auto")?.takeIf { it == "v4" || it == "v6" } ?: "auto"
+        set(value) { prefs.edit().putString(KEY_IP_VERSION, if (value == "v4" || value == "v6") value else "auto").apply() }
+
+    /** MTU دستی؛ 0 = خودکار (۸۵۰۰ پیش‌فرض خود اپ) */
+    var customMtu: Int
+        get() = prefs.getInt(KEY_CUSTOM_MTU, 0).let { if (it in 1280..9000) it else 0 }
+        set(value) { prefs.edit().putInt(KEY_CUSTOM_MTU, if (value in 1280..9000) value else 0).apply() }
+
     fun connectionFingerprint(): Int = listOf(
+        upstreamProtocol, ipVersion, customMtu,
         dohProvider.name, customDnsEnabled, customDnsServer,
         socksBindAddress, socksPort, httpProxyEnabled, httpProxyPort, proxyOnlyMode,
         customEdgeAddress, upstreamProxyEnabled, upstreamProxyType.name, upstreamProxyHost,
@@ -152,7 +168,8 @@ class SettingsStore(context: Context) {
             upstreamProxyType == UpstreamProxyType.SOCKS5 && upstreamProxyHost.isEmpty() &&
             upstreamProxyPort == DEFAULT_UPSTREAM_PROXY_PORT &&
             upstreamProxyUsername.isEmpty() && upstreamProxyPassword.isEmpty() &&
-            excludedApps.isEmpty()
+            excludedApps.isEmpty() &&
+            upstreamProtocol == "h2" && ipVersion == "auto" && customMtu == 0
 
     /** برگردوندن تنظیمات اتصال به پیش‌فرض (تم، زبان، وصل‌شدن خودکار و حساب دست نمی‌خورن). */
     fun resetConnectionDefaults() {
@@ -173,6 +190,9 @@ class SettingsStore(context: Context) {
         upstreamProxyUsername = ""
         upstreamProxyPassword = ""
         excludedApps = emptySet()
+        upstreamProtocol = "h2"
+        ipVersion = "auto"
+        customMtu = 0
     }
 
     enum class UpstreamProxyType { SOCKS5, HTTP }
@@ -215,6 +235,9 @@ class SettingsStore(context: Context) {
         private const val KEY_UPSTREAM_PROXY_USERNAME = "upstream_proxy_username"
         private const val KEY_UPSTREAM_PROXY_PASSWORD = "upstream_proxy_password"
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
+        private const val KEY_UPSTREAM_PROTOCOL = "upstream_protocol"
+        private const val KEY_IP_VERSION = "ip_version"
+        private const val KEY_CUSTOM_MTU = "custom_mtu"
         const val DEFAULT_SOCKS_BIND_ADDRESS = "127.0.0.1"
         const val DEFAULT_SOCKS_PORT = 1080
         const val DEFAULT_HTTP_PROXY_PORT = 8080
