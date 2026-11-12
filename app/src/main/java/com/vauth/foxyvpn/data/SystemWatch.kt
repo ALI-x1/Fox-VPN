@@ -2,6 +2,7 @@ package com.vauth.foxyvpn.data
 
 import android.app.Activity
 import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -27,6 +28,7 @@ object SystemWatch {
         if (installed) return
         installed = true
         runCatching { logPreviousExits(app) }
+        runCatching { revertH3IfItCrashed(app) }
         runCatching { registerActivities(app) }
         runCatching { registerBroadcasts(app) }
         runCatching { registerNetworks(app) }
@@ -39,6 +41,32 @@ object SystemWatch {
         val am = app.getSystemService(ActivityManager::class.java)
         am.getHistoricalProcessExitReasons(app.packageName, 0, 3).forEach {
             AppLogger.i(T, "previous exit: reason=${it.reason} status=${it.status} importance=${it.importance} desc=${it.description} at=${it.timestamp}")
+        }
+        // کرش native (reason=5): از tombstone فقط رشته‌های مهم (پیام abort، libbox، go) رو لاگ کن
+        am.getHistoricalProcessExitReasons(app.packageName, 0, 1).firstOrNull()
+            ?.takeIf { it.reason == ApplicationExitInfo.REASON_CRASH_NATIVE }
+            ?.let { info ->
+                val bytes = runCatching { info.traceInputStream?.use { s -> s.readBytes().take(400_000).toByteArray() } }.getOrNull()
+                    ?: return
+                val keys = listOf("Abort message", "libbox", "libgojni", "fatal error", "panic", "signal", "SIG", "runtime.", "go.", "Cause", "backtrace")
+                val seen = LinkedHashSet<String>()
+                Regex("[\\x20-\\x7e]{6,160}").findAll(String(bytes, Charsets.ISO_8859_1)).forEach { m ->
+                    val t = m.value.trim()
+                    if (keys.any { k -> t.contains(k, ignoreCase = true) } && seen.size < 40) seen.add(t)
+                }
+                AppLogger.i(T, "native crash trace (${bytes.size} bytes): ${seen.joinToString(" | ").ifEmpty { "<no keywords>" }}")
+            }
+    }
+
+    /** اگه راه‌اندازی هسته‌ی H3 وسط کار کرش کرد، پروتکل رو برگردون روی HTTP/2 تا اپ دوباره کرش نکنه. */
+    private fun revertH3IfItCrashed(app: Application) {
+        val p = app.getSharedPreferences("h3_guard", Context.MODE_PRIVATE)
+        if (!p.getBoolean("inflight", false)) return
+        p.edit().putBoolean("inflight", false).commit()
+        val store = com.vauth.foxyvpn.data.SettingsStore(app)
+        if (store.upstreamProtocol == "h3") {
+            store.upstreamProtocol = "h2"
+            AppLogger.w(T, "HTTP/3 core crashed the app last time; protocol reverted to HTTP/2")
         }
     }
 
