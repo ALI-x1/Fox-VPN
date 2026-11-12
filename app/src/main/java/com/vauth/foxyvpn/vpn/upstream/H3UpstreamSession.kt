@@ -17,6 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "H3UpstreamSession"
 private const val OPEN_TIMEOUT_MS = 20_000
+private const val PROBE_TIMEOUT_MS = 10_000L
+private const val PROBE_HOST = "1.1.1.1"
+private const val PROBE_PORT = 443
 
 /**
  * HTTP/3 (QUIC): هر تونل یک اتصال SOCKS5 به هسته‌ی محلی H3Core (libbox) است و خود هسته
@@ -50,6 +53,16 @@ class H3UpstreamSession(
 
     override suspend fun connect() = withContext(Dispatchers.IO) {
         socksPort = H3Core.acquire(context, protect, network, upstreamHost, upstreamPort, edgeAddress, ipVersion, token)
+        // تست واقعی: یک تونل کوتاه از مسیر QUIC باز می‌کنیم؛ اگه UDP بسته باشه همین‌جا خطا می‌گیریم نه «وصل ولی بی‌اینترنت»
+        val probeStart = System.currentTimeMillis()
+        try {
+            kotlinx.coroutines.withTimeout(PROBE_TIMEOUT_MS) { openStream(PROBE_HOST, PROBE_PORT) }.close()
+            AppLogger.i(TAG, "HTTP/3 probe ok in ${System.currentTimeMillis() - probeStart} ms")
+        } catch (t: Throwable) {
+            val why = if (t is kotlinx.coroutines.TimeoutCancellationException) "timeout after ${PROBE_TIMEOUT_MS / 1000}s (UDP/QUIC probably blocked)" else (t.message ?: t.javaClass.simpleName)
+            close()
+            throw IOException("HTTP/3 probe failed: $why", t)
+        }
     }
 
     override suspend fun openStream(targetHost: String, targetPort: Int): TunneledStream = withContext(Dispatchers.IO) {
