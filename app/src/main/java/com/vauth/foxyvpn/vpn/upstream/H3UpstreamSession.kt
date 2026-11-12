@@ -60,6 +60,7 @@ class H3UpstreamSession(
             AppLogger.i(TAG, "HTTP/3 probe ok in ${System.currentTimeMillis() - probeStart} ms")
         } catch (t: Throwable) {
             val why = if (t is kotlinx.coroutines.TimeoutCancellationException) "timeout after ${PROBE_TIMEOUT_MS / 1000}s (UDP/QUIC probably blocked)" else (t.message ?: t.javaClass.simpleName)
+            H3Core.tailLog().forEach { AppLogger.w(TAG, "core log: $it") }
             close()
             throw IOException("HTTP/3 probe failed: $why", t)
         }
