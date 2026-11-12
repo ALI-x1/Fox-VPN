@@ -20,3 +20,10 @@
 -dontwarn com.google.errorprone.annotations.**
 
 -dontwarn reactor.blockhound.**
+
+-keep class io.nekohasekai.libbox.** { *; }
+-dontwarn io.nekohasekai.libbox.**
+-keep class go.** { *; }
+-dontwarn go.**
+-keep class * implements io.nekohasekai.libbox.PlatformInterface { *; }
+-keep class * implements io.nekohasekai.libbox.CommandServerHandler { *; }

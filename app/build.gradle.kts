@@ -64,6 +64,15 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     externalNativeBuild {
         ndkBuild {
             path = file("src/main/jni/Android.mk")
@@ -119,6 +128,10 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols.add("**/libbox.so")
+        }
         resources.excludes.add("META-INF/INDEX.LIST")
         resources.excludes.add("META-INF/*.SF")
         resources.excludes.add("META-INF/*.DSA")
@@ -128,6 +141,8 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/libbox.aar"))
+
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
