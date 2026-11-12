@@ -76,6 +76,8 @@ internal object H3Core {
         }
         stopLocked()
         val app = context.applicationContext
+        val guard = app.getSharedPreferences("h3_guard", Context.MODE_PRIVATE)
+        guard.edit().putBoolean("inflight", true).commit()
         if (!setupDone) {
             val options = SetupOptions().apply {
                 basePath = app.filesDir.absolutePath
@@ -103,6 +105,7 @@ internal object H3Core {
         refs = 1
         AppLogger.i(TAG, "HTTP/3 core started: socks=127.0.0.1:$socksPort -> $host:$serverPort (edge=${edgeAddress ?: "dns"})")
         waitReady(socksPort)
+        guard.edit().putBoolean("inflight", false).commit()
         socksPort
     }
 
