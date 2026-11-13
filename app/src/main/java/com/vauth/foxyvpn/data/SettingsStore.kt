@@ -148,7 +148,7 @@ class SettingsStore(context: Context) {
         socksBindAddress, socksPort, httpProxyEnabled, httpProxyPort, proxyOnlyMode,
         customEdgeAddress, upstreamProxyEnabled, upstreamProxyType.name, upstreamProxyHost,
         upstreamProxyPort, upstreamProxyUsername, upstreamProxyPassword,
-        excludedApps.sorted(), customMtu, adBlockEnabled,
+        excludedApps.sorted(), customMtu,
     ).hashCode()
 
     /** آیا همه‌ی تنظیمات اتصال روی پیش‌فرضه؟ (تم، زبان و وصل‌شدن خودکار حساب نمی‌شن) */
@@ -161,7 +161,7 @@ class SettingsStore(context: Context) {
             upstreamProxyType == UpstreamProxyType.SOCKS5 && upstreamProxyHost.isEmpty() &&
             upstreamProxyPort == DEFAULT_UPSTREAM_PROXY_PORT &&
             upstreamProxyUsername.isEmpty() && upstreamProxyPassword.isEmpty() &&
-            excludedApps.isEmpty() && customMtu == DEFAULT_MTU && !adBlockEnabled
+            excludedApps.isEmpty() && customMtu == DEFAULT_MTU
 
     /** برگردوندن تنظیمات اتصال به پیش‌فرض (تم، زبان، وصل‌شدن خودکار و حساب دست نمی‌خورن). */
     fun resetConnectionDefaults() {
@@ -183,7 +183,6 @@ class SettingsStore(context: Context) {
         upstreamProxyPassword = ""
         excludedApps = emptySet()
         customMtu = DEFAULT_MTU
-        adBlockEnabled = false
     }
 
     enum class UpstreamProxyType { SOCKS5, HTTP }
