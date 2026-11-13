@@ -252,7 +252,14 @@ fun FoxyNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
-        composable(FoxyRoutes.SETTINGS) {
+        composable(
+            FoxyRoutes.SETTINGS,
+            // بدون fade: لایه‌ی شفافیت نیمه‌راه هاله‌های کارت‌ها را می‌برید و آخرش یهو ظاهر می‌شدن
+            enterTransition = { androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { it / 6 } },
+            exitTransition = { androidx.compose.animation.ExitTransition.None },
+            popEnterTransition = { androidx.compose.animation.EnterTransition.None },
+            popExitTransition = { androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(200)) { it / 6 } },
+        ) {
             SettingsScreen(
                 settingsStore = app.settingsStore,
                 themeController = themeController,
