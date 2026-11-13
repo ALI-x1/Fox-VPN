@@ -40,6 +40,7 @@ import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.RuntimeAuth
 import com.vauth.foxyvpn.vpn.socks.LocalHttpProxyServer
+import com.vauth.foxyvpn.vpn.socks.AdBlocklist
 import com.vauth.foxyvpn.vpn.socks.LocalSocks5Server
 import com.vauth.foxyvpn.data.LicenseState
 import com.vauth.foxyvpn.data.UsageReporter
@@ -263,9 +264,25 @@ class FoxyVpnService : VpnService() {
         runCatching { session.close() }
     }
 
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (_state.value == ConnectionState.CONNECTED) upstreamSession?.probeNow()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        runCatching {
+            // روشن‌شدن صفحه بعد از خواب: اتصال TCP ممکنه بی‌صدا مرده باشه؛ همان لحظه بررسی کن
+            registerReceiver(
+                screenReceiver,
+                android.content.IntentFilter().apply {
+                    addAction(Intent.ACTION_SCREEN_ON)
+                    addAction(Intent.ACTION_USER_PRESENT)
+                },
+            )
+        }
         runCatching {
 
             val underlyingNetworks = NetworkRequest.Builder()
@@ -291,6 +308,7 @@ class FoxyVpnService : VpnService() {
         runCatching {
             getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback)
         }
+        runCatching { unregisterReceiver(screenReceiver) }
         connectJob?.cancel()
         connectJob = null
         watchdogJob?.cancel()
@@ -662,14 +680,17 @@ class FoxyVpnService : VpnService() {
             }
 
             val mapdnsActive = !proxyOnlyMode && customDnsServer == null
+            val adBlockOn = settingsStore.adBlockEnabled
+            if (adBlockOn) AdBlocklist.load(applicationContext)
             val socks = LocalSocks5Server(
                 socksBindAddress,
                 socksPort,
                 mapdnsActive,
                 { upstreamSession },
-            ) {
-                onUpstreamSessionUnhealthy()
-            }
+                { onUpstreamSessionUnhealthy() },
+                { upstreamSession?.probeNow() },
+                { adBlockOn },
+            )
             socks.start()
             socksServer = socks
 
@@ -722,6 +743,7 @@ class FoxyVpnService : VpnService() {
                     applicationContext,
                     socksPort,
                     customDnsServer,
+                    SettingsStore(applicationContext).customMtu,
                 )
                 val tunnelStarted = HevSocks5Tunnel.start(tunnelConfigPath, fd.fd)
                 if (!tunnelStarted) error(tr("Failed to start the tun2socks tunnel (hev-socks5-tunnel)"))
@@ -1198,7 +1220,7 @@ class FoxyVpnService : VpnService() {
             }
             .addDnsServer(dnsServer)
 
-            .setMtu(HevSocks5TunnelConfig.TUN_MTU)
+            .setMtu(SettingsStore(applicationContext).customMtu)
             .setBlocking(true)
             .apply {
 
