@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -204,6 +206,8 @@ private fun LanguageOptions(
     bilingual: Boolean,
     c: FoxExtras,
 ) {
+    val haptics = LocalHapticFeedback.current
+    val onSelect: (AppLanguage) -> Unit = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(it) }
     val systemName = if (Lang.systemIsPersian()) "فارسی" else "English"
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         LanguageOptionCard(
