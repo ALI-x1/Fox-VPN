@@ -28,53 +28,28 @@ object AdBlocklist {
     )
 
     @Volatile
-    private var standard: Set<String>? = null
+    private var domains: Set<String> = builtIn
 
-    @Volatile
-    private var strong: Set<String>? = null
-
-    private fun readList(context: Context, res: Int, into: HashSet<String>) {
-        context.resources.openRawResource(res).bufferedReader().useLines { lines ->
-            lines.map { it.trim().lowercase() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { into.add(it) }
-        }
-    }
-
-    /** لیست‌ها را (فقط بار اول) از res/raw می‌خونه؛ سطح ۲ لیست «قوی» رو هم اضافه می‌کنه. */
+    /** لیست بزرگ‌تر از res/raw/adblock_domains.txt؛ اگه خوانده نشد، همون لیست داخلی می‌مونه. */
     @Synchronized
-    fun ensureLoaded(context: Context, level: Int) {
-        if (level >= 1 && standard == null) {
-            runCatching {
-                val all = HashSet<String>(builtIn)
-                readList(context, R.raw.adblock_domains, all)
-                standard = all
-                AppLogger.i("AdBlocklist", "standard list: ${all.size} domains")
-            }.onFailure {
-                standard = builtIn
-                AppLogger.w("AdBlocklist", "could not load the standard list; using the built-in one", it)
+    fun load(context: Context) {
+        if (domains !== builtIn) return
+        runCatching {
+            val all = HashSet<String>(builtIn)
+            context.resources.openRawResource(R.raw.adblock_domains).bufferedReader().useLines { lines ->
+                lines.map { it.trim().lowercase() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { all.add(it) }
             }
-        }
-        if (level >= 2 && strong == null) {
-            runCatching {
-                val extra = HashSet<String>(80_000)
-                readList(context, R.raw.adblock_strong, extra)
-                strong = extra
-                AppLogger.i("AdBlocklist", "strong list: ${extra.size} extra domains")
-            }.onFailure {
-                strong = emptySet()
-                AppLogger.w("AdBlocklist", "could not load the strong list", it)
-            }
-        }
+            domains = all
+            AppLogger.i("AdBlocklist", "loaded ${all.size} domains")
+        }.onFailure { AppLogger.w("AdBlocklist", "could not load the list; using the built-in one", it) }
     }
 
-    /** level: 0 خاموش، 1 معمولی، 2 قوی. */
-    fun isBlocked(host: String, level: Int): Boolean {
-        if (level <= 0) return false
-        val std = standard ?: builtIn
-        val str = if (level >= 2) strong else null
+    fun isBlocked(host: String): Boolean {
+        val domains = domains
         var h = host.trim().trimEnd('.').lowercase()
         if (h.isEmpty()) return false
         while (true) {
-            if (h in std || (str != null && h in str)) return true
+            if (h in domains) return true
             val dot = h.indexOf('.')
             if (dot < 0) return false
             h = h.substring(dot + 1)
