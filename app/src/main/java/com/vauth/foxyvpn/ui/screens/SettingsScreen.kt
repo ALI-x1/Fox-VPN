@@ -1,5 +1,6 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.components.fadeScale
 import com.vauth.foxyvpn.ui.components.softGlow
 import com.vauth.foxyvpn.ui.components.softGlowRect
 import com.vauth.foxyvpn.i18n.tr
@@ -28,6 +29,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -106,7 +108,10 @@ import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -177,10 +182,9 @@ private const val TELEGRAM_URL = "https://t.me/Ali_jahangirr"
 private enum class SettingsPage(val title: String, val subtitle: String) {
     MAIN("Settings", "Tune your connection"),
     APPEARANCE("Appearance", "Theme and colors"),
-    CONNECTION("Connection", "Exit location check"),
+    CONNECTION("Connection", "Exit check and MTU"),
     DNS("DNS", "Encrypted and custom DNS"),
-    LOCAL_PROXY("Local proxy", "SOCKS5 and HTTP servers"),
-    ADVANCED("Advanced", "Edge address and upstream proxy"),
+    ADVANCED("Advanced", "Local proxy, edge and upstream"),
 }
 
 // رنگ «خطر» (Sign out) عمداً از تم مستقل است
@@ -304,6 +308,10 @@ fun SettingsScreen(
     var showSocksBindDialog by rememberSaveable { mutableStateOf(false) }
     var showSocksPortDialog by rememberSaveable { mutableStateOf(false) }
     var showHttpPortDialog by rememberSaveable { mutableStateOf(false) }
+    var showMtuDialog by rememberSaveable { mutableStateOf(false) }
+    var showAutoConnectDialog by rememberSaveable { mutableStateOf(false) }
+    var customMtu by remember { mutableStateOf(settingsStore.customMtu) }
+    var adBlock by remember { mutableStateOf(settingsStore.adBlockEnabled) }
     var showEdgeAddressDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyTypeDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
@@ -360,6 +368,35 @@ fun SettingsScreen(
                 showSocksPortDialog = false
             },
         )
+    }
+    if (showMtuDialog) {
+        MtuPickerDialog(
+            current = customMtu,
+            onDismiss = { showMtuDialog = false },
+            onConfirm = {
+                customMtu = it
+                settingsStore.customMtu = it
+                showMtuDialog = false
+            },
+        )
+    }
+    if (showAutoConnectDialog) {
+        FoxDialog(
+            title = tr("Turn on auto-connect?"),
+            onDismiss = { showAutoConnectDialog = false },
+            onConfirm = {
+                autoConnect = true
+                settingsStore.autoConnect = true
+                showAutoConnectDialog = false
+            },
+            confirmLabel = tr("Turn on"),
+        ) {
+            Text(
+                text = tr("The VPN will connect by itself whenever the app opens. Turn it on?"),
+                color = c.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
     if (showHttpPortDialog) {
         PortPickerDialog(
@@ -475,6 +512,8 @@ fun SettingsScreen(
                 upstreamProxyUsername = settingsStore.upstreamProxyUsername
                 upstreamProxyPassword = settingsStore.upstreamProxyPassword
                 excludedApps = settingsStore.excludedApps
+                customMtu = settingsStore.customMtu
+                adBlock = settingsStore.adBlockEnabled
             },
             confirmLabel = tr("Reset"),
         ) {
@@ -561,7 +600,7 @@ fun SettingsScreen(
         dohProvider, customDnsEnabled, customDnsServer, socksBindAddress, socksPort,
         httpProxyEnabled, httpProxyPort, proxyOnlyMode, customEdgeAddress, upstreamProxyEnabled,
         upstreamProxyType, upstreamProxyHost, upstreamProxyPort, upstreamProxyUsername,
-        upstreamProxyPassword, excludedApps,
+        upstreamProxyPassword, excludedApps, customMtu, adBlock,
     ) { settingsStore.connectionFingerprint() }
     val connectionChanged = remember(settingsFingerprint, exitCheckEnabled) { !settingsStore.isConnectionDefault() }
     var dismissedFingerprint by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -656,12 +695,16 @@ fun SettingsScreen(
                     targetState = page,
                     transitionSpec = {
                         val forward = targetState != SettingsPage.MAIN
-                        (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { if (forward) it / 8 else -it / 8 }) togetherWith
-                            (fadeOut(tween(120)) + slideOutHorizontally(tween(200)) { if (forward) -it / 8 else it / 8 })
+                        slideInHorizontally(tween(260)) { if (forward) it / 8 else -it / 8 } togetherWith
+                            slideOutHorizontally(tween(200)) { if (forward) -it / 8 else it / 8 }
                     },
                     label = "settings-page",
                 ) { target ->
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    val pageAlpha by transition.animateFloat(
+                        transitionSpec = { tween(200) },
+                        label = "settings-page-alpha",
+                    ) { if (it == EnterExitState.Visible) 1f else 0f }
+                    Column(modifier = Modifier.fillMaxWidth().fadeScale(pageAlpha)) {
                         when (target) {
                             SettingsPage.MAIN -> {
                                 if (authRepository != null) RedeemCard(authRepository = authRepository, onDisconnect = onDisconnect, onUpgraded = onUpgraded, showCard = false)
@@ -773,8 +816,12 @@ fun SettingsScreen(
                                         status = if (autoConnect) tr("On") else tr("Off"),
                                         active = autoConnect,
                                         onClick = {
-                                            autoConnect = !autoConnect
-                                            settingsStore.autoConnect = autoConnect
+                                            if (autoConnect) {
+                                                autoConnect = false
+                                                settingsStore.autoConnect = false
+                                            } else {
+                                                showAutoConnectDialog = true
+                                            }
                                         },
                                     )
                                     QuickTile(
@@ -818,9 +865,9 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.VerifiedUser,
-                                        title = tr("Exit location check"),
-                                        subtitle = if (exitCheckEnabled) tr("On") else tr("Off"),
+                                        icon = Icons.Filled.SettingsEthernet,
+                                        title = tr("Connection"),
+                                        subtitle = "MTU $customMtu" + if (adBlock) " \u2022 " + tr("Ad block") else "",
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
@@ -832,16 +879,9 @@ fun SettingsScreen(
                                     )
                                     SettingRow(
                                         c = c,
-                                        icon = Icons.Filled.Router,
-                                        title = tr("Local proxy"),
-                                        subtitle = (if (proxyOnlyMode) tr("Proxy-only • ") else "") + "SOCKS5 $socksPort",
-                                        onClick = { page = SettingsPage.LOCAL_PROXY },
-                                    )
-                                    SettingRow(
-                                        c = c,
                                         icon = Icons.Filled.Tune,
                                         title = tr("Advanced"),
-                                        subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else tr("Edge address and upstream proxy"),
+                                        subtitle = if (upstreamProxyEnabled) trf("Chained via %s", upstreamProxyType.name) else tr("Local proxy, edge and upstream"),
                                         onClick = { page = SettingsPage.ADVANCED },
                                     )
                                     SettingRow(
@@ -966,6 +1006,24 @@ fun SettingsScreen(
                                             settingsStore.exitCheckEnabled = it
                                         },
                                     )
+                                    SettingSwitchRow(
+                                        c = c,
+                                        icon = Icons.Filled.Block,
+                                        title = tr("Block ads"),
+                                        subtitle = tr("Blocks known ad and tracker domains. Reconnect to apply."),
+                                        checked = adBlock,
+                                        onCheckedChange = {
+                                            adBlock = it
+                                            settingsStore.adBlockEnabled = it
+                                        },
+                                    )
+                                    SettingRow(
+                                        c = c,
+                                        icon = Icons.Filled.Straighten,
+                                        title = tr("Tunnel MTU"),
+                                        subtitle = customMtu.toString(),
+                                        onClick = { showMtuDialog = true },
+                                    )
                                 }
                             }
 
@@ -1005,7 +1063,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            SettingsPage.LOCAL_PROXY -> {
+                            SettingsPage.ADVANCED -> {
                                 SettingsSection(c, tr("Local proxy")) {
                                     SettingSwitchRow(
                                         c = c,
@@ -1054,10 +1112,10 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                            }
 
-                            SettingsPage.ADVANCED -> {
-                                SettingsSection(c, tr("Advanced")) {
+                                Spacer(Modifier.height(16.dp))
+
+                                SettingsSection(c, tr("Edge and upstream")) {
                                     SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Link,
@@ -2196,5 +2254,41 @@ private fun SplitTunnelDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MtuPickerDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    var text by remember { mutableStateOf(if (current == SettingsStore.DEFAULT_MTU) "" else current.toString()) }
+    val parsed = if (text.isBlank()) SettingsStore.DEFAULT_MTU else text.toIntOrNull()
+    val isValid = parsed != null && parsed in SettingsStore.MIN_MTU..SettingsStore.MAX_MTU
+
+    FoxDialog(
+        title = tr("Tunnel MTU"),
+        onDismiss = onDismiss,
+        onConfirm = { parsed?.let { onConfirm(it) } },
+        confirmEnabled = isValid,
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it.filter(Char::isDigit).take(4) },
+            label = { Text(tr("MTU (1280–9000, empty = 1400)")) },
+            singleLine = true,
+            isError = text.isNotBlank() && !isValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = foxFieldColors(c),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = tr("Lower it (e.g. 1280) if some sites or apps hang while connected."),
+            color = c.textSecondary,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
