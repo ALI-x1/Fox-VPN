@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.ui.draw.rotate
 import com.vauth.foxyvpn.ui.components.softGlow
 import com.vauth.foxyvpn.ui.components.softGlowRect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -445,7 +447,8 @@ private fun PlanCard(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
+        val haptics = LocalHapticFeedback.current
+        Row(modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onToggle() }, verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(54.dp)
@@ -656,6 +659,7 @@ internal fun PlanButton(
     compact: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(if (compact) 16.dp else 18.dp)
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
     Box(
@@ -667,7 +671,10 @@ internal fun PlanButton(
                 if (outlined) Modifier.background(c.innerCard).border(1.dp, c.cardBorder, shape)
                 else Modifier.background(Brush.horizontalGradient(listOf(c.accentLight, c.accent)))
             )
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(
