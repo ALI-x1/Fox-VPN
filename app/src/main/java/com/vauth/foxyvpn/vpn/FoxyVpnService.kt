@@ -680,7 +680,7 @@ class FoxyVpnService : VpnService() {
             }
 
             val mapdnsActive = !proxyOnlyMode && customDnsServer == null
-            settingsStore.adBlockLevel.let { if (it > 0) AdBlocklist.ensureLoaded(applicationContext, it) }
+            if (settingsStore.adBlockEnabled) AdBlocklist.load(applicationContext)
             val socks = LocalSocks5Server(
                 socksBindAddress,
                 socksPort,
@@ -689,9 +689,9 @@ class FoxyVpnService : VpnService() {
                 { onUpstreamSessionUnhealthy() },
                 { upstreamSession?.probeNow() },
                 {
-                    val level = settingsStore.adBlockLevel
-                    if (level > 0) AdBlocklist.ensureLoaded(applicationContext, level)
-                    level
+                    val on = settingsStore.adBlockEnabled
+                    if (on) AdBlocklist.load(applicationContext)
+                    on
                 },
             )
             socks.start()
