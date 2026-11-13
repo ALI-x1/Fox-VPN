@@ -63,7 +63,7 @@ class LocalSocks5Server(
     private val sessionProvider: () -> UpstreamSession?,
     private val onSessionUnhealthy: () -> Unit = {},
     private val onUpstreamSilence: () -> Unit = {},
-    private val adBlockLevel: () -> Int = { 0 },
+    private val adBlockEnabled: () -> Boolean = { false },
 ) {
     private var serverSocket: ServerSocket? = null
 
@@ -323,7 +323,7 @@ class LocalSocks5Server(
             return
         }
 
-        if (target.literal == null && adBlockLevel().let { it > 0 && AdBlocklist.isBlocked(targetHost, it) }) {
+        if (target.literal == null && adBlockEnabled() && AdBlocklist.isBlocked(targetHost)) {
             AppLogger.d(TAG, "ad-block: refusing $targetKey")
             output.write(socksReply(0x02))
             output.flush()
