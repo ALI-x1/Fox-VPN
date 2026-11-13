@@ -224,6 +224,7 @@ private fun PaletteGrid(
     unlocked: Boolean,
     onLocked: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     items.chunked(2).forEach { rowItems ->
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -236,7 +237,10 @@ private fun PaletteGrid(
                     previewDark = isDark,
                     modifier = Modifier.weight(1f),
                     locked = !unlocked && !palette.isFree,
-                    onClick = { if (!unlocked && !palette.isFree) onLocked() else themeController.setPalette(palette) }
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (!unlocked && !palette.isFree) onLocked() else themeController.setPalette(palette)
+                    }
                 )
             }
             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
