@@ -421,6 +421,16 @@ private fun PlanCard(
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
 
     val cardShape = RoundedCornerShape(28.dp)
+    // دکمه‌ی خرید کنار قیمت (بدون باز کردن مشخصات پلن)
+    val compactLabel: String? = when {
+        active && plan.key == "free" -> null
+        active -> tr("Renew")
+        lowerThanCurrent -> null
+        plan.key == "free" -> null
+        hasPlan -> tr("Upgrade")
+        else -> tr("Buy")
+    }
+    val showCompact = info.price > 0 && plan.key != "free" && compactLabel != null
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -476,7 +486,8 @@ private fun PlanCard(
             val (pct, finalPrice0) = effPrice(info, coupon, nowS)
             val finalPrice = if (finalPrice0 > 0) finalPrice0 else info.price
             val cur = com.vauth.foxyvpn.data.PlanConfigStore.cached(LocalContext.current).contacts.cur.ifBlank { tr("Toman") }
-            Row(verticalAlignment = Alignment.Bottom) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
                 Text(formatMoney(finalPrice), fontSize = 30.sp, fontWeight = FontWeight.Black, color = c.accentText)
                 Spacer(Modifier.width(6.dp))
                 Text(cur, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, modifier = Modifier.padding(bottom = 4.dp))
@@ -490,6 +501,11 @@ private fun PlanCard(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
+            }
+            if (showCompact) {
+                Spacer(Modifier.width(10.dp))
+                PlanButton(compactLabel ?: "", c, compact = true, onClick = onGet)
+            }
             }
         }
 
@@ -554,6 +570,7 @@ private fun PlanCard(
         // دکمه‌ی پایین هر کارت: خرید / ارتقا / تمدید
         when {
             active && plan.key == "free" -> PlanButton(com.vauth.foxyvpn.i18n.bidi("${tr(plan.title)} · ${tr("Active")}".replace("\u202B", "").replace("\u202C", "")), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
+            showCompact -> Unit
             active -> PlanButton(trf("Renew %s", tr(plan.title)), c, modifier = Modifier.fillMaxWidth(), onClick = onGet)
             lowerThanCurrent -> PlanButton(tr("Included in your plan"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
             plan.key == "free" -> PlanButton(tr("Free"), c, enabled = false, outlined = true, modifier = Modifier.fillMaxWidth()) {}
@@ -636,13 +653,15 @@ internal fun PlanButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     outlined: Boolean = false,
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(if (compact) 16.dp else 18.dp)
     val onAccent = if (c.accent.luminance() > 0.3f) Color(0xFF3A1F00) else Color.White
     Box(
         modifier = modifier
-            .height(54.dp)
+            .height(if (compact) 44.dp else 54.dp)
+            .then(if (compact) Modifier.softGlowRect(c.accent, 16f, 6f, 0.22f) else Modifier)
             .clip(shape)
             .then(
                 if (outlined) Modifier.background(c.innerCard).border(1.dp, c.cardBorder, shape)
@@ -653,7 +672,8 @@ internal fun PlanButton(
     ) {
         Text(
             text,
-            fontSize = 16.sp,
+            modifier = if (compact) Modifier.padding(horizontal = 20.dp) else Modifier,
+            fontSize = if (compact) 15.sp else 16.sp,
             fontWeight = FontWeight.ExtraBold,
             color = when {
                 outlined && enabled -> c.accentText
