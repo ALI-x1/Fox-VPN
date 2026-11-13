@@ -315,8 +315,7 @@ fun SettingsScreen(
     var showMtuDialog by rememberSaveable { mutableStateOf(false) }
     var showAutoConnectDialog by rememberSaveable { mutableStateOf(false) }
     var customMtu by remember { mutableStateOf(settingsStore.customMtu) }
-    var adBlock by remember { mutableStateOf(settingsStore.adBlockLevel) }
-    var showAdBlockDialog by rememberSaveable { mutableStateOf(false) }
+    var adBlock by remember { mutableStateOf(settingsStore.adBlockEnabled) }
     var showEdgeAddressDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyTypeDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
@@ -371,17 +370,6 @@ fun SettingsScreen(
                 socksPort = it
                 settingsStore.socksPort = it
                 showSocksPortDialog = false
-            },
-        )
-    }
-    if (showAdBlockDialog) {
-        AdBlockPickerDialog(
-            current = adBlock,
-            onDismiss = { showAdBlockDialog = false },
-            onConfirm = {
-                adBlock = it
-                settingsStore.adBlockLevel = it
-                showAdBlockDialog = false
             },
         )
     }
@@ -823,17 +811,17 @@ fun SettingsScreen(
 
                                 Spacer(Modifier.height(16.dp))
                                 SettingsSection(c, tr("Protection")) {
-                                    SettingRow(
+                                    SettingSwitchRow(
                                         c = c,
                                         icon = Icons.Filled.Block,
                                         title = tr("Block ads"),
-                                        subtitle = when (adBlock) {
-                                            1 -> tr("Standard")
-                                            2 -> tr("Strong")
-                                            else -> tr("Off")
-                                        },
+                                        subtitle = tr("Blocks known ad and tracker domains"),
+                                        checked = adBlock,
                                         divider = false,
-                                        onClick = { showAdBlockDialog = true },
+                                        onCheckedChange = {
+                                            adBlock = it
+                                            settingsStore.adBlockEnabled = it
+                                        },
                                     )
                                 }
                                 Spacer(Modifier.height(16.dp))
@@ -2334,53 +2322,3 @@ private fun MtuPickerDialog(
     }
 }
 
-@Composable
-private fun AdBlockPickerDialog(
-    current: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
-) {
-    val c = LocalFoxExtras.current
-    val haptics = LocalHapticFeedback.current
-    var selected by remember { mutableStateOf(current) }
-    val options = listOf(
-        Triple(0, tr("Off"), tr("No blocking")),
-        Triple(1, tr("Standard"), tr("Known ad and tracker domains (about 7,000)")),
-        Triple(2, tr("Strong"), tr("Also pop-up and redirect networks (about 83,000). A few sites may break.")),
-    )
-
-    FoxDialog(
-        title = tr("Block ads"),
-        onDismiss = onDismiss,
-        onConfirm = {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            onConfirm(selected)
-        },
-    ) {
-        options.forEach { (level, title, desc) ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(selected = selected == level, onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        selected = level
-                    })
-                    .padding(vertical = 6.dp),
-            ) {
-                RadioButton(
-                    selected = selected == level,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        selected = level
-                    },
-                    colors = foxRadioColors(c),
-                )
-                Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text(title, fontWeight = FontWeight.SemiBold, color = c.textPrimary)
-                    Text(desc, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                }
-            }
-        }
-    }
-}
