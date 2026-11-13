@@ -109,6 +109,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material.icons.filled.Straighten
@@ -312,6 +314,7 @@ fun SettingsScreen(
     var showAutoConnectDialog by rememberSaveable { mutableStateOf(false) }
     var customMtu by remember { mutableStateOf(settingsStore.customMtu) }
     var adBlock by remember { mutableStateOf(settingsStore.adBlockEnabled) }
+    val haptic = LocalHapticFeedback.current
     var showEdgeAddressDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyTypeDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
@@ -513,7 +516,6 @@ fun SettingsScreen(
                 upstreamProxyPassword = settingsStore.upstreamProxyPassword
                 excludedApps = settingsStore.excludedApps
                 customMtu = settingsStore.customMtu
-                adBlock = settingsStore.adBlockEnabled
             },
             confirmLabel = tr("Reset"),
         ) {
@@ -600,7 +602,7 @@ fun SettingsScreen(
         dohProvider, customDnsEnabled, customDnsServer, socksBindAddress, socksPort,
         httpProxyEnabled, httpProxyPort, proxyOnlyMode, customEdgeAddress, upstreamProxyEnabled,
         upstreamProxyType, upstreamProxyHost, upstreamProxyPort, upstreamProxyUsername,
-        upstreamProxyPassword, excludedApps, customMtu, adBlock,
+        upstreamProxyPassword, excludedApps, customMtu,
     ) { settingsStore.connectionFingerprint() }
     val connectionChanged = remember(settingsFingerprint, exitCheckEnabled) { !settingsStore.isConnectionDefault() }
     var dismissedFingerprint by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -803,6 +805,24 @@ fun SettingsScreen(
                                     )
                                 }
 
+                                Spacer(Modifier.height(16.dp))
+                                SettingsSection(c, tr("Protection")) {
+                                    SettingSwitchRow(
+                                        c = c,
+                                        icon = Icons.Filled.Block,
+                                        title = tr("Block ads"),
+                                        subtitle = tr("Blocks known ad and tracker domains"),
+                                        checked = adBlock,
+                                        divider = false,
+                                        onCheckedChange = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            adBlock = it
+                                            settingsStore.adBlockEnabled = it
+                                        },
+                                    )
+                                }
+                                Spacer(Modifier.height(16.dp))
+
                                 // ───── سه ابزار سریع کنار هم ─────
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -867,7 +887,7 @@ fun SettingsScreen(
                                         c = c,
                                         icon = Icons.Filled.SettingsEthernet,
                                         title = tr("Connection"),
-                                        subtitle = "MTU $customMtu" + if (adBlock) " \u2022 " + tr("Ad block") else "",
+                                        subtitle = "MTU $customMtu",
                                         onClick = { page = SettingsPage.CONNECTION },
                                     )
                                     SettingRow(
@@ -1004,17 +1024,6 @@ fun SettingsScreen(
                                         onCheckedChange = {
                                             exitCheckEnabled = it
                                             settingsStore.exitCheckEnabled = it
-                                        },
-                                    )
-                                    SettingSwitchRow(
-                                        c = c,
-                                        icon = Icons.Filled.Block,
-                                        title = tr("Block ads"),
-                                        subtitle = tr("Blocks known ad and tracker domains. Reconnect to apply."),
-                                        checked = adBlock,
-                                        onCheckedChange = {
-                                            adBlock = it
-                                            settingsStore.adBlockEnabled = it
                                         },
                                     )
                                     SettingRow(
