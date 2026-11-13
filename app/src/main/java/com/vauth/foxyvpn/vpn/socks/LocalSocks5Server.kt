@@ -63,6 +63,7 @@ class LocalSocks5Server(
     private val sessionProvider: () -> UpstreamSession?,
     private val onSessionUnhealthy: () -> Unit = {},
     private val onUpstreamSilence: () -> Unit = {},
+    private val adBlockEnabled: () -> Boolean = { false },
 ) {
     private var serverSocket: ServerSocket? = null
 
@@ -318,6 +319,13 @@ class LocalSocks5Server(
                     "(stale cached DNS answer from before the tunnel restarted)",
             )
             output.write(socksReply(0x04)) 
+            output.flush()
+            return
+        }
+
+        if (target.literal == null && adBlockEnabled() && AdBlocklist.isBlocked(targetHost)) {
+            AppLogger.d(TAG, "ad-block: refusing $targetKey")
+            output.write(socksReply(0x02))
             output.flush()
             return
         }
