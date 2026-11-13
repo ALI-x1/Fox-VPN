@@ -99,10 +99,9 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt(KEY_CUSTOM_MTU, DEFAULT_MTU).coerceIn(MIN_MTU, MAX_MTU)
         set(value) { prefs.edit().putInt(KEY_CUSTOM_MTU, value.coerceIn(MIN_MTU, MAX_MTU)).apply() }
 
-    /** بلاک تبلیغات: 0 خاموش، 1 معمولی، 2 قوی. (کلید قدیمیِ روشن/خاموش به «معمولی» می‌رسه) */
-    var adBlockLevel: Int
-        get() = prefs.getInt(KEY_AD_LEVEL, if (prefs.getBoolean(KEY_AD_BLOCK, false)) 1 else 0).coerceIn(0, 2)
-        set(value) { prefs.edit().putInt(KEY_AD_LEVEL, value.coerceIn(0, 2)).apply() }
+    var adBlockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AD_BLOCK, false) || prefs.getInt(KEY_AD_LEVEL, 0) > 0
+        set(value) { prefs.edit().putBoolean(KEY_AD_BLOCK, value).putInt(KEY_AD_LEVEL, 0).apply() }
 
     val effectiveCustomEdgeAddress: String?
         get() = customEdgeAddress.takeIf { isValidEdgeHost(it) }
