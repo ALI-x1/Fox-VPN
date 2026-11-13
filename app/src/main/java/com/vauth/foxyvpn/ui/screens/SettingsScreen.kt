@@ -29,6 +29,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -313,8 +315,8 @@ fun SettingsScreen(
     var showMtuDialog by rememberSaveable { mutableStateOf(false) }
     var showAutoConnectDialog by rememberSaveable { mutableStateOf(false) }
     var customMtu by remember { mutableStateOf(settingsStore.customMtu) }
-    var adBlock by remember { mutableStateOf(settingsStore.adBlockEnabled) }
-    val haptic = LocalHapticFeedback.current
+    var adBlock by remember { mutableStateOf(settingsStore.adBlockLevel) }
+    var showAdBlockDialog by rememberSaveable { mutableStateOf(false) }
     var showEdgeAddressDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyTypeDialog by rememberSaveable { mutableStateOf(false) }
     var showUpstreamProxyAddressDialog by rememberSaveable { mutableStateOf(false) }
@@ -369,6 +371,17 @@ fun SettingsScreen(
                 socksPort = it
                 settingsStore.socksPort = it
                 showSocksPortDialog = false
+            },
+        )
+    }
+    if (showAdBlockDialog) {
+        AdBlockPickerDialog(
+            current = adBlock,
+            onDismiss = { showAdBlockDialog = false },
+            onConfirm = {
+                adBlock = it
+                settingsStore.adBlockLevel = it
+                showAdBlockDialog = false
             },
         )
     }
@@ -698,7 +711,10 @@ fun SettingsScreen(
                     transitionSpec = {
                         val forward = targetState != SettingsPage.MAIN
                         slideInHorizontally(tween(260)) { if (forward) it / 8 else -it / 8 } togetherWith
-                            slideOutHorizontally(tween(200)) { if (forward) -it / 8 else it / 8 }
+                            slideOutHorizontally(tween(200)) { if (forward) -it / 8 else it / 8 } using
+                            // AnimatedContent به‌طور پیش‌فرض هنگام تغییر اندازه (مثلاً آمدن کارت اکانت بعد از لود) محتوا را می‌بُرد
+                            // و هاله‌ی کارت‌ها تا پایان انیمیشن دیده نمی‌شد
+                            SizeTransform(clip = false) { _, _ -> snap() }
                     },
                     label = "settings-page",
                 ) { target ->
@@ -807,18 +823,17 @@ fun SettingsScreen(
 
                                 Spacer(Modifier.height(16.dp))
                                 SettingsSection(c, tr("Protection")) {
-                                    SettingSwitchRow(
+                                    SettingRow(
                                         c = c,
                                         icon = Icons.Filled.Block,
                                         title = tr("Block ads"),
-                                        subtitle = tr("Blocks known ad and tracker domains"),
-                                        checked = adBlock,
-                                        divider = false,
-                                        onCheckedChange = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            adBlock = it
-                                            settingsStore.adBlockEnabled = it
+                                        subtitle = when (adBlock) {
+                                            1 -> tr("Standard")
+                                            2 -> tr("Strong")
+                                            else -> tr("Off")
                                         },
+                                        divider = false,
+                                        onClick = { showAdBlockDialog = true },
                                     )
                                 }
                                 Spacer(Modifier.height(16.dp))
@@ -1236,7 +1251,9 @@ private fun SettingRow(
     divider: Boolean = true,
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
+    tick: Boolean = true,
 ) {
+    val haptics = LocalHapticFeedback.current
     Column {
         if (divider) {
             Box(
@@ -1250,7 +1267,10 @@ private fun SettingRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(if (onClick != null) Modifier.clickable {
+                    if (tick) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onClick()
+                } else Modifier)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1334,17 +1354,25 @@ private fun SettingSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     divider: Boolean = true,
 ) {
+    val haptics = LocalHapticFeedback.current
     SettingRow(
         c = c,
         icon = icon,
         title = title,
         subtitle = subtitle,
         divider = divider,
-        onClick = { onCheckedChange(!checked) },
+        tick = false,
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onCheckedChange(!checked)
+        },
         trailing = {
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onCheckedChange(it)
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
                     checkedTrackColor = c.accent,
@@ -1492,6 +1520,7 @@ private fun QuickTile(
     active: Boolean,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(24.dp)
     val activeBrush = Brush.verticalGradient(
         listOf(c.accent.copy(alpha = 0.22f), c.accent.copy(alpha = 0.08f))
@@ -1504,7 +1533,10 @@ private fun QuickTile(
             .background(c.card) // پایه‌ی مات: بدون این، زیر گرادیان نیمه‌شفاف چیز دیگری دیده می‌شد
             .then(if (active) Modifier.background(activeBrush) else Modifier)
             .border(1.dp, if (active) c.accent.copy(alpha = 0.65f) else c.cardBorder, shape)
-            .clickable(onClick = onClick)
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
             .padding(horizontal = 8.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -2299,5 +2331,56 @@ private fun MtuPickerDialog(
             color = c.textSecondary,
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun AdBlockPickerDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val c = LocalFoxExtras.current
+    val haptics = LocalHapticFeedback.current
+    var selected by remember { mutableStateOf(current) }
+    val options = listOf(
+        Triple(0, tr("Off"), tr("No blocking")),
+        Triple(1, tr("Standard"), tr("Known ad and tracker domains (about 7,000)")),
+        Triple(2, tr("Strong"), tr("Also pop-up and redirect networks (about 83,000). A few sites may break.")),
+    )
+
+    FoxDialog(
+        title = tr("Block ads"),
+        onDismiss = onDismiss,
+        onConfirm = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onConfirm(selected)
+        },
+    ) {
+        options.forEach { (level, title, desc) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected == level, onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        selected = level
+                    })
+                    .padding(vertical = 6.dp),
+            ) {
+                RadioButton(
+                    selected = selected == level,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        selected = level
+                    },
+                    colors = foxRadioColors(c),
+                )
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(title, fontWeight = FontWeight.SemiBold, color = c.textPrimary)
+                    Text(desc, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                }
+            }
+        }
     }
 }
