@@ -159,7 +159,18 @@ fun FoxyNavGraph(
                 onContinue = { navController.popBackStack(FoxyRoutes.HOME, false) },
             )
         }
-        composable(FoxyRoutes.HOME) {
+        composable(
+            FoxyRoutes.HOME,
+            // رفت‌وبرگشت تنظیمات: بدون fade روی هوم؛ وگرنه هوم کند محو/ظاهر می‌شد و برگشت لگ داشت
+            exitTransition = {
+                if (targetState.destination.route == FoxyRoutes.SETTINGS) androidx.compose.animation.ExitTransition.None
+                else androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(700))
+            },
+            popEnterTransition = {
+                if (initialState.destination.route == FoxyRoutes.SETTINGS) androidx.compose.animation.EnterTransition.None
+                else androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(700))
+            },
+        ) {
             // بعد از ورود به حساب (رسیدن به صفحه‌ی اصلی) یک بار اجازه‌ی نوتیفیکیشن پرسیده می‌شه
             LaunchedEffect(Unit) { onHomeShown() }
             // ارتقا از ربات (ادمین پلن کد رو عوض کرده): با اولین به‌روزرسانی وضعیت، صفحه‌ی تبریک نشون داده می‌شه
