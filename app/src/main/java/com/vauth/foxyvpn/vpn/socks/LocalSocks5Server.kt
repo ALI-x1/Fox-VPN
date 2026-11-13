@@ -62,6 +62,7 @@ class LocalSocks5Server(
     private val rejectFakeDnsAddresses: Boolean,
     private val sessionProvider: () -> UpstreamSession?,
     private val onSessionUnhealthy: () -> Unit = {},
+    private val onUpstreamSilence: () -> Unit = {},
 ) {
     private var serverSocket: ServerSocket? = null
 
@@ -371,7 +372,10 @@ class LocalSocks5Server(
             recordUpstreamFailure(targetKey, cause, declinedByEdge = declinedByEdge)
 
             when (health.observeFailure(targetKey, cause)) {
-                UpstreamHealthTracker.Verdict.TARGET_FAILURE -> Unit
+                UpstreamHealthTracker.Verdict.TARGET_FAILURE -> {
+                    // اولین تایم‌اوت: همین حالا زنده‌بودن سشن رو بررسی کن (به‌جای منتظر ماندن برای ده‌ها خطا)
+                    if (cause is UpstreamConnectTimeoutException) runCatching { onUpstreamSilence() }
+                }
 
                 UpstreamHealthTracker.Verdict.SESSION_UNHEALTHY -> {
                     AppLogger.w(
