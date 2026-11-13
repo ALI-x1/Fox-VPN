@@ -298,6 +298,7 @@ fun SettingsScreen(
     // زبان برنامه: کشوی انتخاب (سیستم / فارسی / English)
     var languageChoice by remember { mutableStateOf(Lang.choice(context)) }
     var showLanguageSheet by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     val redeemClient = remember { RedeemClient(context.applicationContext) }
     val isAdmin = remember { redeemClient.adminMode }
     val uriHandler = LocalUriHandler.current
@@ -485,6 +486,10 @@ fun SettingsScreen(
                     languageChoice = choice
                     Lang.setChoice(context, choice)
                     Lang.markChosen(context)
+                    // قبل از ساخته‌شدن دوباره‌ی صفحه، عکس نیم‌اندازه‌ی صفحه‌ی فعلی گرفته می‌شه؛ بعد از تغییر زبان،
+                    // عکس قدیمی با «دایره‌ی باز‌شونده» (همان انیمیشن تغییر تم، کار GPU و سبک) کنار می‌ره
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    com.vauth.foxyvpn.ui.theme.ThemeTransition.capture()
                     context.findActivity()?.recreate() // زبان و جهت صفحه عوض می‌شه
                 }
             },
