@@ -265,11 +265,11 @@ fun FoxyNavGraph(
         }
         composable(
             FoxyRoutes.SETTINGS,
-            // بدون fade: لایه‌ی شفافیت نیمه‌راه هاله‌های کارت‌ها را می‌برید و آخرش یهو ظاهر می‌شدن
-            enterTransition = { androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { it / 6 } },
+            // اسلایدِ کامل (فقط translation = کار GPU، بدون لایه‌ی شفافیت): هاله‌ها نمی‌پرن و صفحه یهو غیب/ظاهر نمی‌شه
+            enterTransition = { androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it } },
             exitTransition = { androidx.compose.animation.ExitTransition.None },
             popEnterTransition = { androidx.compose.animation.EnterTransition.None },
-            popExitTransition = { androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(200)) { it / 6 } },
+            popExitTransition = { androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it } },
         ) {
             SettingsScreen(
                 settingsStore = app.settingsStore,
