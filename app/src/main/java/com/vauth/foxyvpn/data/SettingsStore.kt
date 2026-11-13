@@ -94,6 +94,15 @@ class SettingsStore(context: Context) {
             prefs.edit().putString(KEY_CUSTOM_EDGE_ADDRESS, normalized).apply()
         }
 
+    /** MTU تونل؛ پیش‌فرض ۱۴۰۰ (تعادل خوب بین سرعت و سازگاری). */
+    var customMtu: Int
+        get() = prefs.getInt(KEY_CUSTOM_MTU, DEFAULT_MTU).coerceIn(MIN_MTU, MAX_MTU)
+        set(value) { prefs.edit().putInt(KEY_CUSTOM_MTU, value.coerceIn(MIN_MTU, MAX_MTU)).apply() }
+
+    var adBlockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AD_BLOCK, false)
+        set(value) { prefs.edit().putBoolean(KEY_AD_BLOCK, value).apply() }
+
     val effectiveCustomEdgeAddress: String?
         get() = customEdgeAddress.takeIf { isValidEdgeHost(it) }
 
@@ -139,7 +148,7 @@ class SettingsStore(context: Context) {
         socksBindAddress, socksPort, httpProxyEnabled, httpProxyPort, proxyOnlyMode,
         customEdgeAddress, upstreamProxyEnabled, upstreamProxyType.name, upstreamProxyHost,
         upstreamProxyPort, upstreamProxyUsername, upstreamProxyPassword,
-        excludedApps.sorted(),
+        excludedApps.sorted(), customMtu, adBlockEnabled,
     ).hashCode()
 
     /** آیا همه‌ی تنظیمات اتصال روی پیش‌فرضه؟ (تم، زبان و وصل‌شدن خودکار حساب نمی‌شن) */
@@ -152,7 +161,7 @@ class SettingsStore(context: Context) {
             upstreamProxyType == UpstreamProxyType.SOCKS5 && upstreamProxyHost.isEmpty() &&
             upstreamProxyPort == DEFAULT_UPSTREAM_PROXY_PORT &&
             upstreamProxyUsername.isEmpty() && upstreamProxyPassword.isEmpty() &&
-            excludedApps.isEmpty()
+            excludedApps.isEmpty() && customMtu == DEFAULT_MTU && !adBlockEnabled
 
     /** برگردوندن تنظیمات اتصال به پیش‌فرض (تم، زبان، وصل‌شدن خودکار و حساب دست نمی‌خورن). */
     fun resetConnectionDefaults() {
@@ -173,6 +182,8 @@ class SettingsStore(context: Context) {
         upstreamProxyUsername = ""
         upstreamProxyPassword = ""
         excludedApps = emptySet()
+        customMtu = DEFAULT_MTU
+        adBlockEnabled = false
     }
 
     enum class UpstreamProxyType { SOCKS5, HTTP }
@@ -207,6 +218,11 @@ class SettingsStore(context: Context) {
         private const val KEY_CUSTOM_DNS_SERVER = "custom_dns_server"
         private const val KEY_PROXY_ONLY_MODE = "proxy_only_mode"
         private const val KEY_AUTO_CONNECT = "auto_connect"
+        private const val KEY_CUSTOM_MTU = "custom_mtu"
+        private const val KEY_AD_BLOCK = "ad_block"
+        const val DEFAULT_MTU = 1400
+        const val MIN_MTU = 1280
+        const val MAX_MTU = 9000
         private const val KEY_CUSTOM_EDGE_ADDRESS = "custom_edge_address"
         private const val KEY_UPSTREAM_PROXY_ENABLED = "upstream_proxy_enabled"
         private const val KEY_UPSTREAM_PROXY_TYPE = "upstream_proxy_type"
