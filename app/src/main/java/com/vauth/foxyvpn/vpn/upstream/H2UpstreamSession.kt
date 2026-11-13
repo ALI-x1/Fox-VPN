@@ -80,7 +80,9 @@ private const val KEEPALIVE_PING_TIMEOUT_MS = 10_000L
 
 private const val KEEPALIVE_PING_PAYLOAD = 0x466F78795650_4EL
 
-private const val OPEN_STREAM_TIMEOUT_MS = 20_000L
+private const val OPEN_STREAM_TIMEOUT_MS = 10_000L
+
+private const val PROBE_PING_TIMEOUT_MS = 4_000L
 
 private const val TCP_CONNECT_TIMEOUT_MS = 15_000
 
@@ -443,6 +445,23 @@ class H2UpstreamSession(
                 HttpProxyHandler(proxyAddress, proxy.username, proxy.password.orEmpty())
             } else {
                 HttpProxyHandler(proxyAddress)
+            }
+        }
+    }
+
+    /** بررسی فوری: یک PING می‌فرسته و اگه تا ۴ ثانیه جواب نیاد، سشن مرده حساب می‌شه و بسته می‌شه تا دوباره ساخته بشه. */
+    override fun probeNow() {
+        if (closed.get() || awaitingPingAck) return
+        val ch = parentChannel?.takeIf { it.isActive } ?: return
+        val sentAt = System.currentTimeMillis()
+        awaitingPingAck = true
+        pingSentAt = sentAt
+        ch.writeAndFlush(DefaultHttp2PingFrame(KEEPALIVE_PING_PAYLOAD, false))
+        keepaliveScope.launch {
+            delay(PROBE_PING_TIMEOUT_MS)
+            if (!closed.get() && awaitingPingAck && pingSentAt == sentAt) {
+                AppLogger.w(TAG, "probe PING unanswered for ${PROBE_PING_TIMEOUT_MS}ms; closing dead upstream session")
+                close()
             }
         }
     }
