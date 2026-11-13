@@ -149,6 +149,7 @@ internal val FA_STRINGS: Map<String, String> = mapOf(
     "Local proxy, edge and upstream" to "پروکسی محلی، لبه و بالادست",
     "Tunnel MTU" to "MTU تونل",
     "Block ads" to "بلاک تبلیغات",
+    "Blocks known ad and tracker domains" to "دامنه‌های تبلیغاتی و ردیاب شناخته‌شده را می‌بندد",
     "Standard" to "معمولی",
     "Strong" to "قوی",
     "No blocking" to "بدون بلاک",
