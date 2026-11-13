@@ -16,6 +16,9 @@ interface UpstreamSession : Closeable {
     fun updateBearerToken(token: String)
 
     val isConnected: Boolean
+
+    /** بررسی فوری زنده بودن اتصال (مثلاً بعد از روشن‌شدن صفحه یا اولین تایم‌اوت)؛ اگه جواب نیاد سشن بسته می‌شه. */
+    fun probeNow() = Unit
 }
 
 data class TunneledStream(
