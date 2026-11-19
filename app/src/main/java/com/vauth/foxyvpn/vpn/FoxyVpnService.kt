@@ -91,6 +91,10 @@ private const val UNHEALTHY_REDIAL_COOLDOWN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FRACTION = 0.75
 private const val PROXY_PASS_NUDGE_THRESHOLD_MS = 150_000L
+/** برای دوباره‌وصل‌شدن با همان پاس، باید حداقل این‌قدر از عمرش مونده باشه. */
+private const val PROXY_PASS_REUSE_MIN_LEFT_MS = 90_000L
+/** بعد از یک بار استفاده‌ی دوباره، تا این مدت پاس تازه گرفته می‌شه (اگه پاس مشکل داشت حلقه نشه). */
+private const val PROXY_PASS_REUSE_COOLDOWN_MS = 60_000L
 private const val PROXY_PASS_RENEWAL_SAFETY_MARGIN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FLOOR_MS = 15_000L
@@ -776,7 +780,7 @@ class FoxyVpnService : VpnService() {
 
             var sessionRecoveryTried = false
 
-            suspend fun mintProxyPass(): ProxyPass {
+            suspend fun mintProxyPassFresh(): ProxyPass {
                 var auth = tokenStore.loadAuth() ?: throw TokenInvalidError(tr("Not signed in"))
 
                 if (!tokenStore.hasValidSession()) {
@@ -820,11 +824,27 @@ class FoxyVpnService : VpnService() {
                 }
             }
 
+            // آخرین پاسی که گرفته شد (تمدیدها هم این‌جا ثبت می‌شن)؛ برای redial بعد از قطعی اتصال
+            var latestPass: ProxyPass? = null
+            var passReuseBlockedUntilMs = 0L
+            suspend fun mintProxyPass(): ProxyPass = mintProxyPassFresh().also { latestPass = it }
+
             var currentPassExpiry: Long? = null
 
             suspend fun dialUpstream(): Pair<com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession, Long?> {
                 val target = activeCandidate()
-                val pass = mintProxyPass()
+                // اگه فقط خود اتصال مرده و پاس هنوز اعتبار داره، همان پاس رو دوباره استفاده می‌کنیم
+                // (بدون درخواست به Guardian: سریع‌تر و کم‌فشارتر روی موزیلا). بعد از ۴۰۱ یا بار دوم، پاس تازه می‌گیریم.
+                val now = System.currentTimeMillis()
+                val cached = latestPass
+                val cachedLeftMs = cached?.expiresAtEpochSeconds?.let { it * 1_000L - now }
+                val pass = if (cached != null && cachedLeftMs != null && cachedLeftMs > PROXY_PASS_REUSE_MIN_LEFT_MS && now >= passReuseBlockedUntilMs) {
+                    passReuseBlockedUntilMs = now + PROXY_PASS_REUSE_COOLDOWN_MS
+                    AppLogger.i(TAG, "redial: reusing the current proxy pass (${cachedLeftMs / 1_000}s left) instead of asking Guardian for a new one")
+                    cached
+                } else {
+                    mintProxyPass()
+                }
                 currentPassExpiry = pass.expiresAtEpochSeconds
                 val lifetimeNote = pass.expiresAtEpochSeconds?.let { expiresAt ->
                     val seconds = (expiresAt * 1_000L - System.currentTimeMillis()) / 1_000L
