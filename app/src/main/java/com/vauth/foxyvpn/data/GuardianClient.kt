@@ -36,6 +36,12 @@ object ServerPassHook {
     var preferServer: Boolean
         get() = memo ?: (runCatching { prefs()?.getBoolean("prefer_server", false) }.getOrNull() ?: false).also { memo = it }
         set(v) { memo = v; runCatching { prefs()?.edit()?.putBoolean("prefer_server", v)?.apply() } }
+
+    /** اگه راه «اسلش دوبل» (//api/...) یک بار جواب داد، دفعه‌های بعد همان را اول امتحان می‌کنیم (بدون ۴۵۱ اضافه). */
+    @Volatile private var doubledMemo: Boolean? = null
+    var preferDoubledSlash: Boolean
+        get() = doubledMemo ?: (runCatching { prefs()?.getBoolean("prefer_doubled_slash", false) }.getOrNull() ?: false).also { doubledMemo = it }
+        set(v) { doubledMemo = v; runCatching { prefs()?.edit()?.putBoolean("prefer_doubled_slash", v)?.apply() } }
 }
 
 class GuardianClient(
@@ -46,10 +52,22 @@ class GuardianClient(
         if (ServerPassHook.preferServer) {
             ServerPassHook.provider?.invoke(accessToken)?.let { return it }
         }
+        if (ServerPassHook.preferDoubledSlash) {
+            tryDoubledSlash(endpoint, accessToken)?.let { return it }
+        }
         try {
             return fetchProxyPassDirect(endpoint, accessToken)
         } catch (e: GuardianHttpError) {
             if (e.statusCode != 451) throw e
+            // لبه‌ی CDN قانون منطقه را روی مسیر دقیق اعمال می‌کند؛ با یک اسلش اضافه (//api/...) همان هندلر جواب می‌دهد.
+            // هر خطایی در این مرحله نادیده گرفته می‌شود و می‌رویم سراغ سرور خودمان (پس چیزی خراب نمی‌شود).
+            val doubled = tryDoubledSlash(endpoint, accessToken)
+            if (doubled != null) {
+                AppLogger.i(TAG, "Guardian HTTP 451 bypassed with a doubled leading slash; no relay needed")
+                ServerPassHook.preferDoubledSlash = true
+                return doubled
+            }
+            ServerPassHook.preferDoubledSlash = false
             AppLogger.w(TAG, "Guardian says unavailable in region (HTTP 451); asking our server for the proxy pass")
             val viaServer = ServerPassHook.provider?.invoke(accessToken) ?: throw e
             ServerPassHook.preferServer = true
@@ -57,8 +75,17 @@ class GuardianClient(
         }
     }
 
-    private suspend fun fetchProxyPassDirect(endpoint: String, accessToken: String): ProxyPass = withContext(Dispatchers.IO) {
-        val url = "${endpoint.trimEnd('/')}/api/v1/fpn/token"
+    /** مسیر «اسلش دوبل»؛ هر شکستی null می‌دهد (لغو شدن کوروتین دوباره پرتاب می‌شود). */
+    private suspend fun tryDoubledSlash(endpoint: String, accessToken: String): ProxyPass? = try {
+        fetchProxyPassDirect(endpoint, accessToken, doubledSlash = true)
+    } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+    } catch (_: Exception) {
+        null
+    }
+
+    private suspend fun fetchProxyPassDirect(endpoint: String, accessToken: String, doubledSlash: Boolean = false): ProxyPass = withContext(Dispatchers.IO) {
+        val url = "${endpoint.trimEnd('/')}" + (if (doubledSlash) "//api/v1/fpn/token" else "/api/v1/fpn/token")
         authorizedRequest("GET", url, accessToken).use { resp ->
             when (resp.code) {
                 401, 403 -> throw TokenInvalidError("access token was rejected by Guardian")
