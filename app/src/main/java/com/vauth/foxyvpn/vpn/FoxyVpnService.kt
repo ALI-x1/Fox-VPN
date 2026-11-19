@@ -65,7 +65,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "FoxyVpnService"
 private const val CONNECT_TIMEOUT_MS = 20_000L
@@ -88,6 +90,7 @@ private class ConnectUnreachable(message: String) : IllegalStateException(messag
 private const val UNHEALTHY_REDIAL_COOLDOWN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FRACTION = 0.75
+private const val PROXY_PASS_NUDGE_THRESHOLD_MS = 150_000L
 private const val PROXY_PASS_RENEWAL_SAFETY_MARGIN_MS = 30_000L
 
 private const val PROXY_PASS_RENEWAL_FLOOR_MS = 15_000L
@@ -147,6 +150,12 @@ class FoxyVpnService : VpnService() {
 
     private var tokenRenewalJob: Job? = null
 
+    /**
+     * delay() در خواب عمیق (Doze) جلو نمی‌ره و پاس می‌تونست قبل از تمدید منقضی بشه (۴۰۱ از edge).
+     * با روشن‌شدن صفحه یا برگشت شبکه این سیگنال می‌رسه و اگه پاس منقضی/نزدیک انقضاست همان لحظه تمدید می‌شه.
+     */
+    private val renewalNudge = Channel<Unit>(Channel.CONFLATED)
+
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
@@ -185,6 +194,7 @@ class FoxyVpnService : VpnService() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             reportUnderlyingNetwork(network)
+            renewalNudge.trySend(Unit)
         }
 
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
@@ -266,7 +276,10 @@ class FoxyVpnService : VpnService() {
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (_state.value == ConnectionState.CONNECTED) upstreamSession?.probeNow()
+            if (_state.value == ConnectionState.CONNECTED) {
+                upstreamSession?.probeNow()
+                renewalNudge.trySend(Unit)
+            }
         }
     }
 
@@ -505,8 +518,14 @@ class FoxyVpnService : VpnService() {
                     (if (expiry == null) "(pass lifetime unknown; using a fixed interval)" else "(at half of its remaining life)"),
             )
             while (isActive) {
-                delay(proxyPassRenewalDelayMs(expiry))
+                val nudged = withTimeoutOrNull(proxyPassRenewalDelayMs(expiry)) { renewalNudge.receive() } != null
                 if (myGeneration != connectionGeneration) return@launch
+                if (nudged) {
+                    // بیدارشدن از خواب: فقط اگه پاس منقضی شده یا کمتر از ۲٫۵ دقیقه مونده تمدید کن
+                    val left = expiry?.let { it * 1_000L - System.currentTimeMillis() }
+                    if (left != null && left > PROXY_PASS_NUDGE_THRESHOLD_MS) continue
+                    AppLogger.i(TAG, "waking up: proxy pass " + (if (left == null) "lifetime unknown" else if (left <= 0) "already expired" else "expires in ${left / 1_000}s") + "; renewing now")
+                }
 
                 val session = upstreamSession
                 if (session == null || !session.isConnected) {
@@ -761,6 +780,7 @@ class FoxyVpnService : VpnService() {
                 var auth = tokenStore.loadAuth() ?: throw TokenInvalidError(tr("Not signed in"))
 
                 if (!tokenStore.hasValidSession()) {
+                    com.vauth.foxyvpn.data.ConnectTrace.step("access token expired; refreshing it with the refresh token")
                     val renewed = renewAccessToken(tokenStore)
                     if (renewed != null) {
                         auth = renewed
