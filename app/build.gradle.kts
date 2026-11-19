@@ -48,7 +48,7 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 163
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 165
         versionName = "2.8.5"
 
         externalNativeBuild {
