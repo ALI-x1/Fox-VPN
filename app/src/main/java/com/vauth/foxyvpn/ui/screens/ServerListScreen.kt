@@ -374,7 +374,7 @@ private class ListSections(
     val hasSections: Boolean get() = current.isNotEmpty() || temp.isNotEmpty() || free.isNotEmpty() || favorites.isNotEmpty() || recent.isNotEmpty()
 }
 
-/** هر لوکیشن فقط یک جا میاد: Current > Free (رایگان‌ها همیشه بالا) > Favorites > Recent > VIP. cat: 0 همه، 1 رایگان، 2 VIP */
+/** هر لوکیشن فقط یک جا میاد: Current > Favorites (حتی رایگان‌ها) > Free > Recent > VIP. cat: 0 همه، 1 رایگان، 2 VIP */
 private fun buildSections(
     sorted: List<CityEntry>,
     rawQuery: String,
@@ -391,9 +391,10 @@ private fun buildSections(
     val visible = if (searching) byCat.filter { it.matches(query) } else byCat
     val current = if (!searching && currentEntry != null) listOf(currentEntry) else emptyList()
     val currentKey = current.firstOrNull()?.key
-    val temp = if (searching) emptyList() else visible.filter { it.key in tempKeys && it.key != currentKey }
-    val free = if (searching) emptyList() else visible.filter { it.key in freeKeys && it.key !in tempKeys && it.key != currentKey }
-    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key !in freeKeys && it.key != currentKey }
+    // علاقه‌مندی‌ها (رایگان یا غیررایگان) همیشه درست زیر لوکیشن فعلی می‌آن، بعد رایگان‌ها
+    val favs = if (searching) emptyList() else visible.filter { it.key in favorites && it.key != currentKey }
+    val temp = if (searching) emptyList() else visible.filter { it.key in tempKeys && it.key !in favorites && it.key != currentKey }
+    val free = if (searching) emptyList() else visible.filter { it.key in freeKeys && it.key !in tempKeys && it.key !in favorites && it.key != currentKey }
     val byKey = if (searching) emptyMap() else visible.associateBy { it.key }
     val recent = if (searching) {
         emptyList()
@@ -991,13 +992,13 @@ fun ServerListScreen(
                                 }
                             } else {
                                 citySection("current", tr("Current location"), Icons.Filled.CheckCircle, c.accent, c, currentCities, renderCity)
+                                citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
                                 citySection(
                                     "temp",
                                     "🎁 " + tr("Free for a limited time") + tempOpen?.let { "  ·  " + formatLeft(it.untilMs - nowMs) }.orEmpty(),
                                     Icons.Filled.CardGiftcard, StarGold, c, tempCities, renderCity,
                                 )
                                 citySection("free", tr("Free locations"), Icons.Filled.CardGiftcard, c.accent, c, freeCities, renderCity)
-                                citySection("favorites", tr("Favorites"), Icons.Filled.Star, StarGold, c, favoriteCities, renderCity)
                                 citySection("recent", tr("Recent"), Icons.Filled.History, c.accentText, c, recentCities, renderCity)
                                 citySection(
                                     id = "all",
