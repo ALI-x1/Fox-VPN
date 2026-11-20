@@ -84,6 +84,9 @@ private const val OPEN_STREAM_TIMEOUT_MS = 10_000L
 
 private const val PROBE_PING_TIMEOUT_MS = 4_000L
 
+/** اگر سشن این‌قدر بی‌صدا بوده، قبل از فرستادن CONNECT یک PING سریع می‌زنیم تا سشن مرده زود پیدا شود. */
+private const val IDLE_VERIFY_BEFORE_CONNECT_MS = 12_000L
+
 private const val TCP_CONNECT_TIMEOUT_MS = 15_000
 
 private const val TLS_ENDPOINT_IDENTIFICATION_HTTPS = "HTTPS"
@@ -145,6 +148,7 @@ class H2UpstreamSession(
     private var parentChannel: Channel? = null
 
     @Volatile private var lastActivityAt = System.currentTimeMillis()
+    private val sessionStartedAt = System.currentTimeMillis()
 
     @Volatile private var lastStreamDataAt = System.currentTimeMillis()
     @Volatile private var awaitingPingAck = false
@@ -350,7 +354,10 @@ class H2UpstreamSession(
                         override fun channelInactive(ctx: ChannelHandlerContext) {
                             acceptingNewStreams = false
                             val detail = "upstream channel to $upstreamHost:$upstreamPort became inactive " +
-                                "(local=${ctx.channel().localAddress()})"
+                                "(local=${ctx.channel().localAddress()}, " +
+                                "age=${(System.currentTimeMillis() - sessionStartedAt) / 1000}s, " +
+                                "silent for ${(System.currentTimeMillis() - lastActivityAt) / 1000}s, " +
+                                "activeStreams=${activeStreams.get()}, closedByUs=${closed.get()})"
 
                             if (closing) AppLogger.d(TAG, detail) else AppLogger.w(TAG, detail)
                             if (!handshakeDone.isCompleted) {
@@ -367,7 +374,9 @@ class H2UpstreamSession(
 
                                 AppLogger.w(
                                     TAG,
-                                    "upstream connection to $upstreamHost:$upstreamPort dropped: ${cause.message} " +
+                                    "upstream connection to $upstreamHost:$upstreamPort dropped: ${cause.javaClass.simpleName}: ${cause.message} " +
+                                        "(age=${(System.currentTimeMillis() - sessionStartedAt) / 1000}s, " +
+                                        "silent for ${(System.currentTimeMillis() - lastActivityAt) / 1000}s) " +
                                         "(usually the network changed underneath it)",
                                 )
                             } else {
@@ -536,6 +545,9 @@ class H2UpstreamSession(
         val parent = parentChannel ?: throw IOException("H2UpstreamSession is not connected")
         if (!parent.isActive) throw IOException("H2UpstreamSession channel is not active")
         if (!acceptingNewStreams) throw IOException("H2UpstreamSession is shutting down (GOAWAY received)")
+
+        // بعد از خواب/Doze ممکن است TCP بی‌صدا مرده باشد؛ به‌جای ۲۰ ثانیه انتظار برای CONNECT، همین حالا ۴ ثانیه‌ای بررسی کن.
+        if (System.currentTimeMillis() - lastActivityAt >= IDLE_VERIFY_BEFORE_CONNECT_MS) probeNow()
 
         val authority = if (targetHost.contains(":")) "[$targetHost]:$targetPort" else "$targetHost:$targetPort"
         val responseHeaders = CompletableDeferred<Unit>()
