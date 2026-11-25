@@ -34,6 +34,9 @@ private const val SESSION_WAIT_POLL_INTERVAL_MS = 100L
 
 private const val OPEN_STREAM_TIMEOUT_MS = 30_000L
 
+/** سشن وسط کار مرد: این‌قدر برای سشن جایگزین صبر می‌کنیم و یک بار دوباره تلاش می‌کنیم. */
+private const val REPLACEMENT_SESSION_WAIT_MS = 6_000L
+
 private const val HANDSHAKE_TIMEOUT_MS = 10_000
 
 private const val HALF_CLOSE_DRAIN_TIMEOUT_MS = 2 * 60_000L
@@ -215,6 +218,16 @@ class LocalSocks5Server(
         }
     }
 
+    private suspend fun awaitReplacementSession(old: UpstreamSession): UpstreamSession? {
+        val deadline = System.currentTimeMillis() + REPLACEMENT_SESSION_WAIT_MS
+        while (System.currentTimeMillis() < deadline) {
+            val s = sessionProvider()
+            if (s != null && s !== old && s.isConnected) return s
+            delay(150)
+        }
+        return null
+    }
+
     private fun recordUpstreamFailure(target: String, cause: Throwable?, declinedByEdge: Boolean = false) {
         AppLogger.d(TAG, "opening upstream stream failed for $target: ${cause?.message ?: "timed out"}")
 
@@ -366,8 +379,22 @@ class LocalSocks5Server(
             return
         }
 
-        val tunnelResult = runCatching {
+        var usedSession: UpstreamSession = session
+        var tunnelResult = runCatching {
             withTimeoutOrNull(OPEN_STREAM_TIMEOUT_MS) { session.openStream(targetHost, targetPort) }
+        }
+        // اگر سشن وسط همین تلاش مرد (و سرور رد نکرده)، به‌جای خطا دادن به برنامه روی سشن بازسازی‌شده دوباره امتحان کن
+        if (tunnelResult.getOrNull() == null && !session.isConnected &&
+            tunnelResult.exceptionOrNull() !is UpstreamConnectRejectedException
+        ) {
+            val fresh = awaitReplacementSession(session)
+            if (fresh != null && fresh !== unauthenticatedSession) {
+                AppLogger.i(TAG, "retrying $targetKey on the rebuilt upstream session")
+                usedSession = fresh
+                tunnelResult = runCatching {
+                    withTimeoutOrNull(OPEN_STREAM_TIMEOUT_MS) { fresh.openStream(targetHost, targetPort) }
+                }
+            }
         }
         val tunneled = tunnelResult.getOrNull()
         if (tunneled == null) {
@@ -397,8 +424,8 @@ class LocalSocks5Server(
 
                 UpstreamHealthTracker.Verdict.SESSION_UNAUTHENTICATED -> {
 
-                    val alreadyLatched = session === unauthenticatedSession
-                    unauthenticatedSession = session
+                    val alreadyLatched = usedSession === unauthenticatedSession
+                    unauthenticatedSession = usedSession
                     if (!alreadyLatched) {
                         AppLogger.w(
                             TAG,
@@ -419,7 +446,7 @@ class LocalSocks5Server(
 
         forgetUnreachable(targetKey)
 
-        if (unauthenticatedSession != null && session !== unauthenticatedSession) {
+        if (unauthenticatedSession != null && usedSession !== unauthenticatedSession) {
             unauthenticatedSession = null
         }
 
