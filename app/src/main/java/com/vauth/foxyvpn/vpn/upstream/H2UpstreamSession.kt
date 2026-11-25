@@ -74,7 +74,7 @@ import kotlin.coroutines.resumeWithException
 
 private const val TAG = "H2UpstreamSession"
 
-private const val KEEPALIVE_CHECK_INTERVAL_MS = 3_000L
+private const val KEEPALIVE_CHECK_INTERVAL_MS = 1_500L
 private const val KEEPALIVE_IDLE_THRESHOLD_MS = 15_000L
 private const val KEEPALIVE_PING_TIMEOUT_MS = 10_000L
 
@@ -86,6 +86,9 @@ private const val PROBE_PING_TIMEOUT_MS = 4_000L
 
 /** اگر سشن این‌قدر بی‌صدا بوده، قبل از فرستادن CONNECT یک PING سریع می‌زنیم تا سشن مرده زود پیدا شود. */
 private const val IDLE_VERIFY_BEFORE_CONNECT_MS = 12_000L
+
+/** ما داده فرستادیم و این‌قدر هیچ جوابی از سرور نیامده: سشن مشکوک است، همین حالا PING بزن. */
+private const val UNANSWERED_SEND_PROBE_MS = 3_500L
 
 private const val TCP_CONNECT_TIMEOUT_MS = 15_000
 
@@ -152,6 +155,7 @@ class H2UpstreamSession(
 
     @Volatile private var lastStreamDataAt = System.currentTimeMillis()
     @Volatile private var awaitingPingAck = false
+    @Volatile private var unansweredSince = 0L
     @Volatile private var pingSentAt = 0L
     @Volatile private var acceptingNewStreams = true
     private val activeStreams = AtomicInteger(0)
@@ -209,14 +213,22 @@ class H2UpstreamSession(
 
     private fun noteInboundActivity() {
         lastActivityAt = System.currentTimeMillis()
+        unansweredSince = 0L
         if (awaitingPingAck) awaitingPingAck = false
     }
 
+    /** داده‌ی دریافتی از سرور: سشن زنده است. */
     private fun noteStreamData() {
         val now = System.currentTimeMillis()
         lastActivityAt = now
-
+        unansweredSince = 0L
         lastStreamDataAt = now
+    }
+
+    /** ما چیزی فرستادیم؛ این نباید ساعت «بی‌صدایی» را صفر کند، وگرنه سشن مرده هیچ‌وقت PING نمی‌گیرد. */
+    private fun noteOutboundData() {
+        lastStreamDataAt = System.currentTimeMillis()
+        if (unansweredSince == 0L) unansweredSince = lastStreamDataAt
     }
 
     override suspend fun connect() = withContext(Dispatchers.IO) {
@@ -493,6 +505,10 @@ class H2UpstreamSession(
                         close()
                         break
                     }
+                    !awaitingPingAck && unansweredSince != 0L && now - unansweredSince >= UNANSWERED_SEND_PROBE_MS -> {
+                        AppLogger.d(TAG, "sent data ${now - unansweredSince}ms ago with no reply; probing the session")
+                        probeNow()
+                    }
                     !awaitingPingAck && idleFor >= KEEPALIVE_IDLE_THRESHOLD_MS -> {
                         awaitingPingAck = true
                         pingSentAt = now
@@ -636,6 +652,7 @@ class H2UpstreamSession(
 
                     add("proxy-authorization", "Bearer $currentBearerToken")
                 }
+                noteOutboundData()
                 ch.writeAndFlush(DefaultHttp2HeadersFrame(headers, false))
 
                 try {
@@ -694,7 +711,7 @@ class H2UpstreamSession(
             if (len <= 0) return
             if (!streamChannel.isActive) throw IOException("Upstream stream is closed")
 
-            noteStreamData()
+            noteOutboundData()
             val buf = streamChannel.alloc().buffer(len).writeBytes(b, off, len)
             val future = streamChannel.writeAndFlush(DefaultHttp2DataFrame(buf, false))
 
